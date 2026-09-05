@@ -1,0 +1,308 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+  SUPPORT
+  AUDITOR
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FULFILLED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum FulfillmentProvider {
+  DROPSHIP_DEFAULT
+  DSERS
+  ALIEXPRESS_DIRECT
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String?
+  role        Role      @default(CUSTOMER)
+  isActive    Boolean   @default(true)
+  profile     Profile?
+  addresses   Address[]
+  orders      Order[]
+  auditLogs   AuditLog[]
+  wishlist    Wishlist?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Profile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  avatar    String?
+  phone     String?
+  bio       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  street    String
+  city      String
+  region    String
+  zip       String?
+  label     String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id          String    @id @default(cuid())
+  userId      String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      OrderStatus @default(PENDING)
+  total       Float?
+  shippingProvider    String?
+  trackingNumber      String?
+  trackingUrl         String?
+  notes               String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  orderItems  OrderItem[]
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+}
+model Account {
+  id               String @id @default(cuid())
+  userId           String
+  provider         String
+  providerAccountId String
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, provider, providerAccountId])
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  isActive  Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Supplier {
+  id        String            @id @default(cuid())
+  name      String
+  provider  FulfillmentProvider @default(DSERS)
+  apiKey    String?
+  isActive  Boolean           @default(true)
+  products  Product[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model PriceRule {
+  id            String    @id @default(cuid())
+  name          String
+  defaultMargin Int       @default(60)
+  shippingCost  Decimal   @default(0)
+  commission    Decimal   @default(0)
+  currency      String    @default("CLP")
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model AutomationLog {
+  id        String   @id @default(cuid())
+  type      String
+  entityId  String?
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id             String           @id @default(cuid())
+  title            String
+  slug             String           @unique
+  description      String
+  price            Decimal
+  compareAtPrice   Decimal?
+  stock            Int              @default(0)
+  isActive         Boolean          @default(true)
+  categoryId       String
+  category         Category         @relation(fields: [categoryId], references: [id])
+  variants         ProductVariant[]
+  images           ProductImage[]
+  reviews          ProductReview[]
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
+  inventory        Inventory[]
+  supplierId       String?
+  supplier         Supplier?        @relation(fields: [supplierId], references: [id])
+  aliexpressId     String?
+  aliexpressUrl    String?
+  supplierPrice    Decimal?
+  shippingCost     Decimal?
+  profitMargin     Int              @default(60)
+  importSource     String           @default("DSERS")
+  dserStatus       String           @default("draft")
+  isFeatured       Boolean          @default(false)
+  isOffer          Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+}
+
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku       String   @unique
+  size      String?
+  color     String?
+  price     Decimal
+  stock     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  position  Int     @default(0)
+}
+
+model Inventory {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  quantity  Int
+  warehouseId String? @default("main")
+  updatedAt DateTime @updatedAt
+}
+
+model ProductReview {
+  id              String   @id @default(cuid())
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId          String
+  rating          Int
+  comment         String?
+  images          String[]
+  isVerified      Boolean  @default(false)
+  isModerated     Boolean  @default(false)
+  verifiedPurchase Boolean @default(false)
+  createdAt       DateTime @default(now())
+}
+
+model Wishlist {
+  id        String        @id @default(cuid())
+  userId    String        @unique
+  user      User          @relation(fields: [userId], references: [id])
+  items     WishlistItem[]
+  createdAt DateTime      @default(now())
+}
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  wishlistId String
+  wishlist   Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  productId  String
+  createdAt  DateTime @default(now())
+
+  @@unique([wishlistId, productId])
+}
+
+model Cart {
+  id        String    @id @default(cuid())
+  userId    String?   @unique
+  items     CartItem[]
+  couponId  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  variantId String?
+  quantity  Int
+  price     Decimal
+}
+
+model Coupon {
+  id          String        @id @default(cuid())
+  code        String        @unique
+  discountType DiscountType
+  value       Decimal
+  maxUses     Int           @default(100)
+  usedCount   Int           @default(0)
+  minAmount   Decimal?
+  validUntil  DateTime?
+  isActive    Boolean       @default(true)
+  usages      CouponUsage[]
+  createdAt   DateTime      @default(now())
+}
+
+model CouponUsage {
+  id        String    @id @default(cuid())
+  couponId  String
+  coupon    Coupon    @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId    String
+  orderId   String?
+  usedAt    DateTime  @default(now())
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Decimal
+  createdAt DateTime @default(now())
+}

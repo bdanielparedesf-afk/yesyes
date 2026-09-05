@@ -1,0 +1,11 @@
+# Keys y secretos
+.env
+backend/.env
+*.env
+
+# Dependencias
+node_modules/
+dist/
+
+# Sistema
+.DS_Store

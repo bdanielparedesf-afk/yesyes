@@ -1,0 +1,16 @@
+{
+  "short_name": "YESYES",
+  "name": "YESYES - Tienda Ecommerce",
+  "description": "YESYES - Tu tienda ecommerce moderna",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0284c7",
+  "background_color": "#ffffff"
+}
