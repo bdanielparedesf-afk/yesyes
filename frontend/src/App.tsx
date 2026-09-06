@@ -15,6 +15,7 @@ import Favorites from '@/pages/Favorites';
 import Contact from '@/pages/Contact';
 import FAQ from '@/pages/FAQ';
 import Admin from '@/pages/Admin';
+import AdminImport from '@/pages/AdminImport';
 import NotFound from '@/pages/NotFound';
 
 function Ofertas() {
@@ -52,6 +53,7 @@ function App() {
       <Route path="devoluciones" element={<FAQ />} />
       <Route path="reembolsos" element={<FAQ />} />
       <Route path="admin" element={<Admin />} />
+      <Route path="admin/import" element={<AdminImport />} />
       <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
