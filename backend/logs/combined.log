@@ -113,3 +113,4 @@
 {"level":"info","message":"::1 - - [06/Sep/2026:13:29:04 +0000] \"GET /api/health HTTP/1.1\" 200 42 \"-\" \"curl/8.13.0\"","service":"yesyes-backend","timestamp":"2026-09-06 10:29:04"}
 {"level":"info","message":"::1 - - [06/Sep/2026:13:29:27 +0000] \"GET /api/auth/csrf HTTP/1.1\" 200 - \"-\" \"curl/8.13.0\"","service":"yesyes-backend","timestamp":"2026-09-06 10:29:27"}
 {"level":"info","message":"::1 - - [06/Sep/2026:13:29:27 +0000] \"POST /api/auth/signin/google?callbackUrl=%2F HTTP/1.1\" 302 - \"-\" \"curl/8.13.0\"","service":"yesyes-backend","timestamp":"2026-09-06 10:29:27"}
+{"level":"info","message":"YESYES Backend running on port 3001","service":"yesyes-backend","timestamp":"2026-09-06 12:42:58"}
