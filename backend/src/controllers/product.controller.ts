@@ -57,3 +57,49 @@ export const getCollections = async (req: Request, res: Response): Promise<void>
     res.status(500).json({ message: 'Error fetching collections', error: error.message });
   }
 };
+
+export const updateProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { name, salePrice } = req.body;
+
+    const product = await prisma.product.update({
+      where: { id: String(id) },
+      data: { name, salePrice: Number(salePrice) },
+      include: { productImages: { orderBy: { position: 'asc' } }, collection: true },
+    });
+
+    res.json({ product });
+  } catch (error: any) {
+    console.error('Error updating product:', error);
+    res.status(500).json({ message: 'Error updating product', error: error.message });
+  }
+};
+
+export const getRecentProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const products = await prisma.product.findMany({
+      take: 20,
+      orderBy: { createdAt: 'desc' },
+      include: { productImages: { orderBy: { position: 'asc' } }, collection: true },
+    });
+
+    res.json({ products });
+  } catch (error: any) {
+    console.error('Error fetching recent products:', error);
+    res.status(500).json({ message: 'Error fetching recent products', error: error.message });
+  }
+};
+
+export const deleteProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    await prisma.product.delete({ where: { id: String(id) } });
+
+    res.json({ message: 'Product deleted' });
+  } catch (error: any) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({ message: 'Error deleting product', error: error.message });
+  }
+};

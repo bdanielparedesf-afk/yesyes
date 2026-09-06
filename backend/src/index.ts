@@ -18,7 +18,7 @@ app.set('trust proxy', 1);
 
 app.use(helmet());
 // CORS_ORIGIN admite una lista separada por comas (ej: "https://yesyes.cl,http://localhost:5173")
-const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:5174')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
