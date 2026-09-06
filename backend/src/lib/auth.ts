@@ -5,12 +5,22 @@ const prisma = new PrismaClient();
 
 let _authModules: { Auth: any; Google: any; Credentials: any } | null = null;
 
+/**
+ * import() dinámico "real".
+ *
+ * tsc con module:commonjs transpila `import()` a `require()`, y @auth/core es
+ * ESM-only → en runtimes Node < 22 (Vercel) eso lanza ERR_REQUIRE_ESM y
+ * provoca el 500 en /api/auth/*. Evaluando el import en runtime con
+ * new Function() el compilador no lo toca y funciona en cualquier Node.
+ */
+const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<any>;
+
 async function getAuthModules() {
   if (!_authModules) {
     const [coreModule, googleModule, credentialsModule] = await Promise.all([
-      import('@auth/core'),
-      import('@auth/core/providers/google'),
-      import('@auth/core/providers/credentials'),
+      dynamicImport('@auth/core'),
+      dynamicImport('@auth/core/providers/google'),
+      dynamicImport('@auth/core/providers/credentials'),
     ]);
     _authModules = { Auth: coreModule.Auth, Google: googleModule.default, Credentials: credentialsModule.default };
   }

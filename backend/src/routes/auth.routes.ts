@@ -91,7 +91,7 @@ router.use('*', async (req: ExpressRequest, res: Response, next: NextFunction) =
       }
     }
 
-    let body: BodyInit | undefined = undefined;
+    let body: string | undefined = undefined;
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
         const contentType = headers['content-type'] || headers['Content-Type'];
