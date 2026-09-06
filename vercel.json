@@ -1,6 +1,19 @@
 {
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/index.js": {
+      "includeFiles": [
+        "backend/dist/**",
+        "backend/node_modules/@auth/**",
+        "backend/node_modules/@panva/**",
+        "backend/node_modules/jose/**",
+        "backend/node_modules/oauth4webapi/**",
+        "backend/node_modules/preact/**",
+        "backend/node_modules/preact-render-to-string/**"
+      ]
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
