@@ -148,10 +148,32 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
       },
       async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
         const frontendUrl = process.env.FRONTEND_URL || baseUrl;
-        if (url.startsWith('/')) return `${frontendUrl}${url}`;
-        if (new URL(url).origin === new URL(frontendUrl).origin) return url;
-        if (new URL(url).origin === baseUrl) return url;
-        return frontendUrl;
+        let feOrigin: string;
+        try {
+          feOrigin = new URL(frontendUrl, baseUrl).origin;
+        } catch {
+          feOrigin = baseUrl;
+        }
+
+        let target: URL;
+        try {
+          // Resuelve urls relativas ("/perfil") contra el origin del request.
+          // Auth.js resuelve el callbackUrl contra el BACKEND (api.yesyes.cl),
+          // asi que sin esto el usuario aterriza en el dominio del API tras
+          // el login (otro localStorage => parece deslogueado => loop).
+          target = new URL(url, baseUrl);
+        } catch {
+          return frontendUrl;
+        }
+
+        // Las paginas internas de Auth.js (ej: /api/auth/error) viven en el backend
+        if (target.pathname.startsWith('/api/auth')) return target.toString();
+
+        // Ya apunta al frontend: respetalo tal cual
+        if (target.origin === feOrigin) return target.toString();
+
+        // Cualquier otra url (incluido el propio backend): mismo path en el frontend
+        return `${feOrigin}${target.pathname}${target.search}${target.hash}`;
       },
     },
   };
