@@ -80,8 +80,20 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
     secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
     basePath: '/api/auth',
     trustHost: true,
+    // useSecureCookies es opcion de nivel RAIZ en @auth/core (no va dentro de
+    // cookies): activa el prefijo __Secure- y el atributo Secure.
+    useSecureCookies: isProduction,
     cookies: {
-      useSecureCookies: isProduction,
+      // Compartir la sesion entre yesyes.cl y api.yesyes.cl (mismo registrable
+      // domain). Sin esto, la cookie queda host-only en api.yesyes.cl y la
+      // app servida desde yesyes.cl no reconoce la sesion de Google.
+      // El merge de @auth/core es profundo: se conservan name/httpOnly/
+      // sameSite/path/secure por defecto. En dev (localhost) no se fija domain.
+      sessionToken: {
+        options: {
+          ...(isProduction ? { domain: '.yesyes.cl' } : {}),
+        },
+      },
     },
     callbacks: {
       async signIn({ user, account }: { user: any; account: any }) {
