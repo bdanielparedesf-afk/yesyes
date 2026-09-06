@@ -27,6 +27,11 @@ const dynamicImport = new Function('specifier', 'return import(specifier);') as 
  */
 if ((globalThis as Record<string, unknown>).__YESYES_TRACE__ === '1') {
   require('@auth/core');
+  // Los providers se cargan dinámicamente dentro de @auth/core, invisibles
+  // para el trazo: sin estos requires, la lambda incluye el paquete pero SIN
+  // providers/google.js ni providers/credentials.js y el login falla.
+  require('@auth/core/providers/google');
+  require('@auth/core/providers/credentials');
 }
 
 async function getAuthModules() {
