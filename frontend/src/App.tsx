@@ -51,6 +51,7 @@ function App() {
       <Route path="envios" element={<FAQ />} />
       <Route path="devoluciones" element={<FAQ />} />
       <Route path="reembolsos" element={<FAQ />} />
+      <Route path="admin" element={<AdminImport />} />
       <Route path="admin/import" element={<AdminImport />} />
       <Route path="*" element={<NotFound />} />
       </Route>
