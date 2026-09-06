@@ -158,6 +158,15 @@ model AutomationLog {
   createdAt DateTime @default(now())
 }
 
+model Collection {
+  id        String    @id @default(uuid())
+  name      String
+  slug      String    @unique
+  image     String?
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
 model Product {
   id             String           @id @default(cuid())
   title            String
@@ -186,6 +195,11 @@ model Product {
   dserStatus       String           @default("draft")
   isFeatured       Boolean          @default(false)
   isOffer          Boolean          @default(false)
+  cjProductId      String?
+  cjVariants       Json?
+  collectionId     String?
+  collection       Collection?      @relation(fields: [collectionId], references: [id])
+  tags             String[]
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 }

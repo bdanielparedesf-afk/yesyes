@@ -7,15 +7,13 @@ const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
 const publicKey = process.env.MERCADOPAGO_PUBLIC_KEY;
 const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
-if (!accessToken) {
-  throw new Error('MERCADOPAGO_ACCESS_TOKEN is not defined');
+let mpClient: MercadoPagoConfig | null = null;
+let preferenceClient: Preference | null = null;
+
+if (accessToken) {
+  mpClient = new MercadoPagoConfig({ accessToken });
+  preferenceClient = new Preference(mpClient);
 }
-
-export const mpClient = new MercadoPagoConfig({
-  accessToken,
-});
-
-export const preferenceClient = new Preference(mpClient);
 
 export { WebhookSignatureValidator };
 
@@ -31,4 +29,11 @@ export const getWebhookSecret = (): string => {
     throw new Error('MERCADOPAGO_WEBHOOK_SECRET is not defined');
   }
   return webhookSecret;
+};
+
+export const getPreferenceClient = (): Preference => {
+  if (!preferenceClient) {
+    throw new Error('MERCADOPAGO_ACCESS_TOKEN is not defined');
+  }
+  return preferenceClient;
 };

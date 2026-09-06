@@ -1,15 +1,35 @@
 import { Request, Response } from 'express';
-import { preferenceClient, getPublicKey } from '../integrations/mercadopago';
+import { getPreferenceClient, getPublicKey } from '../integrations/mercadopago';
 import { MercadoPagoConfig, Payment, PaymentMethod, WebhookSignatureValidator } from 'mercadopago';
+import { createOrder } from '../services/order.service';
 
 export const createPaymentPreference = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { orderId, items, payer, backUrls } = req.body;
+    const { items, payer, total } = req.body;
 
-    if (!orderId || !items || !Array.isArray(items) || items.length === 0) {
-      res.status(400).json({ message: 'orderId and items are required' });
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ message: 'items are required' });
       return;
     }
+
+    const order = await createOrder({
+      userId: (req as any).user?.id,
+      items: items.map((item: any) => ({
+        productId: String(item.id || item.productId),
+        productName: String(item.title || item.name || 'Producto'),
+        productImage: String(item.image || ''),
+        quantity: Number(item.quantity) || 1,
+        unitPrice: Number(item.price) || 0,
+        totalPrice: (Number(item.price) || 0) * (Number(item.quantity) || 1),
+        variant: item.variant || null,
+        variantId: item.variantId || null,
+      })),
+      subtotal: Number(total) || 0,
+      shipping: 0,
+      discount: 0,
+      total: Number(total) || 0,
+      shippingAddress: {},
+    });
 
     const mappedItems = items.map((item: any) => ({
       id: String(item.id || item.productId),
@@ -22,14 +42,14 @@ export const createPaymentPreference = async (req: Request, res: Response): Prom
 
     const preferenceData: any = {
       items: mappedItems,
-      external_reference: orderId,
-      back_urls: backUrls || {
-        success: `${process.env.FRONTEND_URL}/payment/success`,
-        pending: `${process.env.FRONTEND_URL}/payment/pending`,
-        failure: `${process.env.FRONTEND_URL}/payment/failure`,
+      external_reference: order.id,
+      back_urls: {
+        success: 'https://yesyes.cl/payment/success',
+        failure: 'https://yesyes.cl/payment/failure',
+        pending: 'https://yesyes.cl/payment/pending',
       },
       auto_return: 'approved',
-      notification_url: `${process.env.BACKEND_URL}/api/webhooks/mercadopago`,
+      notification_url: 'https://api.yesyes.cl/api/webhooks/mercadopago',
     };
 
     if (payer) {
@@ -52,6 +72,7 @@ export const createPaymentPreference = async (req: Request, res: Response): Prom
       };
     }
 
+    const preferenceClient = getPreferenceClient();
     const response = await preferenceClient.create({ body: preferenceData });
 
     res.status(200).json({
@@ -59,6 +80,7 @@ export const createPaymentPreference = async (req: Request, res: Response): Prom
       init_point: response.init_point,
       sandbox_init_point: response.sandbox_init_point,
       public_key: getPublicKey(),
+      orderId: order.id,
     });
   } catch (error) {
     console.error('Error creating payment preference:', error);

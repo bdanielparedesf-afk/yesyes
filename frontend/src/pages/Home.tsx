@@ -1,35 +1,33 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Truck, Shield, Headphones } from 'lucide-react';
+import { Truck, Shield, Headphones, ChevronRight } from 'lucide-react';
 import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
+import axios from 'axios';
 
-const categories = [
-  { name: 'Tecnología', icon: '💻' },
-  { name: 'Hogar', icon: '🏠' },
-  { name: 'Moda', icon: '👕' },
-  { name: 'Belleza', icon: '✨' },
-  { name: 'Juguetes', icon: '🎮' },
-  { name: 'Deportes', icon: '⚽' },
-];
+interface ProductImage {
+  url: string;
+  position: number;
+}
 
-const featuredProducts = [
-  { id: '1', name: 'Audífonos Bluetooth Pro', price: 19990, image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=400&fit=crop', discount: 20, slug: 'audifonos-bluetooth-pro' },
-  { id: '2', name: 'Reloj Inteligente Smart', price: 29990, image: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&h=400&fit=crop', discount: 15, slug: 'reloj-inteligente-smart' },
-  { id: '3', name: 'Zapatillas Running Air', price: 39990, image: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop', discount: 25, slug: 'zapatillas-running-air' },
-  { id: '4', name: 'Cámara Deportiva 4K', price: 24990, image: 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=400&h=400&fit=crop', discount: 10, slug: 'camara-deportiva-4k' },
-  { id: '5', name: 'Mochila Impermeable Urban', price: 15990, image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400&h=400&fit=crop', discount: 30, slug: 'mochila-impermeable-urban' },
-  { id: '6', name: 'Lámpara LED Escritorio', price: 12990, image: 'https://images.unsplash.com/photo-1507473885765-e6ed057ab6fe?w=400&h=400&fit=crop', discount: 20, slug: 'lampara-led-escritorio' },
-  { id: '7', name: 'Teclado Mecánico RGB', price: 34990, image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=400&h=400&fit=crop', discount: 15, slug: 'teclado-mecanico-rgb' },
-  { id: '8', name: 'Mouse Inalámbrico Ergo', price: 9990, image: 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=400&h=400&fit=crop', discount: 20, slug: 'mouse-inalambrico-ergo' },
-];
+interface CollectionProduct {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  salePrice: number;
+  compareAtPrice?: number;
+  productImages: ProductImage[];
+}
 
-const newProducts = [
-  { id: '9', name: 'Soporte Monitor Ajustable', price: 18990, image: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=400&h=400&fit=crop', slug: 'soporte-monitor-ajustable' },
-  { id: '10', name: 'Botella Térmica 1L', price: 7990, image: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=400&h=400&fit=crop', slug: 'botella-termica-1l' },
-  { id: '11', name: 'Camiseta Dry-Fit Running', price: 14990, image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=400&fit=crop', slug: 'camiseta-dryfit-running' },
-  { id: '12', name: 'Power Bank 20000mAh', price: 11990, image: 'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?w=400&h=400&fit=crop', slug: 'power-bank-20000mah' },
-];
+interface Collection {
+  id: string;
+  name: string;
+  slug: string;
+  image: string;
+  products: CollectionProduct[];
+}
 
 const container = {
   hidden: { opacity: 0 },
@@ -45,14 +43,32 @@ const item = {
 };
 
 export default function Home() {
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [loading, setLoading] = useState(true);
   const addItem = useCartStore((s) => s.addItem);
 
-  const handleAdd = (product: typeof featuredProducts[0]) => {
+  useEffect(() => {
+    loadCollections();
+  }, []);
+
+  const loadCollections = async () => {
+    try {
+      const res = await axios.get('/api/products/groups');
+      const data = res.data.collections.filter((c: Collection) => c.products.length > 0);
+      setCollections(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdd = (product: CollectionProduct) => {
     addItem({
       id: product.id,
       name: product.name,
-      price: product.price,
-      image: product.image,
+      price: Number(product.salePrice),
+      image: product.productImages[0]?.url || '',
       stock: 10,
     });
     toast.success('Producto agregado al carrito');
@@ -75,18 +91,18 @@ export default function Home() {
               className="space-y-6"
             >
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight">
-                Bienvenido a <span className="text-primary-500">YESYES</span>
+                Nuevos productos llegando esta semana 🔥
               </h1>
               <p className="text-lg text-gray-600 max-w-lg">
-                Tu tienda online favorita con los mejores productos al mejor precio. Envíos a todo Chile y pagos seguros.
+                Envío a todo Chile. Los mejores precios en tecnología, hogar, belleza y más.
               </p>
               <div className="flex flex-wrap gap-4">
                 <Link to="/productos" className="inline-flex items-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg shadow-primary-500/30 transition-all">
                   Ver Productos
                 </Link>
-                <Link to="/ofertas" className="inline-flex items-center px-6 py-3 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 font-semibold rounded-lg shadow-sm transition-all">
-                  Ofertas
-                </Link>
+                <a href="#colecciones" className="inline-flex items-center px-6 py-3 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 font-semibold rounded-lg shadow-sm transition-all">
+                  Explorar
+                </a>
               </div>
             </motion.div>
             <motion.div
@@ -106,96 +122,85 @@ export default function Home() {
       </motion.section>
 
       <motion.section
+        id="colecciones"
         variants={container}
         initial="hidden"
         whileInView="show"
         viewport={{ once: true, margin: '-50px' }}
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
       >
-        <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">Categorías</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">
-          {categories.map((cat) => (
-            <motion.div key={cat.name} variants={item}>
-              <Link to={`/categoria/${cat.name}`} className="group block">
-                <div className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-all text-center border border-gray-100">
-                  <div className="text-4xl mb-3 group-hover:scale-110 transition-transform">{cat.icon}</div>
-                  <p className="font-semibold text-gray-800 text-sm">{cat.name}</p>
+        {loading ? (
+          <div className="text-center py-20">
+            <div className="inline-block w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
+            <p className="mt-4 text-gray-500">Cargando productos...</p>
+          </div>
+        ) : collections.length === 0 ? (
+          <div className="text-center py-20">
+            <p className="text-gray-500 text-lg">Próximamente nuevos productos en nuestra tienda</p>
+          </div>
+        ) : (
+          collections.map((col) => (
+            <motion.div key={col.id} variants={item} className="mb-16">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">{col.name}</h2>
+                  <p className="text-gray-500 mt-1">
+                    {col.products.length} producto{col.products.length !== 1 ? 's' : ''}
+                  </p>
                 </div>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
-      </motion.section>
-
-      <motion.section
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-50px' }}
-        transition={{ duration: 0.5 }}
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
-      >
-        <div className="flex justify-between items-end mb-8">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900">Productos Destacados</h2>
-            <p className="text-gray-500 mt-2">Los más vendidos de la semana</p>
-          </div>
-          <Link to="/productos" className="text-primary-500 hover:text-primary-600 font-semibold text-sm">
-            Ver todos →
-          </Link>
-        </div>
-        <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {featuredProducts.map((product) => (
-            <motion.div key={product.id} variants={item} className="bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all border border-gray-100 overflow-hidden group">
-              <div className="relative overflow-hidden aspect-square">
-                <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                {product.discount > 0 && (
-                  <span className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                    -{product.discount}%
-                  </span>
-                )}
+                <Link
+                  to={`/productos?collection=${col.slug}`}
+                  className="hidden sm:flex items-center text-primary-500 hover:text-primary-600 font-medium text-sm"
+                >
+                  Ver todos <ChevronRight className="w-4 h-4" />
+                </Link>
               </div>
-              <div className="p-4 space-y-2">
-                <h3 className="font-semibold text-gray-800 line-clamp-2">{product.name}</h3>
-                <p className="text-lg font-bold text-primary-600">${product.price.toLocaleString('es-CL')}</p>
-                <button onClick={() => handleAdd(product)} className="w-full mt-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors">
-                  Agregar al carrito
-                </button>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
-      </motion.section>
-
-      <motion.section
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-50px' }}
-        transition={{ duration: 0.5 }}
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
-      >
-        <div className="flex justify-between items-end mb-8">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900">Nuevos Productos</h2>
-            <p className="text-gray-500 mt-2">Recién llegados a nuestra tienda</p>
-          </div>
-        </div>
-        <div className="flex gap-6 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory" style={{ scrollbarWidth: 'thin' }}>
-          {newProducts.map((product) => (
-            <motion.div
-              key={product.id}
-              whileHover={{ y: -5 }}
-              className="min-w-[260px] snap-start bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100 overflow-hidden"
-            >
-              <div className="aspect-square overflow-hidden">
-                <img src={product.image} alt={product.name} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
-              </div>
-              <div className="p-4 space-y-1">
-                <h3 className="font-semibold text-gray-800 text-sm">{product.name}</h3>
-                <p className="text-primary-600 font-bold">${product.price.toLocaleString('es-CL')}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {col.products.map((product) => (
+                  <motion.div
+                    key={product.id}
+                    variants={item}
+                    className="bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all border border-gray-100 overflow-hidden group"
+                  >
+                    <Link to={`/productos/${product.slug}`}>
+                      <div className="relative overflow-hidden aspect-square">
+                        <img
+                          src={product.productImages[0]?.url || 'https://via.placeholder.com/400'}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        {product.compareAtPrice && Number(product.compareAtPrice) > Number(product.salePrice) && (
+                          <span className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                            -{Math.round((1 - Number(product.salePrice) / Number(product.compareAtPrice)) * 100)}%
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-4 space-y-2">
+                        <h3 className="font-semibold text-gray-800 line-clamp-2">{product.name}</h3>
+                        <div className="flex items-center gap-2">
+                          <p className="text-lg font-bold text-primary-600">
+                            ${Number(product.salePrice).toLocaleString('es-CL')}
+                          </p>
+                          {product.compareAtPrice && Number(product.compareAtPrice) > Number(product.salePrice) && (
+                            <p className="text-sm text-gray-400 line-through">
+                              ${Number(product.compareAtPrice).toLocaleString('es-CL')}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => { e.preventDefault(); handleAdd(product); }}
+                          className="w-full mt-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
+                        >
+                          Agregar al carrito
+                        </button>
+                      </div>
+                    </Link>
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
-          ))}
-        </div>
+          ))
+        )}
       </motion.section>
 
       <motion.section

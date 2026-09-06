@@ -13,6 +13,7 @@ import couponRoutes from './coupon.routes';
 import wishlistRoutes from './wishlist.routes';
 import supportRoutes from './support.routes';
 import adminRoutes from './admin.routes';
+import cjRoutes from './cj.routes';
 
 const router = Router();
 
@@ -30,6 +31,7 @@ router.use('/coupons', couponRoutes);
 router.use('/wishlist', wishlistRoutes);
 router.use('/support', supportRoutes);
 router.use('/admin', adminRoutes);
+router.use('/admin', cjRoutes);
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'yesyes-backend' });

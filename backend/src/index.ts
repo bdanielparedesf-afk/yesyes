@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import path from 'path';
 import { errorHandler } from './middlewares/errorHandler';
 import { logger } from './utils/logger';
 import { rateLimiter } from './middlewares/rateLimiter';
@@ -23,6 +24,14 @@ app.use(rateLimiter);
 const isVercel = process.env.VERCEL === '1';
 
 app.use('/api', routes);
+
+if (isVercel) {
+  app.use(express.static(path.join(__dirname, '../../frontend/dist')));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
+  });
+}
 
 app.use(errorHandler);
 

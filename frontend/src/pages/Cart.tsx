@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Minus, ShoppingBag, Tag } from 'lucide-react';
 import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
 
 export default function Cart() {
   const { items, removeItem, updateQuantity, totalPrice } = useCartStore();
+  const navigate = useNavigate();
   const [coupon, setCoupon] = useState('');
   const [discount, setDiscount] = useState(0);
 
@@ -134,8 +135,8 @@ export default function Cart() {
                 </div>
               </div>
 
-              <button className="w-full mt-4 px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-lg shadow-lg shadow-primary-500/30 transition-all flex items-center justify-center space-x-2">
-                <span>Pagar con Mercado Pago</span>
+              <button onClick={() => navigate('/checkout')} className="w-full mt-4 px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-lg shadow-lg shadow-primary-500/30 transition-all flex items-center justify-center space-x-2">
+                <span>Ir a pagar</span>
               </button>
             </div>
           </div>

@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
-import { CreditCard, Shield, Truck, CheckCircle } from 'lucide-react';
+import { CreditCard, Shield, Truck, Loader2 } from 'lucide-react';
+import { createPaymentPreference } from '@/services/payment';
 
 export default function Checkout() {
-  const { items, totalPrice, clearCart } = useCartStore();
-  const [step, setStep] = useState<'form' | 'success'>('form');
+  const { items, totalPrice } = useCartStore();
+  const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -20,27 +21,47 @@ export default function Checkout() {
   const shipping = subtotal > 50000 ? 0 : 4990;
   const total = subtotal + shipping;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep('success');
-    clearCart();
-    toast.success('¡Pedido realizado con éxito!');
+    setLoading(true);
+
+    try {
+      const response = await createPaymentPreference({
+        items: items.map((item) => ({
+          id: item.id,
+          title: item.name,
+          description: item.variant || '',
+          price: item.price,
+          quantity: item.quantity,
+          image: item.image,
+        })),
+        payer: {
+          name: form.name,
+          surname: '',
+          email: form.email,
+          phone: {
+            area_code: '+56',
+            number: form.phone,
+          },
+        },
+        total,
+      });
+
+      const initPoint = response.sandbox_init_point || response.init_point;
+      window.location.href = initPoint;
+    } catch (error) {
+      console.error('Error creating payment preference:', error);
+      toast.error('Error al procesar el pago. Intenta nuevamente.');
+      setLoading(false);
+    }
   };
 
-  if (step === 'success') {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-gray-100 p-8 text-center space-y-6">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-            <CheckCircle className="w-8 h-8 text-green-600" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">¡Pedido Confirmado!</h1>
-            <p className="mt-2 text-gray-600">Tu pedido ha sido procesado correctamente. Recibirás un correo con los detalles.</p>
-          </div>
-          <Link to="/" className="inline-flex items-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-xl shadow-lg shadow-primary-500/30 transition-all">
-            Volver al inicio
-          </Link>
+        <div className="text-center space-y-4">
+          <Loader2 className="w-12 h-12 text-primary-500 animate-spin mx-auto" />
+          <p className="text-gray-600">Redirigiendo a Mercado Pago...</p>
         </div>
       </div>
     );
@@ -126,9 +147,9 @@ export default function Checkout() {
                     <span>${total.toLocaleString('es-CL')}</span>
                   </div>
                 </div>
-                <button type="submit" className="w-full mt-4 flex items-center justify-center space-x-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 transition-all">
-                  <CreditCard className="w-5 h-5" />
-                  <span>Pagar con Mercado Pago</span>
+                <button type="submit" disabled={loading} className="w-full mt-4 flex items-center justify-center space-x-2 px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 transition-all disabled:opacity-50">
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                  <span>{loading ? 'Procesando...' : 'Pagar con Mercado Pago'}</span>
                 </button>
                 <p className="text-xs text-gray-500 text-center flex items-center justify-center">
                   <Shield className="w-3 h-3 mr-1" /> Pago seguro y encriptado

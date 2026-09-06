@@ -1,4 +1,10 @@
 {
+  "name": "yesyes",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install && npx prisma generate && npm run build",
+    "vercel-build": "npm run build"
+  },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "pg": "^8.23.0"

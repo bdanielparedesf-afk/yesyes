@@ -1,11 +1,24 @@
 import { Link } from 'react-router-dom';
-import { ShoppingCart, User, Menu, X } from 'lucide-react';
-import { useState } from 'react';
+import { ShoppingCart, User, Menu, X, LogOut } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useCartStore } from '@/store/useCartStore';
+import { useAuthStore } from '@/store/useAuthStore';
 
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const totalItems = useCartStore((s) => s.totalItems());
+  const { user, status, checkSession } = useAuthStore();
+
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
+
+  const handleSignOut = () => {
+    useAuthStore.getState().signOut('/login');
+  };
+
+  const displayName = user?.name || user?.email?.split('@')[0] || 'Usuario';
+  const userAvatar = user?.image;
 
   return (
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md shadow-sm">
@@ -33,10 +46,34 @@ export default function Header() {
                 </span>
               )}
             </Link>
-            <Link to="/login" className="flex items-center space-x-1 text-gray-700 hover:text-primary-600 transition-colors">
-              <User className="w-5 h-5" />
-              <span className="font-medium">Login</span>
-            </Link>
+
+            {status === 'authenticated' && user ? (
+              <div className="flex items-center space-x-3">
+                {userAvatar ? (
+                  <img src={userAvatar} alt={displayName} className="w-9 h-9 rounded-full object-cover border-2 border-gray-200" />
+                ) : (
+                  <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-primary-600" />
+                  </div>
+                )}
+                <div className="hidden sm:block">
+                  <p className="text-sm font-semibold text-gray-900">{displayName}</p>
+                  <p className="text-xs text-gray-500">{user.email}</p>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="p-1 text-gray-500 hover:text-red-500 transition-colors"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+            ) : status === 'loading' ? null : (
+              <Link to="/login" className="flex items-center space-x-1 text-gray-700 hover:text-primary-600 transition-colors">
+                <User className="w-5 h-5" />
+                <span className="font-medium">Login</span>
+              </Link>
+            )}
           </div>
 
           <button
@@ -60,10 +97,32 @@ export default function Header() {
               <ShoppingCart className="w-5 h-5" />
               <span>Carrito {totalItems > 0 && `(${totalItems})`}</span>
             </Link>
-            <Link to="/login" className="flex items-center space-x-2 text-gray-700 hover:text-primary-600 font-medium" onClick={() => setMobileOpen(false)}>
-              <User className="w-5 h-5" />
-              <span>Login</span>
-            </Link>
+            {status === 'authenticated' && user ? (
+              <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                <div className="flex items-center space-x-3">
+                  {userAvatar ? (
+                    <img src={userAvatar} alt={displayName} className="w-8 h-8 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                      <User className="w-4 h-4 text-primary-600" />
+                    </div>
+                  )}
+                  <span className="font-medium text-gray-900">{displayName}</span>
+                </div>
+                <button
+                  onClick={() => { handleSignOut(); setMobileOpen(false); }}
+                  className="p-1 text-gray-500 hover:text-red-500 transition-colors"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
+              <Link to="/login" className="flex items-center space-x-2 text-gray-700 hover:text-primary-600 font-medium" onClick={() => setMobileOpen(false)}>
+                <User className="w-5 h-5" />
+                <span>Login</span>
+              </Link>
+            )}
           </div>
         )}
       </div>

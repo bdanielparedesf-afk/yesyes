@@ -18,6 +18,7 @@ async function getAuthModules() {
 }
 
 function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) => any) {
+  const isProduction = process.env.NODE_ENV === 'production';
   return {
     providers: [
       credentials({
@@ -49,6 +50,10 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
     ],
     secret: process.env.NEXTAUTH_SECRET,
     basePath: '/api/auth',
+    trustHost: !isProduction,
+    cookies: {
+      useSecureCookies: isProduction,
+    },
     callbacks: {
       async signIn({ user, account }: { user: any; account: any }) {
         if (!account || !user?.email) return false;
