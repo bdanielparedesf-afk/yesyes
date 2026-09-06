@@ -50,7 +50,7 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
     ],
     secret: process.env.NEXTAUTH_SECRET,
     basePath: '/api/auth',
-    trustHost: !isProduction,
+    trustHost: true,
     cookies: {
       useSecureCookies: isProduction,
     },
@@ -118,9 +118,11 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
         return session;
       },
       async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
-        if (url.startsWith('/')) return `${baseUrl}${url}`;
+        const frontendUrl = process.env.FRONTEND_URL || baseUrl;
+        if (url.startsWith('/')) return `${frontendUrl}${url}`;
+        if (new URL(url).origin === new URL(frontendUrl).origin) return url;
         if (new URL(url).origin === baseUrl) return url;
-        return baseUrl;
+        return frontendUrl;
       },
     },
   };
@@ -129,5 +131,16 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
 export async function handleAuth(request: Request): Promise<Response> {
   const { Auth, Google, Credentials } = await getAuthModules();
   const config = createAuthConfig(Google, Credentials);
+
+  // En producción el frontend y la API viven en dominios distintos
+  // (yesyes.cl / api.yesyes.cl). Forzamos que Auth.js construya las URLs
+  // de acción a partir del host real de la petición para que los callbacks
+  // de OAuth (Google) apunten siempre al backend correcto.
+  try {
+    const origin = new URL(request.url).origin;
+    process.env.AUTH_URL = origin;
+    process.env.NEXTAUTH_URL = origin;
+  } catch {}
+
   return Auth(request, config);
 }

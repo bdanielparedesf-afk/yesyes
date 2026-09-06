@@ -12,12 +12,19 @@ export interface Session {
   expires: string;
 }
 
+const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
+
+/** Construye URLs de Auth.js sobre la base de la API (ej: /api/auth/csrf). */
+export function authUrl(path: string): string {
+  return `${API_BASE}/auth${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 export async function signIn(provider: 'google' | 'github' | string = 'google', callbackUrl = '/') {
-  const res = await fetch('/api/auth/csrf');
+  const res = await fetch(authUrl('/csrf'), { credentials: 'include' });
   const { csrfToken } = await res.json();
   const form = document.createElement('form');
   form.method = 'POST';
-  form.action = `/api/auth/signin/${provider}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+  form.action = `${authUrl(`/signin/${provider}`)}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
   const input = document.createElement('input');
   input.type = 'hidden';
   input.name = 'csrfToken';
@@ -28,7 +35,7 @@ export async function signIn(provider: 'google' | 'github' | string = 'google', 
 }
 
 export async function signOut(callbackUrl = '/login') {
-  const url = `/api/auth/signout?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+  const url = `${authUrl('/signout')}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
   window.location.href = url;
 }
 
@@ -56,7 +63,7 @@ export async function updateSession(): Promise<Session | null> {
   }
 }
 
-export async function register(data: { name: string; lastName: string; email: string; password: string }) {
+export async function register(data: { name: string; lastName: string; email: string; password: string; confirmPassword?: string }) {
   const res = await api.post('/auth/register', data);
   return res.data;
 }

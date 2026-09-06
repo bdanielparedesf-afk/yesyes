@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { User, Mail, Phone, MapPin, Save } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '@/store/useAuthStore';
+import { signIn } from '@/services/auth';
 
 export default function Profile() {
   const { user, checkSession, status } = useAuthStore();
@@ -42,7 +43,7 @@ export default function Profile() {
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Acceso requerido</h2>
           <p className="text-gray-600 mb-6">Inicia sesión para ver tu perfil.</p>
           <button
-            onClick={() => window.location.href = '/api/auth/signin/google?callbackUrl=/perfil'}
+            onClick={() => signIn('google', '/perfil')}
             className="px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg transition-all"
           >
             Iniciar sesión con Google

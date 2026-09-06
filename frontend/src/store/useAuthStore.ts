@@ -16,7 +16,7 @@ interface AuthState {
   checkSession: () => Promise<void>;
   signIn: (provider?: 'google' | 'github' | string, callbackUrl?: string) => void;
   signOut: (callbackUrl?: string) => void;
-  register: (data: { name: string; lastName: string; email: string; password: string }) => Promise<void>;
+  register: (data: { name: string; lastName: string; email: string; password: string; confirmPassword?: string }) => Promise<void>;
   login: (data: { email: string; password: string }) => Promise<void>;
   setUser: (session: Session | null, token?: string | null) => void;
 }

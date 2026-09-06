@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Truck, Shield, Headphones, ChevronRight } from 'lucide-react';
 import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
+import api from '@/lib/axios';
 
 interface ProductImage {
   url: string;
@@ -53,7 +53,7 @@ export default function Home() {
 
   const loadCollections = async () => {
     try {
-      const res = await axios.get('/api/products/groups');
+      const res = await api.get('/products/groups');
       const data = res.data.collections.filter((c: Collection) => c.products.length > 0);
       setCollections(data);
     } catch (e) {

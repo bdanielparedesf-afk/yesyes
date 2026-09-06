@@ -30,6 +30,7 @@ export default function Register() {
         lastName: form.lastName,
         email: form.email,
         password: form.password,
+        confirmPassword: form.confirmPassword,
       });
       toast.success('Cuenta creada correctamente');
       navigate('/', { replace: true });

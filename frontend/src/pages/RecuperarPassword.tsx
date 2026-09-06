@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { authUrl } from '@/services/auth';
 
 export default function RecuperarPassword() {
   const [email, setEmail] = useState('');
@@ -12,7 +13,7 @@ export default function RecuperarPassword() {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const res = await fetch(authUrl('/forgot-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
