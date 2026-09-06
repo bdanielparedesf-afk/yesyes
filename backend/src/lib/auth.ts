@@ -77,7 +77,7 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
         },
       }),
     ],
-    secret: process.env.NEXTAUTH_SECRET,
+    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
     basePath: '/api/auth',
     trustHost: true,
     cookies: {
