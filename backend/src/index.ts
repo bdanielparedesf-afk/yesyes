@@ -20,12 +20,16 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(rateLimiter);
 
+const isVercel = process.env.VERCEL === '1';
+
 app.use('/api', routes);
 
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  logger.info(`YESYES Backend running on port ${PORT}`);
-});
+if (!isVercel) {
+  app.listen(PORT, () => {
+    logger.info(`YESYES Backend running on port ${PORT}`);
+  });
+}
 
 export default app;
