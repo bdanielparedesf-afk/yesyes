@@ -15,6 +15,20 @@ let _authModules: { Auth: any; Google: any; Credentials: any } | null = null;
  */
 const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<any>;
 
+/**
+ * Hook de trazado para Vercel (node-file-trace).
+ *
+ * El empaquetador de lambdas solo detecta require()/import() ESTATICOS para
+ * incluir dependencias en el bundle. Como el import de @auth/core es dinamico
+ * y opaco (new Function), sin este require "muerto" el paquete (y sus deps:
+ * jose, preact, oauth4webapi...) no viajan a la lambda y el runtime falla con
+ * "Cannot find package '@auth/core'". La condicion nunca es verdadera, asi que
+ * el require jamas se ejecuta (evitando ERR_REQUIRE_ESM en Node < 22).
+ */
+if ((globalThis as Record<string, unknown>).__YESYES_TRACE__ === '1') {
+  require('@auth/core');
+}
+
 async function getAuthModules() {
   if (!_authModules) {
     const [coreModule, googleModule, credentialsModule] = await Promise.all([
