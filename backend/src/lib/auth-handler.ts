@@ -131,6 +131,14 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
           });
 
           if (existingUser) {
+            // Garantizar que el email configurado como admin siempre tenga rol ADMIN
+            if (normalizedEmail === ADMIN_EMAIL && existingUser.role !== 'ADMIN') {
+              await prisma.user.update({
+                where: { id: existingUser.id },
+                data: { role: 'ADMIN' },
+              });
+            }
+
             await prisma.account.upsert({
               where: {
                 userId_provider_providerAccountId: {
@@ -185,15 +193,26 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
         }
       },
       async jwt({ token, user, account }: { token: any; user?: any; account?: any }) {
-        if (user) {
-          token.id = user.id;
+        if (user?.email) {
           token.email = user.email;
-
-          const dbUser = await prisma.user.findUnique({
-            where: { email: user.email },
-            select: { role: true },
-          });
-          token.role = dbUser?.role || 'CUSTOMER';
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where: { email: user.email.toLowerCase().trim() },
+              select: { id: true, role: true },
+            });
+            if (dbUser) {
+              // IMPORTANTE: usar siempre el id de nuestra BD. En logins con Google,
+              // `user.id` es el id de la cuenta de Google (sub de Google), no el de la BD.
+              token.id = dbUser.id;
+              token.sub = dbUser.id;
+              token.role = dbUser.role;
+            } else {
+              token.id = user.id;
+              token.role = token.role || 'CUSTOMER';
+            }
+          } catch {
+            token.id = user.id;
+          }
         }
 
         if (token.id && !token.role) {

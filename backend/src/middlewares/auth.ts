@@ -90,8 +90,35 @@ async function userFromAuthSession(req: Request): Promise<AuthRequest['user'] | 
       secret: AUTH_SECRET,
       salt: 'authjs.session-token',
     });
-    const userId = payload?.sub ?? payload?.id;
-    return await loadAuthUser(String(userId || ''));
+    if (!payload) return null;
+
+    // 1) Sesiones de credenciales: el token lleva el id de nuestra BD.
+    const candidateIds = [payload.id, payload.sub].filter(Boolean).map(String);
+    for (const id of candidateIds) {
+      const user = await loadAuthUser(id);
+      if (user) return user;
+    }
+
+    // 2) Sesiones de Google: `sub` es el id de la cuenta de Google, NO el id de la
+    //    BD (no hay adapter). El JWT siempre incluye el email → buscamos por email.
+    const email = typeof payload.email === 'string' ? payload.email.toLowerCase().trim() : '';
+    if (email) {
+      const dbUser = await prisma.user.findUnique({
+        where: { email },
+        select: USER_SELECT,
+      });
+      if (dbUser?.isActive) {
+        return {
+          id: dbUser.id,
+          email: dbUser.email,
+          name: dbUser.name || '',
+          lastName: dbUser.lastName || '',
+          role: dbUser.role,
+        };
+      }
+    }
+
+    return null;
   } catch {
     return null;
   }
