@@ -246,11 +246,34 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
 export async function handleAuth(request: Request): Promise<Response> {
   try {
     let origin = '';
+    // Estrategia 1: extraer origin de la URL absoluta del request
     try {
       origin = new URL(request.url).origin;
     } catch {
+      origin = '';
+    }
+
+    // Estrategia 2: si la URL es relativa, reconstruir desde headers (Host / x-forwarded-host)
+    if (!origin || origin === 'null') {
+      const host =
+        request.headers.get('host') ||
+        request.headers.get('x-forwarded-host') ||
+        '';
+      const forwardedProto = request.headers.get('x-forwarded-proto');
+      const proto = forwardedProto
+        ? (forwardedProto.split(',')[0] ?? 'https').trim()
+        : 'https';
+      if (host) {
+        origin = `${proto}://${host}`.replace(/\/$/, '');
+      }
+    }
+
+    // Estrategia 3: fallback a BACKEND_URL o localhost
+    if (!origin || origin === 'null') {
       origin = process.env.BACKEND_URL || 'http://localhost:3001';
     }
+
+    // En producción, forzar HTTPS
     if (process.env.NODE_ENV === 'production' && origin.startsWith('http://')) {
       origin = origin.replace('http://', 'https://');
     }

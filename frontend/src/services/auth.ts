@@ -23,7 +23,52 @@ export interface Session {
  */
 const API_BASE = '/api';
 
-/** Construye URLs de Auth.js sobre la base de la API (ej: /api/auth/csrf). */
+const SESSION_CACHE_TTL = 300000;
+let sessionCache: { data: Session | null; timestamp: number } | null = null;
+let pendingSessionRequest: Promise<Session | null> | null = null;
+
+export function clearSessionCache() {
+  sessionCache = null;
+  pendingSessionRequest = null;
+}
+
+export async function getSession(force = false): Promise<Session | null> {
+  if (!force && sessionCache && Date.now() - sessionCache.timestamp < SESSION_CACHE_TTL) {
+    return sessionCache.data;
+  }
+
+  if (pendingSessionRequest && !force) {
+    return pendingSessionRequest;
+  }
+
+  pendingSessionRequest = (async () => {
+    try {
+      const res = await api.get('/auth/session', { withCredentials: true });
+      if (res.status === 401 || res.status === 403) {
+        sessionCache = { data: null, timestamp: Date.now() };
+        return null;
+      }
+      const data = res.data;
+      if (data?.user) {
+        sessionCache = { data: data as Session, timestamp: Date.now() };
+        return data as Session;
+      }
+      sessionCache = { data: null, timestamp: Date.now() };
+      return null;
+    } catch {
+      return null;
+    } finally {
+      pendingSessionRequest = null;
+    }
+  })();
+
+  return pendingSessionRequest;
+}
+
+export async function updateSession(): Promise<Session | null> {
+  clearSessionCache();
+  return getSession(true);
+}
 export function authUrl(path: string): string {
   return `${API_BASE}/auth${path.startsWith('/') ? path : `/${path}`}`;
 }
@@ -77,30 +122,6 @@ export async function signOut(callbackUrl = '/') {
     console.error('Logout error', error);
   } finally {
     window.location.href = callbackUrl;
-  }
-}
-
-export async function getSession(): Promise<Session | null> {
-  try {
-    const res = await api.get('/auth/session', { withCredentials: true });
-    if (res.status === 401 || res.status === 403) return null;
-    const data = res.data;
-    if (data?.user) return data as Session;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-export async function updateSession(): Promise<Session | null> {
-  try {
-    const res = await api.get('/auth/session?update=true', { withCredentials: true });
-    if (res.status === 401 || res.status === 403) return null;
-    const data = res.data;
-    if (data?.user) return data as Session;
-    return null;
-  } catch {
-    return null;
   }
 }
 
