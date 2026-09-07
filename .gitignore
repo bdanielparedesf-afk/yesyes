@@ -13,5 +13,9 @@ dist/
 # Sistema
 .DS_Store
 
+# Logs
+*.log
+logs/
+
 .vercel
 .env*

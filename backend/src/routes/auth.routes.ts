@@ -1,5 +1,5 @@
 import { Router, Request as ExpressRequest, Response, NextFunction } from 'express';
-import { handleAuth } from '../lib/auth';
+import { handleAuth } from '../lib/auth-handler';
 import { logger } from '../utils/logger';
 import { registerUser, loginUser, generateToken, verifyEmail, createVerificationToken, sendVerificationEmail } from '../services/auth.service';
 
@@ -24,8 +24,8 @@ router.post('/register', async (req: ExpressRequest, res: Response, next: NextFu
       return;
     }
 
-    const blockedEmail = 'bdanielparedesf@gmail.com';
-    if (email.toLowerCase() === blockedEmail.toLowerCase()) {
+    const adminEmail = (process.env.ADMIN_EMAIL || 'bdanielparedesf@gmail.com').toLowerCase().trim();
+    if (email.toLowerCase() === adminEmail) {
       res.status(400).json({ message: 'Correo reservado para admin' });
       return;
     }

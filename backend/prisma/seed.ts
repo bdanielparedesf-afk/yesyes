@@ -18,11 +18,9 @@ async function main() {
   });
 
   // Crear usuario admin
-  const adminEmail = (process.env.ADMIN_EMAIL || 'bdanielparedesf@gmail.com').toLowerCase().trim();
-  if (!process.env.ADMIN_PASSWORD) {
-    throw new Error('ADMIN_PASSWORD no está configurado en las variables de entorno');
-  }
   const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) throw new Error("ADMIN_PASSWORD missing");
+  const adminEmail = (process.env.ADMIN_EMAIL || "bdanielparedesf@gmail.com").toLowerCase().trim();
   
   const existingAdmin = await prisma.user.findUnique({
     where: { email: adminEmail },
