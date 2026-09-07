@@ -1,9 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt, { JwtPayload, Secret } from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || '';
+const AUTH_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || '';
+
+// Mismo truco de import dinámico que backend/src/lib/auth-handler.ts para que el
+// bundler de Vercel no intente resolver `@auth/core` desde la raíz del repo.
+const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<any>;
 
 interface TokenPayload extends JwtPayload {
   id: string;
@@ -20,50 +25,115 @@ export interface AuthRequest extends Request {
   };
 }
 
+const USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  lastName: true,
+  role: true,
+  isActive: true,
+} as const;
+
+function parseCookies(header?: string): Record<string, string> {
+  if (!header) return {};
+  const out: Record<string, string> = {};
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (!key || !value) continue;
+    try {
+      out[key] = decodeURIComponent(value);
+    } catch {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+async function loadAuthUser(userId: string): Promise<AuthRequest['user'] | null> {
+  if (!userId) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: USER_SELECT,
+  });
+  if (!user || !user.isActive) return null;
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name || '',
+    lastName: user.lastName || '',
+    role: user.role,
+  };
+}
+
+/**
+ * Autentica con la cookie de sesión de Auth.js (login con Google).
+ *
+ * Auth.js v5 almacena la sesión en una cookie JWE (`authjs.session-token`),
+ * cifrada con A256CBC-HS512 usando una clave derivada de AUTH_SECRET y el
+ * nombre de la cookie como salt. La desciframos con `@auth/core/jwt` para
+ * obtener el `sub` (id de usuario) y así permitir que el admin (o la API)
+ * funcione tras iniciar sesión con Google, sin necesidad de Bearer token.
+ */
+async function userFromAuthSession(req: Request): Promise<AuthRequest['user'] | null> {
+  if (!AUTH_SECRET) return null;
+  const cookies = parseCookies(req.headers.cookie as string | undefined);
+  const sessionToken = cookies['authjs.session-token'] || cookies['__Secure-authjs.session-token'];
+  if (!sessionToken) return null;
+
+  try {
+    const { decode } = await dynamicImport('@auth/core/jwt');
+    const payload = await decode({
+      token: sessionToken,
+      secret: AUTH_SECRET,
+      salt: 'authjs.session-token',
+    });
+    const userId = payload?.sub ?? payload?.id;
+    return await loadAuthUser(String(userId || ''));
+  } catch {
+    return null;
+  }
+}
+
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ message: 'No autorizado: token faltante' });
+    // 1) Bearer token (login con email/contraseña / registro)
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+
+      if (!JWT_SECRET) {
+        res.status(500).json({ message: 'Error de configuración del servidor' });
+        return;
+      }
+
+      try {
+        const decoded = (jwt.verify as any)(token, JWT_SECRET) as unknown as TokenPayload;
+        const user = await loadAuthUser(decoded.id);
+        if (!user) {
+          res.status(401).json({ message: 'No autorizado: usuario inválido o inactivo' });
+          return;
+        }
+        req.user = user;
+        next();
+        return;
+      } catch {
+        // Token inválido: caemos a la cookie de sesión por si acaso
+      }
+    }
+
+    // 2) Cookie de sesión Auth.js (login con Google)
+    const sessionUser = await userFromAuthSession(req);
+    if (sessionUser) {
+      req.user = sessionUser;
+      next();
       return;
     }
 
-    const token = authHeader.split(' ')[1];
-
-    if (!JWT_SECRET) {
-      res.status(500).json({ message: 'Error de configuración del servidor' });
-      return;
-    }
-
-    const decoded = (jwt.verify as any)(token, JWT_SECRET) as unknown as TokenPayload;
-
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        lastName: true,
-        role: true,
-        isActive: true,
-      },
-    });
-
-    if (!user || !user.isActive) {
-      res.status(401).json({ message: 'No autorizado: usuario inválido o inactivo' });
-      return;
-    }
-
-    req.user = {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      lastName: user.lastName,
-      role: user.role,
-    };
-
-    next();
+    res.status(401).json({ message: 'No autorizado: token faltante' });
   } catch (error) {
     res.status(401).json({ message: 'No autorizado: token inválido' });
   }
@@ -86,27 +156,9 @@ export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFu
     }
 
     const decoded = (jwt.verify as any)(token, JWT_SECRET) as unknown as TokenPayload;
-
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        lastName: true,
-        role: true,
-        isActive: true,
-      },
-    });
-
-    if (user && user.isActive) {
-      req.user = {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        lastName: user.lastName,
-        role: user.role,
-      };
+    const user = await loadAuthUser(decoded.id);
+    if (user) {
+      req.user = user;
     }
 
     next();

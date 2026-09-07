@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
   LayoutDashboard, Package, FolderTree, ShoppingBag, Users, LogOut,
-  Menu, X, Plus, Pencil, Trash2, Shield, Loader2
+  Menu, X, Plus, Pencil, Trash2, Shield, Loader2, Upload
 } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -368,6 +368,14 @@ export default function Admin() {
             </button>
           );
         })}
+        <Link
+          to="/admin/import"
+          onClick={() => setSidebarOpen(false)}
+          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+        >
+          <Upload className="w-5 h-5" />
+          Importar CJ
+        </Link>
       </nav>
       <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-800">
         <div className="flex items-center gap-3 px-4 py-3">

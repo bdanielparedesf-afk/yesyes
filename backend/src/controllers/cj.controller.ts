@@ -4,9 +4,29 @@ import { getCJProduct, extractPID, detectCollection, calculatePrice, translateTo
 
 const prisma = new PrismaClient();
 
+/**
+ * Devuelve la categoría a usar. Si no existe una con el slug indicado,
+ * la crea (y si no se pasa slug, garantiza la categoría "General").
+ * El esquema exige `categoryId` no nulo en Product, por eso NUNCA debe
+ * quedar undefined/'general' como string suelto (violaría la FK).
+ */
+async function resolveCategory(slug?: string): Promise<{ id: string; name: string; slug: string }> {
+  const targetSlug = slug?.trim().toLowerCase() || 'general';
+
+  const existing = await prisma.category.findUnique({ where: { slug: targetSlug } });
+  if (existing) return existing;
+
+  return prisma.category.create({
+    data: {
+      name: targetSlug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      slug: targetSlug,
+    },
+  });
+}
+
 export const importCJProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { url } = req.body;
+    const { url, titleEs, price, collectionSlug, description: editedDescription } = req.body;
     if (!url) {
       res.status(400).json({ message: 'URL is required' });
       return;
@@ -31,29 +51,41 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     const variants = cjData.variants || [];
     const cjPrice = parseFloat(cjData.price || cjData.sellPrice || 0);
 
-    const titleEs = translateToChileanSpanish(productNameEn);
-    const collectionSlug = detectCollection(titleEs, description);
-    const { price, comparePrice } = calculatePrice(cjPrice);
+    // Respetar las ediciones hechas en el panel admin (si vienen en el body)
+    const finalTitle = (titleEs && String(titleEs).trim()) || translateToChileanSpanish(productNameEn);
+    const finalDescription = (editedDescription !== undefined && String(editedDescription).trim()) || description;
+    const { price: computedPrice, comparePrice } = calculatePrice(cjPrice);
+    const finalPrice = price !== undefined && price !== null && String(price).trim() !== '' ? Number(price) : computedPrice;
+    const finalCollectionSlug = collectionSlug?.trim() || detectCollection(finalTitle, finalDescription);
 
-    let collection = await prisma.collection.findUnique({ where: { slug: collectionSlug } });
-    if (!collection) {
-      collection = await prisma.collection.create({
-        data: { name: collectionSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), slug: collectionSlug },
-      });
+    const category = await resolveCategory();
+    const collection = await prisma.collection.findUnique({ where: { slug: finalCollectionSlug } });
+    const collectionId = collection?.id ?? (await prisma.collection.create({
+      data: {
+        name: finalCollectionSlug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        slug: finalCollectionSlug,
+      },
+    })).id;
+
+    const slug = `${finalTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`.slice(0, 100);
+
+    // Evitar duplicados si el producto CJ ya fue importado
+    const existingCj = await prisma.product.findFirst({ where: { cjProductId: String(pid) } });
+    if (existingCj) {
+      res.status(409).json({ message: 'Este producto CJ ya fue importado', productId: existingCj.id });
+      return;
     }
-
-    const slug = `${titleEs.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`.slice(0, 100);
 
     const product = await prisma.product.create({
       data: {
-        name: titleEs,
+        name: finalTitle,
         slug,
-        description,
+        description: finalDescription,
         images: [productImage, ...productImages].filter(Boolean),
-        tags: [collectionSlug],
-        categoryId: (await prisma.category.findFirst())?.id || 'general',
-        salePrice: price,
-        margin: parseFloat(((price - cjPrice) / price * 100).toFixed(2)),
+        tags: [finalCollectionSlug],
+        categoryId: category.id,
+        salePrice: finalPrice,
+        margin: parseFloat(((finalPrice - cjPrice) / finalPrice * 100).toFixed(2)),
         totalCost: cjPrice,
         productCost: cjPrice,
         status: 'PUBLISHED',
@@ -61,7 +93,7 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
         cjProductId: String(pid),
         cjVariants: variants,
         variants: [],
-        collectionId: collection.id,
+        collectionId,
         productImages: {
           create: [productImage, ...productImages].filter(Boolean).map((url, i) => ({ url, position: i })),
         },

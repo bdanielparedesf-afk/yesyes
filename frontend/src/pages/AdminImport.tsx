@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
-import axios from 'axios';
 import { Trash2, Eye, Upload, LogOut } from 'lucide-react';
+import api from '@/lib/axios';
+import { useAuthStore } from '@/store/useAuthStore';
 
-// La API siempre vive en el mismo origen bajo /api (ver frontend/src/lib/axios.ts).
 const API_BASE = '/api';
+const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
 
 interface ProductImage {
   url: string;
@@ -52,9 +54,8 @@ interface Product {
 }
 
 export default function AdminImport() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
+  const { user, status, checkSession } = useAuthStore();
   const [url, setUrl] = useState('');
   const [preview, setPreview] = useState<PreviewProduct | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,30 +66,31 @@ export default function AdminImport() {
   const [editedCollection, setEditedCollection] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
 
+  const isAdmin =
+    user?.email?.toLowerCase().trim() === ADMIN_EMAIL || user?.role === 'ADMIN';
+
   useEffect(() => {
-    if (isLoggedIn) {
+    checkSession();
+  }, [checkSession]);
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      navigate('/login', { replace: true });
+    }
+  }, [status, navigate]);
+
+  useEffect(() => {
+    if (isAdmin) {
       loadProducts();
     }
-  }, [isLoggedIn]);
+  }, [isAdmin]);
 
   const loadProducts = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/admin/recent-products`);
+      const res = await api.get(`${API_BASE}/admin/recent-products`);
       setProducts(res.data.products);
     } catch (e) {
       console.error(e);
-    }
-  };
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const adminEmail = import.meta.env.VITE_ADMIN_EMAIL;
-    const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
-    if (email === adminEmail && password === adminPassword) {
-      setIsLoggedIn(true);
-      toast.success('Sesión iniciada');
-    } else {
-      toast.error('Credenciales incorrectas');
     }
   };
 
@@ -96,7 +98,7 @@ export default function AdminImport() {
     if (!url) return;
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE}/admin/preview-cj`, { url });
+      const res = await api.post(`${API_BASE}/admin/preview-cj`, { url });
       const data = res.data;
       setPreview(data);
       setEditedTitle(data.titleEs);
@@ -114,7 +116,7 @@ export default function AdminImport() {
     if (!preview) return;
     setImporting(true);
     try {
-      await axios.post(`${API_BASE}/admin/import-cj`, {
+      await api.post(`${API_BASE}/admin/import-cj`, {
         url,
         titleEs: editedTitle,
         price: Number(editedPrice),
@@ -134,7 +136,7 @@ export default function AdminImport() {
 
   const handleDelete = async (id: string) => {
     try {
-      await axios.delete(`${API_BASE}/admin/products/${id}`);
+      await api.delete(`${API_BASE}/admin/products/${id}`);
       toast.success('Producto eliminado');
       loadProducts();
     } catch (e: any) {
@@ -142,38 +144,10 @@ export default function AdminImport() {
     }
   };
 
-  if (!isLoggedIn) {
+  if (status === 'loading' || !isAdmin) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <form onSubmit={handleLogin} className="bg-white p-8 rounded-2xl shadow-lg max-w-md w-full space-y-6">
-          <h1 className="text-2xl font-bold text-center text-gray-900">Admin YESYES</h1>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              placeholder="admin@yesyes.cl"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              placeholder="••••••••"
-            />
-          </div>
-          <button
-            type="submit"
-            className="w-full py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg transition-colors"
-          >
-            Ingresar
-          </button>
-        </form>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -181,9 +155,14 @@ export default function AdminImport() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">Importar CJ Dropshipping</h1>
+        <div className="flex items-center gap-3">
+          <Link to="/admin" className="text-gray-600 hover:text-gray-900 text-sm font-medium">
+            ← Panel
+          </Link>
+          <h1 className="text-xl font-bold text-gray-900">Importar CJ Dropshipping</h1>
+        </div>
         <button
-          onClick={() => setIsLoggedIn(false)}
+          onClick={() => useAuthStore.getState().signOut('/')}
           className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
         >
           <LogOut className="w-5 h-5" />

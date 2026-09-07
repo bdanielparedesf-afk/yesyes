@@ -3,6 +3,19 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+/** Garantiza una categoría válida (crea "General" si no existe). */
+async function resolveCategoryId(categoryId?: string): Promise<string> {
+  if (categoryId) {
+    const cat = await prisma.category.findUnique({ where: { id: categoryId } });
+    if (cat) return cat.id;
+  }
+  const general = await prisma.category.findFirst({ where: { slug: 'general' } });
+  if (general) return general.id;
+  return prisma.category.create({
+    data: { name: 'General', slug: 'general' },
+  }).then((c) => c.id);
+}
+
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
     const { collection, search, limit = 50, offset = 0 } = req.query;
@@ -88,7 +101,7 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
     const { id } = req.params;
     const { name, salePrice, description, status, categoryId, collectionId, stock, tags, sku } = req.body;
 
-    const resolvedCategoryId = categoryId || (await prisma.category.findFirst({ where: { slug: 'general' } }))?.id;
+    const resolvedCategoryId = await resolveCategoryId(categoryId);
 
     const product = await prisma.product.update({
       where: { id: String(id) },
@@ -117,7 +130,7 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
   try {
     const { name, slug, description, salePrice, categoryId, collectionId, status, stock, tags, sku } = req.body;
 
-    const resolvedCategoryId = categoryId || (await prisma.category.findFirst({ where: { slug: 'general' } }))?.id;
+    const resolvedCategoryId = await resolveCategoryId(categoryId);
 
     const product = await prisma.product.create({
       data: {
