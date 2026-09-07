@@ -1,35 +1,24 @@
 import { PrismaClient } from '@prisma/client';
-import { loginUser } from '../services/auth.service';
+import { loginUser, getCurrentUser } from '../services/auth.service';
+import { env } from '../config/env';
+import '../config/env';
 
 const prisma = new PrismaClient();
 
 let _authModules: { Auth: any; Google: any; Credentials: any } | null = null;
 
-/**
- * import() dinámico "real".
- *
- * tsc con module:commonjs transpila `import()` a `require()`, y @auth/core es
- * ESM-only → en runtimes Node < 22 (Vercel) eso lanza ERR_REQUIRE_ESM y
- * provoca el 500 en /api/auth/*. Evaluando el import en runtime con
- * new Function() el compilador no lo toca y funciona en cualquier Node.
- */
+if (!process.env.AUTH_URL && !process.env.NEXTAUTH_URL) {
+  const backendUrl = process.env.BACKEND_URL;
+  if (backendUrl) {
+    process.env.AUTH_URL = backendUrl;
+    process.env.NEXTAUTH_URL = backendUrl;
+  }
+}
+
 const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<any>;
 
-/**
- * Hook de trazado para Vercel (node-file-trace).
- *
- * El empaquetador de lambdas solo detecta require()/import() ESTATICOS para
- * incluir dependencias en el bundle. Como el import de @auth/core es dinamico
- * y opaco (new Function), sin este require "muerto" el paquete (y sus deps:
- * jose, preact, oauth4webAPI...) no viajan a la lambda y el runtime falla con
- * "Cannot find package '@auth/core'". La condicion nunca es verdadera, asi que
- * el require jamas se ejecuta (evitando ERR_REQUIRE_ESM en Node < 22).
- */
 if ((globalThis as Record<string, unknown>).__YESYES_TRACE__ === '1') {
   require('@auth/core');
-  // Los providers se cargan dinámicamente dentro de @auth/core, invisibles
-  // para el trazo: sin estos requires, la lambda incluye el paquete pero SIN
-  // providers/google.js ni providers/credentials.js y el login falla.
   require('@auth/core/providers/google');
   require('@auth/core/providers/credentials');
 }
@@ -48,50 +37,85 @@ async function getAuthModules() {
 
 function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) => any) {
   const isProduction = process.env.NODE_ENV === 'production';
-  return {
-    providers: [
-      credentials({
-        name: 'Email',
-        credentials: {
-          email: { label: 'Email', type: 'email' },
-          password: { label: 'Contraseña', type: 'password' },
-        },
-        authorize: async (credentials: any) => {
-          if (!credentials?.email || !credentials?.password) return null;
-          try {
-            const user = await loginUser(credentials.email, credentials.password);
-            return { id: user.id, email: user.email, name: user.name };
-          } catch (error) {
-            return null;
-          }
-        },
-      }),
+  const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'bdanielparedesf@gmail.com').toLowerCase().trim();
+
+  const providers: any[] = [
+    credentials({
+      name: 'Email',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Contraseña', type: 'password' },
+      },
+      authorize: async (credentials: any) => {
+        if (!credentials?.email || !credentials?.password) return null;
+        try {
+          const result = await loginUser(credentials.email, credentials.password);
+          return { id: result.id, email: result.email, name: result.name, role: result.role };
+        } catch (error) {
+          return null;
+        }
+      },
+    }),
+  ];
+
+  const googleClientId = process.env.GOOGLE_CLIENT_ID;
+  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  if (googleClientId && googleClientSecret) {
+    providers.push(
       google({
-        clientId: process.env.GOOGLE_CLIENT_ID!,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
         authorization: {
+          url: 'https://accounts.google.com/o/oauth2/v2/auth',
           params: {
             prompt: 'consent',
             access_type: 'offline',
+            response_type: 'code',
           },
         },
       }),
-    ],
-    secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+    );
+  }
+
+  const authSecret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || env.authSecret;
+
+  if (!authSecret) {
+    console.error(
+      '[AUTH_CONFIG_ERROR] Missing: ' +
+        [
+          !process.env.AUTH_SECRET ? 'AUTH_SECRET' : '',
+          !process.env.NEXTAUTH_SECRET ? 'NEXTAUTH_SECRET' : '',
+        ]
+          .filter(Boolean)
+          .join(', '),
+    );
+  }
+
+  return {
+    providers,
+    secret: authSecret,
     basePath: '/api/auth',
     trustHost: true,
-    // useSecureCookies es opcion de nivel RAIZ en @auth/core (no va dentro de
-    // cookies): activa el prefijo __Secure- y el atributo Secure.
     useSecureCookies: isProduction,
     cookies: {
-      // Compartir la sesion entre yesyes.cl y api.yesyes.cl (mismo registrable
-      // domain). Sin esto, la cookie queda host-only en api.yesyes.cl y la
-      // app servida desde yesyes.cl no reconoce la sesion de Google.
-      // El merge de @auth/core es profundo: se conservan name/httpOnly/
-      // sameSite/path/secure por defecto. En dev (localhost) no se fija domain.
       sessionToken: {
+        name: 'authjs.session-token',
         options: {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          secure: isProduction,
           ...(isProduction ? { domain: '.yesyes.cl' } : {}),
+        },
+      },
+      csrfToken: {
+        name: 'authjs.csrf-token',
+        options: {
+          httpOnly: false,
+          sameSite: 'lax',
+          path: '/',
+          secure: isProduction,
         },
       },
     },
@@ -99,62 +123,97 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
       async signIn({ user, account }: { user: any; account: any }) {
         if (!account || !user?.email) return false;
 
-        const existingUser = await prisma.user.findUnique({
-          where: { email: user.email },
-        });
+        try {
+          const normalizedEmail = user.email.toLowerCase().trim();
 
-        if (existingUser) {
-          await prisma.account.upsert({
-            where: {
-              userId_provider_providerAccountId: {
+          const existingUser = await prisma.user.findUnique({
+            where: { email: normalizedEmail },
+          });
+
+          if (existingUser) {
+            await prisma.account.upsert({
+              where: {
+                userId_provider_providerAccountId: {
+                  userId: existingUser.id,
+                  provider: account.provider,
+                  providerAccountId: account.providerAccountId,
+                },
+              },
+              update: {},
+              create: {
                 userId: existingUser.id,
                 provider: account.provider,
                 providerAccountId: account.providerAccountId,
               },
+            });
+
+            if (!existingUser.googleId && account.provider === 'google') {
+              await prisma.user.update({
+                where: { id: existingUser.id },
+                data: { googleId: account.providerAccountId, emailVerified: true },
+              });
+            }
+
+            return true;
+          }
+
+          const isAdmin = normalizedEmail === ADMIN_EMAIL;
+
+          const newUser = await prisma.user.create({
+            data: {
+              email: normalizedEmail,
+              name: user.name || '',
+              lastName: '',
+              googleId: account.providerAccountId,
+              emailVerified: true,
+              role: isAdmin ? 'ADMIN' : 'CUSTOMER',
+              isActive: true,
             },
-            update: {},
-            create: {
-              userId: existingUser.id,
+          });
+
+          await prisma.account.create({
+            data: {
+              userId: newUser.id,
               provider: account.provider,
               providerAccountId: account.providerAccountId,
             },
           });
+
           return true;
+        } catch (error) {
+          return false;
         }
-
-        const newUser = await prisma.user.create({
-          data: {
-            email: user.email,
-            name: user.name || '',
-            lastName: '',
-            googleId: account.providerAccountId,
-            emailVerified: true,
-            role: 'CUSTOMER',
-            isActive: true,
-          },
-        });
-
-        await prisma.account.create({
-          data: {
-            userId: newUser.id,
-            provider: account.provider,
-            providerAccountId: account.providerAccountId,
-          },
-        });
-
-        return true;
       },
-      async jwt({ token, user }: { token: any; user?: any }) {
+      async jwt({ token, user, account }: { token: any; user?: any; account?: any }) {
         if (user) {
           token.id = user.id;
           token.email = user.email;
+
+          const dbUser = await prisma.user.findUnique({
+            where: { email: user.email },
+            select: { role: true },
+          });
+          token.role = dbUser?.role || 'CUSTOMER';
         }
+
+        if (token.id && !token.role) {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id },
+            select: { role: true, email: true },
+          });
+          if (dbUser) {
+            token.email = dbUser.email;
+            token.role = dbUser.role;
+          }
+        }
+
         return token;
       },
       async session({ session, token }: { session: any; token: any }) {
         if (session?.user && token) {
           session.user.id = token.id as string;
           session.user.email = token.email as string;
+          session.user.role = token.role as string;
         }
         return session;
       },
@@ -169,22 +228,15 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
 
         let target: URL;
         try {
-          // Resuelve urls relativas ("/perfil") contra el origin del request.
-          // Auth.js resuelve el callbackUrl contra el BACKEND (api.yesyes.cl),
-          // asi que sin esto el usuario aterriza en el dominio del API tras
-          // el login (otro localStorage => parece deslogueado => loop).
           target = new URL(url, baseUrl);
         } catch {
           return frontendUrl;
         }
 
-        // Las paginas internas de Auth.js (ej: /api/auth/error) viven en el backend
         if (target.pathname.startsWith('/api/auth')) return target.toString();
 
-        // Ya apunta al frontend: respetalo tal cual
         if (target.origin === feOrigin) return target.toString();
 
-        // Cualquier otra url (incluido el propio backend): mismo path en el frontend
         return `${feOrigin}${target.pathname}${target.search}${target.hash}`;
       },
     },
@@ -192,18 +244,70 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
 }
 
 export async function handleAuth(request: Request): Promise<Response> {
-  const { Auth, Google, Credentials } = await getAuthModules();
-  const config = createAuthConfig(Google, Credentials);
-
-  // En producción el frontend y la API viven en dominios distintos
-  // (yesyes.cl / api.yesyes.cl). Forzamos que Auth.js construya las URLs
-  // de acción a partir del host real de la petición para que los callbacks
-  // de OAuth (Google) apunten siempre al backend correcto.
   try {
-    const origin = new URL(request.url).origin;
+    let origin = '';
+    try {
+      origin = new URL(request.url).origin;
+    } catch {
+      origin = process.env.BACKEND_URL || 'http://localhost:3001';
+    }
+    if (process.env.NODE_ENV === 'production' && origin.startsWith('http://')) {
+      origin = origin.replace('http://', 'https://');
+    }
     process.env.AUTH_URL = origin;
     process.env.NEXTAUTH_URL = origin;
-  } catch {}
 
-  return Auth(request, config);
+    const { Auth, Google, Credentials } = await getAuthModules();
+    const config = createAuthConfig(Google, Credentials);
+
+    return Auth(request, config);
+  } catch (error: any) {
+    const message = error?.message || 'Auth configuration error';
+    const stack = error?.stack ? String(error.stack).split('\n').slice(0, 5).join('\n') : '';
+    console.error('[Auth] Configuration error:', message, stack);
+    if (error?.cause) console.error('[Auth] cause:', error.cause);
+    const response = new Response(
+      JSON.stringify({ error: 'Configuration', message, stack }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    );
+    return response;
+  }
+}
+
+export async function handleAuthError(request: Request): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const errorType = url.searchParams.get('error') || 'UnknownError';
+
+    if (errorType === 'OAuthCallback' || errorType === 'access_denied') {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const redirectUrl = `${frontendUrl}/login?error=${encodeURIComponent('Error en la autenticación con Google. Por favor, intenta de nuevo.')}`;
+      return new Response(null, {
+        status: 302,
+        headers: { Location: redirectUrl },
+      });
+    }
+
+    if (errorType === 'AccessDenied') {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const redirectUrl = `${frontendUrl}/login?error=${encodeURIComponent('Acceso denegado. Por favor, intenta de nuevo.')}`;
+      return new Response(null, {
+        status: 302,
+        headers: { Location: redirectUrl },
+      });
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const redirectUrl = `${frontendUrl}/login?error=${encodeURIComponent('Error de autenticación. Por favor, intenta de nuevo.')}`;
+    return new Response(null, {
+      status: 302,
+      headers: { Location: redirectUrl },
+    });
+  } catch {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    return new Response(null, {
+      status: 302,
+      headers: { Location: `${frontendUrl}/login` },
+    });
+  }
 }

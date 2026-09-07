@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -31,19 +31,54 @@ enum FulfillmentProvider {
   ALIEXPRESS_DIRECT
 }
 
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum AppealStatus {
+  OPEN
+  REVIEWING
+  APPROVED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  RECEIVED
+  REFUNDED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
 model User {
-  id          String    @id @default(cuid())
-  email       String    @unique
-  name        String?
-  role        Role      @default(CUSTOMER)
-  isActive    Boolean   @default(true)
-  profile     Profile?
-  addresses   Address[]
-  orders      Order[]
-  auditLogs   AuditLog[]
-  wishlist    Wishlist?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String    @id @default(cuid())
+  email     String    @unique
+  name      String?
+  role      Role      @default(CUSTOMER)
+  isActive  Boolean   @default(true)
+  profile   Profile?
+  addresses Address[]
+  orders    Order[]
+  auditLogs AuditLog[]
+  wishlist  Wishlist?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model Profile {
@@ -79,18 +114,33 @@ model Session {
 }
 
 model Order {
-  id          String    @id @default(cuid())
-  userId      String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status      OrderStatus @default(PENDING)
-  total       Float?
-  shippingProvider    String?
-  trackingNumber      String?
-  trackingUrl         String?
-  notes               String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  orderItems  OrderItem[]
+  id               String             @id @default(cuid())
+  userId           String
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status           OrderStatus        @default(PENDING)
+  total            Float?
+  shippingProvider String?
+  trackingNumber   String?
+  trackingUrl      String?
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  orderItems       OrderItem[]
+  Fulfillment      Fulfillment[]
+  OrderStatusHistory OrderStatusHistory[]
+  Payment          Payment[]
+  ReturnRequest    ReturnRequest[]
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Decimal
+  createdAt DateTime @default(now())
 }
 
 model AuditLog {
@@ -101,52 +151,38 @@ model AuditLog {
   details   String?
   createdAt DateTime @default(now())
 }
+
 model Account {
-  id               String @id @default(cuid())
-  userId           String
-  provider         String
+  id                String   @id @default(cuid())
+  userId            String
+  provider          String
   providerAccountId String
-  createdAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   @@unique([userId, provider, providerAccountId])
 }
 
-enum DiscountType {
-  PERCENT
-  FIXED
-}
-
-model Category {
-  id        String    @id @default(cuid())
-  name      String
-  slug      String    @unique
-  isActive  Boolean   @default(true)
-  products  Product[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-}
-
 model Supplier {
-  id        String            @id @default(cuid())
+  id        String              @id @default(cuid())
   name      String
   provider  FulfillmentProvider @default(DSERS)
   apiKey    String?
-  isActive  Boolean           @default(true)
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
   products  Product[]
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
 }
 
 model PriceRule {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   name          String
-  defaultMargin Int       @default(60)
-  shippingCost  Decimal   @default(0)
-  commission    Decimal   @default(0)
-  currency      String    @default("CLP")
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  defaultMargin Int      @default(60)
+  shippingCost  Decimal  @default(0)
+  commission    Decimal  @default(0)
+  currency      String   @default("CLP")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model AutomationLog {
@@ -159,7 +195,7 @@ model AutomationLog {
 }
 
 model Collection {
-  id        String    @id @default(uuid())
+  id        String    @id @default(cuid())
   name      String
   slug      String    @unique
   image     String?
@@ -167,41 +203,51 @@ model Collection {
   products  Product[]
 }
 
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  isActive  Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
 model Product {
   id             String           @id @default(cuid())
-  title            String
-  slug             String           @unique
-  description      String
-  price            Decimal
-  compareAtPrice   Decimal?
-  stock            Int              @default(0)
-  isActive         Boolean          @default(true)
-  categoryId       String
-  category         Category         @relation(fields: [categoryId], references: [id])
-  variants         ProductVariant[]
-  images           ProductImage[]
-  reviews          ProductReview[]
-  cartItems        CartItem[]
-  orderItems       OrderItem[]
-  inventory        Inventory[]
-  supplierId       String?
-  supplier         Supplier?        @relation(fields: [supplierId], references: [id])
-  aliexpressId     String?
-  aliexpressUrl    String?
-  supplierPrice    Decimal?
-  shippingCost     Decimal?
-  profitMargin     Int              @default(60)
-  importSource     String           @default("DSERS")
-  dserStatus       String           @default("draft")
-  isFeatured       Boolean          @default(false)
-  isOffer          Boolean          @default(false)
-  cjProductId      String?
-  cjVariants       Json?
-  collectionId     String?
-  collection       Collection?      @relation(fields: [collectionId], references: [id])
-  tags             String[]
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  title         String
+  slug          String           @unique
+  description   String
+  price         Decimal
+  compareAtPrice Decimal?
+  stock         Int              @default(0)
+  isActive      Boolean          @default(true)
+  categoryId    String
+  category      Category         @relation(fields: [categoryId], references: [id])
+  supplierId    String?
+  supplier      Supplier?        @relation(fields: [supplierId], references: [id])
+  aliexpressId  String?
+  aliexpressUrl String?
+  supplierPrice Decimal?
+  shippingCost  Decimal?
+  profitMargin  Int              @default(60)
+  importSource  String           @default("DSERS")
+  dserStatus    String           @default("draft")
+  isFeatured    Boolean          @default(false)
+  isOffer       Boolean          @default(false)
+  cjProductId   String?
+  cjVariants    Json?
+  collectionId  String?
+  collection    Collection?      @relation(fields: [collectionId], references: [id])
+  tags          String[]
+  variants      ProductVariant[]
+  images        ProductImage[]
+  reviews       ProductReview[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  inventory     Inventory[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }
 
 model ProductVariant {
@@ -226,27 +272,24 @@ model ProductImage {
 }
 
 model Inventory {
-  id        String   @id @default(cuid())
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  variantId String?
-  quantity  Int
-  warehouseId String? @default("main")
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId   String?
+  quantity    Int
+  warehouseId String?  @default("main")
+  updatedAt   DateTime @updatedAt
 }
 
 model ProductReview {
-  id              String   @id @default(cuid())
-  productId       String
-  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  userId          String
-  rating          Int
-  comment         String?
-  images          String[]
-  isVerified      Boolean  @default(false)
-  isModerated     Boolean  @default(false)
-  verifiedPurchase Boolean @default(false)
-  createdAt       DateTime @default(now())
+  id               String   @id @default(cuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId           String
+  rating           Int
+  comment          String?
+  verifiedPurchase Boolean  @default(false)
+  createdAt        DateTime @default(now())
 }
 
 model Wishlist {
@@ -288,35 +331,176 @@ model CartItem {
 }
 
 model Coupon {
-  id          String        @id @default(cuid())
-  code        String        @unique
+  id           String        @id @default(cuid())
+  code         String        @unique
   discountType DiscountType
-  value       Decimal
-  maxUses     Int           @default(100)
-  usedCount   Int           @default(0)
-  minAmount   Decimal?
-  validUntil  DateTime?
-  isActive    Boolean       @default(true)
-  usages      CouponUsage[]
-  createdAt   DateTime      @default(now())
+  value        Decimal
+  maxUses      Int           @default(100)
+  usedCount    Int           @default(0)
+  minAmount    Decimal?
+  validUntil   DateTime?
+  isActive     Boolean       @default(true)
+  usages       CouponUsage[]
+  createdAt    DateTime      @default(now())
 }
 
 model CouponUsage {
-  id        String    @id @default(cuid())
-  couponId  String
-  coupon    Coupon    @relation(fields: [couponId], references: [id], onDelete: Cascade)
-  userId    String
-  orderId   String?
-  usedAt    DateTime  @default(now())
+  id       String   @id @default(cuid())
+  couponId String
+  coupon   Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId   String
+  orderId  String?
+  usedAt   DateTime @default(now())
 }
 
-model OrderItem {
-  id        String   @id @default(cuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id])
-  quantity  Int
-  price     Decimal
+model AnalyticsEvent {
+  id        String   @id
+  eventType String
+  userId    String?
+  metadata  Json?
   createdAt DateTime @default(now())
+}
+
+model Appeal {
+  id              String        @id
+  returnRequestId String
+  reason          String
+  evidenceUrls    String[]
+  status          AppealStatus  @default(OPEN)
+  createdAt       DateTime      @default(now())
+  ReturnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+}
+
+model BackupLog {
+  id        String   @id
+  status    String
+  fileUrl   String?
+  size      Int?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model Fulfillment {
+  id            String              @id
+  orderId       String
+  order         Order               @relation(fields: [orderId], references: [id])
+  provider      FulfillmentProvider @default(DROPSHIP_DEFAULT)
+  trackingCode  String?
+  status        String              @default("pending")
+  createdAt     DateTime            @default(now())
+  TrackingEvent TrackingEvent[]
+}
+
+model OrderStatusHistory {
+  id          String   @id
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus  String?
+  toStatus    String
+  changedById String?
+  note        String?
+  createdAt   DateTime @default(now())
+}
+
+model Payment {
+  id              String          @id
+  orderId         String
+  order           Order           @relation(fields: [orderId], references: [id])
+  providerId      String
+  amount          Decimal
+  currency        String          @default("CLP")
+  status          PaymentStatus   @default(PENDING)
+  externalId      String?
+  preferenceId    String?
+  webhookData     Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime
+  PaymentProvider PaymentProvider @relation(fields: [providerId], references: [id])
+  PaymentEvent    PaymentEvent[]
+}
+
+model PaymentEvent {
+  id        String   @id
+  paymentId String
+  type      String
+  payload   Json?
+  createdAt DateTime @default(now())
+  Payment   Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+}
+
+model PaymentProvider {
+  id          String    @id
+  name        String
+  isActive    Boolean   @default(true)
+  credentials Json?
+  createdAt   DateTime  @default(now())
+  Payment     Payment[]
+}
+
+model ReturnItem {
+  id              String        @id
+  returnRequestId String
+  orderItemId     String
+  quantity        Int
+  ReturnRequest   ReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+}
+
+model ReturnRequest {
+  id          String       @id
+  orderId     String
+  order       Order        @relation(fields: [orderId], references: [id])
+  reason      String
+  status      ReturnStatus @default(REQUESTED)
+  description String?
+  createdAt   DateTime     @default(now())
+  Appeal      Appeal[]
+  ReturnItem  ReturnItem[]
+}
+
+model SecurityEvent {
+  id        String   @id
+  userId    String?
+  type      String
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+model SeoMeta {
+  id          String   @id
+  entityType  String
+  entityId    String?
+  slug        String   @unique
+  title       String?
+  description String?
+  ogImage     String?
+  createdAt   DateTime @default(now())
+}
+
+model SupportTicket {
+  id            String          @id
+  userId        String
+  subject       String
+  status        TicketStatus    @default(OPEN)
+  createdAt     DateTime        @default(now())
+  TicketMessage TicketMessage[]
+}
+
+model TicketMessage {
+  id            String        @id
+  ticketId      String
+  userId        String
+  message       String
+  createdAt     DateTime      @default(now())
+  SupportTicket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+}
+
+model TrackingEvent {
+  id            String       @id
+  fulfillmentId String?
+  orderId       String
+  status        String
+  location      String?
+  description   String?
+  occurredAt    DateTime     @default(now())
+  Fulfillment   Fulfillment? @relation(fields: [fulfillmentId], references: [id])
 }

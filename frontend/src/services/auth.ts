@@ -5,6 +5,7 @@ export interface SessionUser {
   email: string;
   name?: string;
   image?: string;
+  role?: string;
 }
 
 export interface Session {
@@ -25,9 +26,18 @@ export async function signIn(provider: 'google' | 'github' | string = 'google', 
   window.location.href = `${authUrl(`/signin/${provider}`)}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
 }
 
-export async function signOut(callbackUrl = '/login') {
-  const url = `${authUrl('/signout')}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-  window.location.href = url;
+export async function signOut(callbackUrl = '/') {
+  try {
+    const csrfRes = await api.get('/auth/csrf', { withCredentials: true });
+    const csrfToken = csrfRes.data?.csrfToken;
+    if (csrfToken) {
+      await api.post('/auth/signout', { csrfToken, callbackUrl }, { withCredentials: true });
+    }
+  } catch (error) {
+    console.error('Logout error', error);
+  } finally {
+    window.location.href = callbackUrl;
+  }
 }
 
 export async function getSession(): Promise<Session | null> {

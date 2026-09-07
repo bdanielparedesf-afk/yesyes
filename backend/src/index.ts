@@ -1,3 +1,4 @@
+import './config/env';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,6 +9,7 @@ import { errorHandler } from './middlewares/errorHandler';
 import { logger } from './utils/logger';
 import { rateLimiter } from './middlewares/rateLimiter';
 import routes from './routes';
+import { env } from './config/env';
 
 dotenv.config();
 
@@ -17,11 +19,7 @@ const PORT = process.env.PORT || 3001;
 app.set('trust proxy', 1);
 
 app.use(helmet());
-// CORS_ORIGIN admite una lista separada por comas (ej: "https://yesyes.cl,http://localhost:5173")
-const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:5174')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+const corsOrigins = env.corsOrigins;
 app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
 app.use(express.json({ limit: '10kb' }));

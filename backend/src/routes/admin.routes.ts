@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authenticate, requireAdmin } from '../middlewares/auth';
+import { authenticate, requireAdmin, isAdmin } from '../middlewares/auth';
 import {
   getRecentProducts,
   getAllProducts,
@@ -16,7 +16,7 @@ import { getUsers, updateUserRole } from '../controllers/user.controller';
 const router = Router();
 const prisma = new PrismaClient();
 
-router.use(authenticate, requireAdmin);
+router.use(authenticate, requireAdmin, isAdmin);
 
 router.get('/stats', async (req, res) => {
   try {

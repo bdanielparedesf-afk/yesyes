@@ -1,31 +1,26 @@
 import { Router, Request as ExpressRequest, Response, NextFunction } from 'express';
-import { handleAuth } from '../lib/auth-handler';
+import { handleAuth, handleAuthError } from '../lib/auth-handler';
 import { logger } from '../utils/logger';
-import { registerUser, loginUser, generateToken, verifyEmail, createVerificationToken, sendVerificationEmail } from '../services/auth.service';
+import { registerUser, loginUser, generateToken, verifyEmail, createVerificationToken, sendVerificationEmail, getCurrentUser, registerSchema, loginSchema } from '../services/auth.service';
+import { loginLimiter } from '../middlewares/rateLimiter';
+import { PrismaClient } from '@prisma/client';
 
 const router = Router();
+const prisma = new PrismaClient();
+
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'bdanielparedesf@gmail.com').toLowerCase().trim();
 
 router.post('/register', async (req: ExpressRequest, res: Response, next: NextFunction) => {
   try {
-    const { name, lastName, email, password, confirmPassword } = req.body;
-
-    if (!name || !lastName || !email || !password || !confirmPassword) {
-      res.status(400).json({ message: 'Todos los campos son obligatorios' });
+    const validation = registerSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ message: validation.error.errors?.[0]?.message || 'Error de validación' });
       return;
     }
 
-    if (password !== confirmPassword) {
-      res.status(400).json({ message: 'Las contraseñas no coinciden' });
-      return;
-    }
+    const { name, lastName, email, password } = validation.data;
 
-    if (password.length < 6) {
-      res.status(400).json({ message: 'La contraseña debe tener al menos 6 caracteres' });
-      return;
-    }
-
-    const adminEmail = (process.env.ADMIN_EMAIL || 'bdanielparedesf@gmail.com').toLowerCase().trim();
-    if (email.toLowerCase() === adminEmail) {
+    if (email.toLowerCase().trim() === ADMIN_EMAIL) {
       res.status(400).json({ message: 'Correo reservado para admin' });
       return;
     }
@@ -39,6 +34,8 @@ router.post('/register', async (req: ExpressRequest, res: Response, next: NextFu
       name: user.name,
       lastName: user.lastName,
       token,
+      verificationToken: (user as any).verificationToken,
+      emailVerified: false,
       message: 'Cuenta creada. Revisa tu email para verificar tu cuenta.',
     });
   } catch (error: any) {
@@ -50,14 +47,15 @@ router.post('/register', async (req: ExpressRequest, res: Response, next: NextFu
   }
 });
 
-router.post('/login', async (req: ExpressRequest, res: Response, next: NextFunction) => {
+router.post('/login', loginLimiter, async (req: ExpressRequest, res: Response, next: NextFunction) => {
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      res.status(400).json({ message: 'Email y contraseña son obligatorios' });
+    const validation = loginSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ message: validation.error.errors?.[0]?.message || 'Error de validación' });
       return;
     }
+
+    const { email, password } = validation.data;
 
     const result = await loginUser(email, password);
 
@@ -68,29 +66,68 @@ router.post('/login', async (req: ExpressRequest, res: Response, next: NextFunct
       lastName: result.lastName,
       token: result.token,
       emailVerified: result.emailVerified,
+      role: result.role,
     });
   } catch (error: any) {
     if (error.message === 'Credenciales inválidas' || error.message === 'Cuenta desactivada') {
       res.status(401).json({ message: error.message });
       return;
     }
+    if (error.message === 'EMAIL_NOT_VERIFIED') {
+      res.status(403).json({ message: 'EMAIL_NOT_VERIFIED', detail: 'Debes verificar tu email antes de iniciar sesión' });
+      return;
+    }
+    if (error.message.includes('Google')) {
+      res.status(403).json({ message: error.message });
+      return;
+    }
     next(error);
   }
 });
 
-// Verificar email con token
+router.get('/me', async (req: ExpressRequest, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({ message: 'No autorizado: token faltante' });
+      return;
+    }
+
+    const token = authHeader.split(' ')[1];
+
+    if (!process.env.JWT_SECRET) {
+      res.status(500).json({ message: 'Error de configuración del servidor' });
+      return;
+    }
+
+    const jwt = await import('jsonwebtoken');
+    const jwtSecret = process.env.JWT_SECRET as string;
+    const decoded = (jwt.default.verify as any)(token, jwtSecret) as unknown as { id: string };
+
+    const user = await getCurrentUser(decoded.id);
+    if (!user) {
+      res.status(401).json({ message: 'No autorizado: usuario inválido o inactivo' });
+      return;
+    }
+
+    res.json({ user });
+  } catch (error) {
+    res.status(401).json({ message: 'No autorizado: token inválido' });
+  }
+});
+
 router.get('/verify-email', async (req: ExpressRequest, res: Response, next: NextFunction) => {
   try {
     const { token } = req.query;
 
     if (!token || typeof token !== 'string') {
-      res.status(400).json({ message: 'Token de verificación requerido' });
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      res.redirect(`${frontendUrl}/verificar-email?error=${encodeURIComponent('Token de verificación requerido')}`);
       return;
     }
 
     await verifyEmail(token);
 
-    // Redirigir al frontend con éxito
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     res.redirect(`${frontendUrl}/verificar-email?success=true`);
   } catch (error: any) {
@@ -102,7 +139,6 @@ router.get('/verify-email', async (req: ExpressRequest, res: Response, next: Nex
   }
 });
 
-// Reenviar email de verificación
 router.post('/resend-verification', async (req: ExpressRequest, res: Response, next: NextFunction) => {
   try {
     const { email } = req.body;
@@ -112,15 +148,13 @@ router.post('/resend-verification', async (req: ExpressRequest, res: Response, n
       return;
     }
 
-    const { PrismaClient } = await import('@prisma/client');
-    const prisma = new PrismaClient();
+    const normalizedEmail = email.toLowerCase().trim();
 
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
     });
 
     if (!user) {
-      // No revelar si el email existe
       res.status(200).json({ message: 'Si el email existe, recibirás un nuevo enlace de verificación' });
       return;
     }
@@ -141,6 +175,36 @@ router.post('/resend-verification', async (req: ExpressRequest, res: Response, n
 
 router.post('/forgot-password', (req: ExpressRequest, res: Response) => {
   res.status(200).json({ message: 'Si el email existe, recibirás un enlace de recuperación' });
+});
+
+router.post('/signout', async (req: ExpressRequest, res: Response) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+  res.cookie('authjs.session-token', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
+
+  res.cookie('authjs.csrf-token', '', {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
+
+  res.json({ redirectTo: frontendUrl });
+});
+
+router.get('/error', async (req: ExpressRequest, res: Response) => {
+  const authResponse = await handleAuthError(req as unknown as Request);
+  const body = await authResponse.text();
+  res.status(authResponse.status);
+  res.setHeader('Content-Type', 'application/json');
+  res.send(body);
 });
 
 router.use('*', async (req: ExpressRequest, res: Response, next: NextFunction) => {
@@ -184,12 +248,10 @@ router.use('*', async (req: ExpressRequest, res: Response, next: NextFunction) =
 
     res.status(response.status);
 
-    // Reenviar headers Set-Cookie (compatible con Node.js 18+ y 19.7+)
     let setCookies: string[] = [];
     if (typeof (response.headers as any).getSetCookie === 'function') {
       setCookies = (response.headers as any).getSetCookie();
     } else {
-      // Fallback para Node.js < 19.7 donde getSetCookie no existe
       const rawHeaders = (response.headers as any).raw?.();
       if (rawHeaders && typeof rawHeaders === 'object') {
         const rawSetCookies = rawHeaders['set-cookie'];
@@ -197,7 +259,6 @@ router.use('*', async (req: ExpressRequest, res: Response, next: NextFunction) =
           setCookies = rawSetCookies;
         }
       }
-      // Si tampoco funciona raw(), intentar get('set-cookie')
       if (setCookies.length === 0) {
         const setCookieHeader = response.headers.get('set-cookie');
         if (setCookieHeader) {

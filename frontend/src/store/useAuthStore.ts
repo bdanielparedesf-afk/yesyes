@@ -39,7 +39,7 @@ export const useAuthStore = create<AuthState>()(
       signIn: (provider = 'google', callbackUrl = '/') => {
         signInService(provider, callbackUrl);
       },
-      signOut: (callbackUrl = '/login') => {
+      signOut: (callbackUrl = '/') => {
         signOutService(callbackUrl);
         set({ user: null, token: null, status: 'unauthenticated' });
       },
@@ -48,7 +48,7 @@ export const useAuthStore = create<AuthState>()(
         const token = response.token;
         if (token) {
           set({
-            user: { id: response.id, email: response.email, name: response.name },
+            user: { id: response.id, email: response.email, name: response.name, role: response.role },
             token,
             status: 'authenticated',
           });
@@ -59,7 +59,7 @@ export const useAuthStore = create<AuthState>()(
         const token = response.token;
         if (token) {
           set({
-            user: { id: response.id, email: response.email, name: response.name },
+            user: { id: response.id, email: response.email, name: response.name, role: response.role },
             token,
             status: 'authenticated',
           });
@@ -67,7 +67,7 @@ export const useAuthStore = create<AuthState>()(
       },
       setUser: (session, token = null) => {
         if (session?.user) {
-          set({ user: session.user, token: token || null, status: 'authenticated' });
+          set({ user: { id: session.user.id, email: session.user.email, name: session.user.name, role: (session.user as any).role }, token: token || null, status: 'authenticated' });
         } else {
           set({ user: null, token: null, status: 'unauthenticated' });
         }

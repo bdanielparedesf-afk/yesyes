@@ -98,7 +98,7 @@ export default function Admin() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [userRoleSaving, setUserRoleSaving] = useState<string | null>(null);
 
-  const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL;
+  const isAdmin = (user?.email?.toLowerCase() === ADMIN_EMAIL) || user?.role === 'ADMIN';
 
   useEffect(() => {
     if (!isAdmin) {

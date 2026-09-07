@@ -13,15 +13,18 @@ export default function Header() {
     checkSession();
   }, [checkSession]);
 
+  const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
+  const isAdmin = user?.email?.toLowerCase().trim() === ADMIN_EMAIL || user?.role === 'admin';
+
   const handleSignOut = () => {
-    useAuthStore.getState().signOut('/login');
+    useAuthStore.getState().signOut('/');
   };
 
   const displayName = user?.name || user?.email?.split('@')[0] || 'Usuario';
   const userAvatar = user?.image;
 
   return (
-    <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md shadow-sm">
+    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <Link to="/" className="text-2xl font-bold text-primary-500 tracking-tight">
@@ -47,8 +50,13 @@ export default function Header() {
               )}
             </Link>
 
-            {status === 'authenticated' && user ? (
+             {status === 'authenticated' && user ? (
               <div className="flex items-center space-x-3">
+                {isAdmin && (
+                  <Link to="/admin" className="text-sm font-medium text-gray-700 hover:text-primary-600 transition-colors">
+                    Admin
+                  </Link>
+                )}
                 {userAvatar ? (
                   <img src={userAvatar} alt={displayName} className="w-9 h-9 rounded-full object-cover border-2 border-gray-200" />
                 ) : (
@@ -100,6 +108,11 @@ export default function Header() {
             {status === 'authenticated' && user ? (
               <div className="flex items-center justify-between pt-2 border-t border-gray-200">
                 <div className="flex items-center space-x-3">
+                  {isAdmin && (
+                    <Link to="/admin" className="text-sm font-medium text-gray-700 hover:text-primary-600" onClick={() => setMobileOpen(false)}>
+                      Admin
+                    </Link>
+                  )}
                   {userAvatar ? (
                     <img src={userAvatar} alt={displayName} className="w-8 h-8 rounded-full object-cover" />
                   ) : (

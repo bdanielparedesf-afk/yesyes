@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 import { PrismaClient } from '@prisma/client';
+import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
@@ -12,8 +13,10 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET no está configurado en las variables de entorno');
 }
 
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'bdanielparedesf@gmail.com').toLowerCase().trim();
+
 export const hashPassword = async (password: string): Promise<string> => {
-  const salt = await bcrypt.genSalt(10);
+  const salt = await bcrypt.genSalt(12);
   return bcrypt.hash(password, salt);
 };
 
@@ -21,14 +24,13 @@ export const comparePasswords = async (password: string, hash: string): Promise<
   return bcrypt.compare(password, hash);
 };
 
-export const generateToken = (userId: string, email: string): string => {
-  return jwt.sign({ id: userId, email }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+export const generateToken = (userId: string, email: string, role: string = 'CUSTOMER'): string => {
+  return jwt.sign({ id: userId, email, role }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
 };
 
-// Generar token de verificación de email
 export const createVerificationToken = async (userId: string): Promise<string> => {
   const token = randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   await prisma.verificationToken.create({
     data: {
@@ -41,7 +43,6 @@ export const createVerificationToken = async (userId: string): Promise<string> =
   return token;
 };
 
-// Verificar email con token
 export const verifyEmail = async (token: string): Promise<boolean> => {
   const verificationToken = await prisma.verificationToken.findUnique({
     where: { token },
@@ -57,7 +58,7 @@ export const verifyEmail = async (token: string): Promise<boolean> => {
   }
 
   if (verificationToken.user.emailVerified) {
-    return true; // Ya verificado
+    return true;
   }
 
   await prisma.user.update({
@@ -65,7 +66,6 @@ export const verifyEmail = async (token: string): Promise<boolean> => {
     data: { emailVerified: true },
   });
 
-  // Eliminar token usado
   await prisma.verificationToken.delete({
     where: { id: verificationToken.id },
   });
@@ -73,38 +73,11 @@ export const verifyEmail = async (token: string): Promise<boolean> => {
   return true;
 };
 
-// Enviar email de verificación (simulado - en producción usar servicio como SendGrid, Resend, etc.)
 export const sendVerificationEmail = async (email: string, token: string): Promise<void> => {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
   const verificationUrl = `${frontendUrl}/verificar-email?token=${token}`;
 
-  // En producción, aquí se enviaría el email real
-  // Por ahora, logeamos el enlace para desarrollo
-  console.log(`\n📧 VERIFICACIÓN DE EMAIL`);
-  console.log(`   Para: ${email}`);
-  console.log(`   Enlace: ${verificationUrl}`);
-  console.log(`   Token: ${token}\n`);
-
-  // TODO: Integrar con servicio de email (SendGrid, Resend, Mailgun, etc.)
-  // Ejemplo con fetch a API de email:
-  /*
-  await fetch('https://api.sendgrid.com/v3/mail/send', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email }] }],
-      from: { email: 'noreply@yesyes.cl' },
-      subject: 'Verifica tu cuenta en YESYES',
-      content: [{
-        type: 'text/html',
-        value: `<h1>¡Bienvenido a YESYES!</h1><p>Haz clic <a href="${verificationUrl}">aquí</a> para verificar tu cuenta.</p>`
-      }]
-    })
-  });
-  */
+  console.log(`[Email] Verification link for ${email}: ${verificationUrl}`);
 };
 
 export const registerUser = async (data: {
@@ -113,8 +86,10 @@ export const registerUser = async (data: {
   email: string;
   password: string;
 }): Promise<{ id: string; email: string; name: string; lastName: string; verificationToken: string }> => {
+  const normalizedEmail = data.email.toLowerCase().trim();
+
   const existingUser = await prisma.user.findUnique({
-    where: { email: data.email },
+    where: { email: normalizedEmail },
   });
 
   if (existingUser) {
@@ -125,9 +100,9 @@ export const registerUser = async (data: {
 
   const user = await prisma.user.create({
     data: {
-      name: data.name,
-      lastName: data.lastName,
-      email: data.email,
+      name: data.name.trim(),
+      lastName: data.lastName.trim(),
+      email: normalizedEmail,
       password: hashedPassword,
       emailVerified: false,
       role: 'CUSTOMER',
@@ -141,7 +116,6 @@ export const registerUser = async (data: {
     },
   });
 
-  // Crear y enviar token de verificación
   const verificationToken = await createVerificationToken(user.id);
   await sendVerificationEmail(user.email, verificationToken);
 
@@ -155,9 +129,12 @@ export const loginUser = async (email: string, password: string): Promise<{
   lastName: string;
   token: string;
   emailVerified: boolean;
+  role: string;
 }> => {
+  const normalizedEmail = email.toLowerCase().trim();
+
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { email: normalizedEmail },
   });
 
   if (!user || !user.password) {
@@ -168,13 +145,22 @@ export const loginUser = async (email: string, password: string): Promise<{
     throw new Error('Cuenta desactivada');
   }
 
+  if (user.googleId && !user.password) {
+    throw new Error('Esta cuenta está registrada con Google. Inicia sesión con Google.');
+  }
+
   const isValid = await comparePasswords(password, user.password);
 
   if (!isValid) {
     throw new Error('Credenciales inválidas');
   }
 
-  const token = generateToken(user.id, user.email);
+  if (!user.emailVerified) {
+    throw new Error('EMAIL_NOT_VERIFIED');
+  }
+
+  const role = user.email.toLowerCase().trim() === ADMIN_EMAIL ? 'ADMIN' : user.role;
+  const token = generateToken(user.id, user.email, role);
 
   return {
     id: user.id,
@@ -183,5 +169,44 @@ export const loginUser = async (email: string, password: string): Promise<{
     lastName: user.lastName,
     token,
     emailVerified: user.emailVerified,
+    role,
   };
 };
+
+export const getCurrentUser = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      lastName: true,
+      role: true,
+      emailVerified: true,
+      isActive: true,
+      createdAt: true,
+    },
+  });
+
+  if (!user || !user.isActive) {
+    return null;
+  }
+
+  return user;
+};
+
+export const registerSchema = z.object({
+  name: z.string().min(1, 'Nombre requerido'),
+  lastName: z.string().min(1, 'Apellido requerido'),
+  email: z.string().email('Email inválido'),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  confirmPassword: z.string().min(1, 'Confirma tu contraseña'),
+}).refine(data => data.password === data.confirmPassword, {
+  message: 'Las contraseñas no coinciden',
+  path: ['confirmPassword'],
+});
+
+export const loginSchema = z.object({
+  email: z.string().email('Email inválido'),
+  password: z.string().min(1, 'Contraseña requerida'),
+});

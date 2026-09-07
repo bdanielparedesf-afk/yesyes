@@ -10,6 +10,13 @@ const quickLinks = [
   { name: 'Privacidad', href: '/privacidad' },
 ];
 
+const helpLinks = [
+  { name: 'Envíos', href: '/envios' },
+  { name: 'Devoluciones', href: '/devoluciones' },
+  { name: 'Reembolsos', href: '/reembolsos' },
+  { name: 'Cookies', href: '/cookies' },
+];
+
 export default function Footer() {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
@@ -63,6 +70,19 @@ export default function Footer() {
           </div>
 
           <div>
+            <h3 className="text-white font-semibold text-lg mb-6">Ayuda</h3>
+            <ul className="space-y-3">
+              {helpLinks.map((link) => (
+                <li key={link.name}>
+                  <Link to={link.href} className="text-gray-400 hover:text-primary-500 transition-colors text-sm">
+                    {link.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
             <h3 className="text-white font-semibold text-lg mb-6">Newsletter</h3>
             <p className="text-gray-400 text-sm mb-4">
               Suscríbete y recibe ofertas exclusivas directamente en tu correo.
@@ -90,24 +110,6 @@ export default function Footer() {
                 </button>
               </form>
             )}
-          </div>
-
-          <div>
-            <h3 className="text-white font-semibold text-lg mb-6">Medios de Pago</h3>
-            <p className="text-gray-400 text-sm mb-4">
-              Aceptamos Mercado Pago para garantizar transacciones seguras y confiables.
-            </p>
-            <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-12 h-8 bg-blue-600 rounded flex items-center justify-center">
-                  <span className="text-white font-bold text-xs">MP</span>
-                </div>
-                <span className="text-white font-semibold">Mercado Pago</span>
-              </div>
-              <p className="text-gray-500 text-xs mt-2">
-                Tarjetas de crédito, débito y transferencia bancaria.
-              </p>
-            </div>
           </div>
         </div>
       </div>
