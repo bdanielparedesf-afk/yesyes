@@ -1,10 +1,18 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User, Mail, Phone, MapPin, Save } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuthStore } from '@/store/useAuthStore';
 import { signIn } from '@/services/auth';
 
+const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
+
+function isAdminEmail(email?: string): boolean {
+  return email?.toLowerCase() === ADMIN_EMAIL;
+}
+
 export default function Profile() {
+  const navigate = useNavigate();
   const { user, checkSession, status } = useAuthStore();
   const [form, setForm] = useState({
     name: '',
@@ -17,6 +25,14 @@ export default function Profile() {
   useEffect(() => {
     checkSession();
   }, [checkSession]);
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      if (isAdminEmail(user?.email)) {
+        navigate('/admin', { replace: true });
+      }
+    }
+  }, [status, navigate, user]);
 
   useEffect(() => {
     if (user) {

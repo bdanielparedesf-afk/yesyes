@@ -5,9 +5,15 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { signIn } from '@/services/auth';
 
+const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
+
+function isAdminEmail(email?: string): boolean {
+  return email?.toLowerCase() === ADMIN_EMAIL;
+}
+
 export default function Login() {
   const navigate = useNavigate();
-  const { login, status, checkSession } = useAuthStore();
+  const { login, status, checkSession, user } = useAuthStore();
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -18,9 +24,13 @@ export default function Login() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      navigate('/', { replace: true });
+      if (isAdminEmail(user?.email)) {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     }
-  }, [status, navigate]);
+  }, [status, navigate, user]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +38,11 @@ export default function Login() {
     try {
       await login({ email: form.email, password: form.password });
       toast.success('Sesión iniciada correctamente');
-      navigate('/', { replace: true });
+      if (isAdminEmail(form.email)) {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Error al iniciar sesión');
     } finally {

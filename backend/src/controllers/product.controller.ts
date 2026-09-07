@@ -37,6 +37,31 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+export const getAllProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { limit = 100, offset = 0, search } = req.query;
+    const where: any = {};
+    if (search) {
+      where.name = { contains: String(search), mode: 'insensitive' };
+    }
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        take: Number(limit),
+        skip: Number(offset),
+        include: { productImages: { orderBy: { position: 'asc' } }, collection: true, category: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.product.count({ where }),
+    ]);
+    res.json({ products, total });
+  } catch (error: any) {
+    console.error('Error fetching all products:', error);
+    res.status(500).json({ message: 'Error fetching products', error: error.message });
+  }
+};
+
 export const getCollections = async (req: Request, res: Response): Promise<void> => {
   try {
     const collections = await prisma.collection.findMany({
@@ -61,18 +86,60 @@ export const getCollections = async (req: Request, res: Response): Promise<void>
 export const updateProduct = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, salePrice } = req.body;
+    const { name, salePrice, description, status, categoryId, collectionId, stock, tags, sku } = req.body;
 
     const product = await prisma.product.update({
       where: { id: String(id) },
-      data: { name, salePrice: Number(salePrice) },
-      include: { productImages: { orderBy: { position: 'asc' } }, collection: true },
+      data: {
+        name,
+        salePrice: Number(salePrice),
+        description,
+        status: status as any,
+        categoryId,
+        collectionId,
+        stock: Number(stock) || 0,
+        tags: tags || [],
+        sku,
+      },
+      include: { productImages: { orderBy: { position: 'asc' } }, collection: true, category: true },
     });
 
     res.json({ product });
   } catch (error: any) {
     console.error('Error updating product:', error);
     res.status(500).json({ message: 'Error updating product', error: error.message });
+  }
+};
+
+export const createProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { name, slug, description, salePrice, categoryId, collectionId, status, stock, tags, sku } = req.body;
+
+    const product = await prisma.product.create({
+      data: {
+        name,
+        slug,
+        description,
+        salePrice: Number(salePrice),
+        categoryId,
+        collectionId,
+        status: (status as any) || 'DRAFT',
+        stock: Number(stock) || 0,
+        tags: tags || [],
+        sku,
+        productCost: 0,
+        totalCost: 0,
+        margin: 0,
+        images: [],
+        variants: [],
+      },
+      include: { productImages: { orderBy: { position: 'asc' } }, collection: true, category: true },
+    });
+
+    res.status(201).json({ product });
+  } catch (error: any) {
+    console.error('Error creating product:', error);
+    res.status(500).json({ message: 'Error creating product', error: error.message });
   }
 };
 

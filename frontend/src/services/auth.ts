@@ -20,18 +20,9 @@ export function authUrl(path: string): string {
 }
 
 export async function signIn(provider: 'google' | 'github' | string = 'google', callbackUrl = '/') {
-  const res = await fetch(authUrl('/csrf'), { credentials: 'include' });
-  const { csrfToken } = await res.json();
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = `${authUrl(`/signin/${provider}`)}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
-  const input = document.createElement('input');
-  input.type = 'hidden';
-  input.name = 'csrfToken';
-  input.value = csrfToken;
-  form.appendChild(input);
-  document.body.appendChild(form);
-  form.submit();
+  // Para proveedores OAuth (Google, GitHub), usar navegación directa (GET)
+  // Auth.js maneja la protección CSRF con el parámetro state
+  window.location.href = `${authUrl(`/signin/${provider}`)}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
 }
 
 export async function signOut(callbackUrl = '/login') {

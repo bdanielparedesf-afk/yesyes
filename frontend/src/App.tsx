@@ -8,6 +8,7 @@ import Checkout from '@/pages/Checkout';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import RecuperarPassword from '@/pages/RecuperarPassword';
+import VerificarEmail from '@/pages/VerificarEmail';
 import Profile from '@/pages/Profile';
 import Orders from '@/pages/Orders';
 import OrderDetail from '@/pages/OrderDetail';
@@ -40,6 +41,7 @@ function App() {
         <Route path="register" element={<Register />} />
         <Route path="registro" element={<Navigate to="/register" replace />} />
         <Route path="recuperar-password" element={<RecuperarPassword />} />
+        <Route path="verificar-email" element={<VerificarEmail />} />
         <Route path="perfil" element={<Profile />} />
         <Route path="mis-pedidos" element={<Orders />} />
         <Route path="pedido/:id" element={<OrderDetail />} />
