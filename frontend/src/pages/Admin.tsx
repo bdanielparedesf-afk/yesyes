@@ -244,7 +244,7 @@ export default function Admin() {
       setProductForm({
         name: p.name,
         slug: p.slug,
-        description: '',
+        description: (p as any).description || '',
         salePrice: String(p.salePrice),
         categoryId: p.category?.id || '',
         collectionId: p.collection?.id || '',

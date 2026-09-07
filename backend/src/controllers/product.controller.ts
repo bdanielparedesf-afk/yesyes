@@ -88,6 +88,8 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
     const { id } = req.params;
     const { name, salePrice, description, status, categoryId, collectionId, stock, tags, sku } = req.body;
 
+    const resolvedCategoryId = categoryId || (await prisma.category.findFirst({ where: { slug: 'general' } }))?.id;
+
     const product = await prisma.product.update({
       where: { id: String(id) },
       data: {
@@ -95,8 +97,8 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
         salePrice: Number(salePrice),
         description,
         status: status as any,
-        categoryId,
-        collectionId,
+        categoryId: resolvedCategoryId,
+        collectionId: collectionId || undefined,
         stock: Number(stock) || 0,
         tags: tags || [],
         sku,
@@ -115,14 +117,16 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
   try {
     const { name, slug, description, salePrice, categoryId, collectionId, status, stock, tags, sku } = req.body;
 
+    const resolvedCategoryId = categoryId || (await prisma.category.findFirst({ where: { slug: 'general' } }))?.id;
+
     const product = await prisma.product.create({
       data: {
         name,
         slug,
         description,
         salePrice: Number(salePrice),
-        categoryId,
-        collectionId,
+        categoryId: resolvedCategoryId,
+        collectionId: collectionId || undefined,
         status: (status as any) || 'DRAFT',
         stock: Number(stock) || 0,
         tags: tags || [],
