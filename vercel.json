@@ -3,7 +3,7 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.js": {
-      "includeFiles": "node_modules/@auth/core/**"
+      "includeFiles": "backend/node_modules/{@auth,@panva,jose,oauth4webapi,preact,preact-render-to-string}/**"
     }
   },
   "rewrites": [
