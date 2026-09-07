@@ -179,22 +179,36 @@ router.post('/forgot-password', (req: ExpressRequest, res: Response) => {
 
 router.post('/signout', async (req: ExpressRequest, res: Response) => {
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
 
-  res.cookie('authjs.session-token', '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-  });
+  // Auth.js setea la cookie de sesión en producción con `Domain=.yesyes.cl`,
+  // `Secure` y `HttpOnly`. Para borrarla hay que repetir exactamente los mismos
+  // atributos (incluido el domain) y con maxAge=0. Limpiamos además variantes
+  // host-only y con prefijos __Secure-/__Host- por si quedaron cookies viejas.
+  const cookieNames = [
+    'authjs.session-token',
+    '__Secure-authjs.session-token',
+    'authjs.csrf-token',
+    '__Host-authjs.csrf-token',
+    'authjs.state',
+    '__Secure-authjs.state',
+    'authjs.pkce.code_verifier',
+    '__Secure-authjs.pkce.code_verifier',
+  ];
+  const domains: Array<string | undefined> = isProduction ? [undefined, '.yesyes.cl'] : [undefined];
 
-  res.cookie('authjs.csrf-token', '', {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-  });
+  for (const name of cookieNames) {
+    for (const domain of domains) {
+      res.cookie(name, '', {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 0,
+        ...(domain ? { domain } : {}),
+      });
+    }
+  }
 
   res.json({ redirectTo: frontendUrl });
 });

@@ -2,22 +2,15 @@ import axios from 'axios';
 import { useAuthStore } from '@/store/useAuthStore';
 
 /**
- * Resuelve la URL base de la API garantizando el prefijo `/api`.
+ * Resuelve la URL base de la API. Siempre es el mismo origen bajo `/api`:
+ *   - Desarrollo:  vite proxya `/api` → http://localhost:3001
+ *   - Producción:  Vercel reescribe `/api/*` → serverless function del backend
  *
- * La API siempre vive bajo `/api`:
- *   - Desarrollo:  http://localhost:3001/api
- *   - Producción:  https://api.yesyes.cl/api
- *
- * Si `VITE_API_URL` está configurada sin el sufijo `/api`
- * (ej: https://api.yesyes.cl), se agrega automáticamente para evitar
- * llamadas a rutas inexistentes que devuelven 404 con HTML.
+ * Mantener todo en el mismo origen evita problemas de CORS y de cookies
+ * entre subdominios (no depende de VITE_API_URL / api.yesyes.cl).
  */
 function resolveApiBaseUrl(): string {
-  const raw = import.meta.env.VITE_API_URL;
-  if (!raw) return '/api';
-  const trimmed = raw.trim().replace(/\/+$/, '');
-  if (trimmed.endsWith('/api')) return trimmed;
-  return `${trimmed}/api`;
+  return '/api';
 }
 
 const api = axios.create({

@@ -327,8 +327,8 @@ export default function Admin() {
   };
 
   const handleLogout = () => {
-    useAuthStore.getState().signOut('/login');
-    navigate('/login', { replace: true });
+    useAuthStore.getState().signOut('/');
+    navigate('/', { replace: true });
   };
 
   if (!isAdmin) return null;
