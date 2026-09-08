@@ -6,7 +6,6 @@ import { Trash2, Eye, Upload, LogOut } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/store/useAuthStore';
 
-const API_BASE = '/api';
 const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
 
 interface ProductImage {
@@ -87,7 +86,7 @@ export default function AdminImport() {
 
   const loadProducts = async () => {
     try {
-      const res = await api.get(`${API_BASE}/admin/recent-products`);
+      const res = await api.get('/admin/recent-products');
       setProducts(res.data.products);
     } catch (e) {
       console.error(e);
@@ -98,7 +97,7 @@ export default function AdminImport() {
     if (!url) return;
     setLoading(true);
     try {
-      const res = await api.post(`${API_BASE}/admin/preview-cj`, { url });
+      const res = await api.post('/admin/preview-cj', { url });
       const data = res.data;
       setPreview(data);
       setEditedTitle(data.titleEs);
@@ -116,7 +115,7 @@ export default function AdminImport() {
     if (!preview) return;
     setImporting(true);
     try {
-      await api.post(`${API_BASE}/admin/import-cj`, {
+      await api.post('/admin/import-cj', {
         url,
         titleEs: editedTitle,
         price: Number(editedPrice),
@@ -136,7 +135,7 @@ export default function AdminImport() {
 
   const handleDelete = async (id: string) => {
     try {
-      await api.delete(`${API_BASE}/admin/products/${id}`);
+      await api.delete(`/admin/products/${id}`);
       toast.success('Producto eliminado');
       loadProducts();
     } catch (e: any) {

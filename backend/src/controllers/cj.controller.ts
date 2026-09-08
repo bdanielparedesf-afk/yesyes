@@ -2,6 +2,36 @@ import { Request, Response } from 'express';
 import { getCJProduct, extractPID, detectCollection, calculatePrice, translateToChileanSpanish } from '../lib/cj';
 import { prisma } from '../lib/prisma';
 
+function parseCJImages(cjData: any): string[] {
+  const images: string[] = [];
+  try {
+    const parsed = JSON.parse(cjData.productImage || '[]');
+    if (Array.isArray(parsed)) images.push(...parsed.filter(Boolean));
+  } catch {}
+  if (!images.length && Array.isArray(cjData.productImageSet)) {
+    images.push(...cjData.productImageSet.filter(Boolean));
+  }
+  return images;
+}
+
+function mapCJVariant(v: any, cjPrice: number) {
+  const sku = v.variantSku || `cj-${v.pid}-${v.vid}`;
+  const name = v.variantNameEn || v.variantName || '';
+  let color: string | null = null;
+  let size: string | null = null;
+  if (name.toLowerCase().includes('purple')) color = 'Morado';
+  else if (name.toLowerCase().includes('pink')) color = 'Rosado';
+  else if (name.toLowerCase().includes('blue')) color = 'Azul';
+  size = name || null;
+  return {
+    sku,
+    price: parseFloat(v.variantSellPrice || v.price || String(cjPrice)),
+    stock: parseInt(v.inventoryNum || v.stock || '999', 10),
+    size,
+    color,
+  };
+}
+
 /**
  * Devuelve la categoría a usar. Si no existe una con el slug indicado,
  * la crea (y si no se pasa slug, garantiza la categoría "General").
@@ -44,10 +74,12 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
 
     const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
     const description = cjData.description || '';
-    const productImage = cjData.productImage || cjData.productImages?.[0] || '';
-    const productImages = cjData.productImages || [];
+    const cjImages = parseCJImages(cjData);
+    const productImage = cjImages[0] || '';
+    const productImages = cjImages.slice(1);
     const variants = cjData.variants || [];
-    const cjPrice = parseFloat(cjData.price || cjData.sellPrice || 0);
+    const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0');
+    const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
 
     // Respetar las ediciones hechas en el panel admin (si vienen en el body)
     const finalTitle = (titleEs && String(titleEs).trim()) || translateToChileanSpanish(productNameEn);
@@ -79,13 +111,14 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
         name: finalTitle,
         slug,
         description: finalDescription,
-        images: [productImage, ...productImages].filter(Boolean),
+        images: cjImages,
         tags: [finalCollectionSlug],
         categoryId: category.id,
         salePrice: finalPrice,
         margin: parseFloat(((finalPrice - cjPrice) / finalPrice * 100).toFixed(2)),
         totalCost: cjPrice,
         productCost: cjPrice,
+        weight: cjWeight,
         status: 'PUBLISHED',
         importSource: 'CJ_DROPSHIPPING',
         cjProductId: String(pid),
@@ -93,16 +126,10 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
         variants: [],
         collectionId,
         productImages: {
-          create: [productImage, ...productImages].filter(Boolean).map((url, i) => ({ url, position: i })),
+          create: cjImages.map((url, i) => ({ url, position: i })),
         },
         productVariants: {
-          create: variants.map((v: any, i: number) => ({
-            sku: `cj-${pid}-${i}`,
-            price: parseFloat(v.price || cjPrice),
-            stock: parseInt(v.stock || '999', 10),
-            size: v.size || v.spec || null,
-            color: v.color || null,
-          })),
+          create: variants.map((v: any, i: number) => mapCJVariant(v, cjPrice)),
         },
       },
       include: { productImages: true, productVariants: true, collection: true },
@@ -137,10 +164,11 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
 
     const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
     const description = cjData.description || '';
-    const productImage = cjData.productImage || cjData.productImages?.[0] || '';
-    const productImages = cjData.productImages || [];
+    const cjImages = parseCJImages(cjData);
+    const productImage = cjImages[0] || '';
+    const productImages = cjImages.slice(1);
     const variants = cjData.variants || [];
-    const cjPrice = parseFloat(cjData.price || cjData.sellPrice || 0);
+    const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0');
     const titleEs = translateToChileanSpanish(productNameEn);
     const collectionSlug = detectCollection(titleEs, description);
     const { price, comparePrice } = calculatePrice(cjPrice);
@@ -153,7 +181,10 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
       description,
       productImage,
       productImages,
-      variants,
+      variants: variants.map((v: any) => ({
+        ...v,
+        sellPrice: parseFloat(v.variantSellPrice || v.price || String(cjPrice)),
+      })),
       cjPrice,
       price,
       comparePrice,
