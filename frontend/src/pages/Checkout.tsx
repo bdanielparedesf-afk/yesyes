@@ -47,7 +47,9 @@ export default function Checkout() {
         total,
       });
 
-      const initPoint = response.sandbox_init_point || response.init_point;
+      // En producción (credenciales APP_USR) MP devuelve init_point; el sandbox
+      // solo existe con credenciales de prueba. Preferimos el real.
+      const initPoint = response.init_point || response.sandbox_init_point;
       window.location.href = initPoint;
     } catch (error) {
       console.error('Error creating payment preference:', error);

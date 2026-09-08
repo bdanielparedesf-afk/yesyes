@@ -18,6 +18,7 @@ import FAQ from '@/pages/FAQ';
 import Admin from '@/pages/Admin';
 import AdminImport from '@/pages/AdminImport';
 import NotFound from '@/pages/NotFound';
+import PaymentResult from '@/pages/PaymentResult';
 
 function Ofertas() {
   return <Navigate to="/productos?filter=ofertas" replace />;
@@ -37,6 +38,10 @@ function App() {
         <Route path="ofertas" element={<Ofertas />} />
         <Route path="carrito" element={<Cart />} />
         <Route path="checkout" element={<Checkout />} />
+        {/* Retorno de Mercado Pago (back_urls de la preferencia de pago) */}
+        <Route path="payment/success" element={<PaymentResult kind="success" />} />
+        <Route path="payment/failure" element={<PaymentResult kind="failure" />} />
+        <Route path="payment/pending" element={<PaymentResult kind="pending" />} />
         <Route path="login" element={<Login />} />
         <Route path="register" element={<Register />} />
         <Route path="registro" element={<Navigate to="/register" replace />} />
