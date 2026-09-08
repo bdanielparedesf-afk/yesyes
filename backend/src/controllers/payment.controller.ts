@@ -5,6 +5,7 @@ import { createOrder } from '../services/order.service';
 import { prisma } from '../lib/prisma';
 
 const configuredFrontend = process.env.FRONTEND_URL?.replace(/\/$/, '') || '';
+const configuredBackend = process.env.BACKEND_URL?.replace(/\/$/, '') || '';
 
 /**
  * Las back_urls y el notification_url son URLs PÚBLICAS a las que Mercado Pago
@@ -14,6 +15,15 @@ const configuredFrontend = process.env.FRONTEND_URL?.replace(/\/$/, '') || '';
  * HTTPS, aunque el backend esté corriendo localmente.
  */
 const SITE_URL = configuredFrontend.startsWith('https://') ? configuredFrontend : 'https://yesyes.cl';
+
+/**
+ * El notification_url debe apuntar al BACKEND (donde vive el webhook), no al
+ * frontend. En Vercel, el rewrite /api/* enruta al serverless function del
+ * backend, por lo que SITE_URL también funciona. Pero usamos BACKEND_URL de
+ * forma explícita cuando está disponible y es HTTPS; si no, caemos al SITE_URL.
+ */
+const API_URL =
+  (configuredBackend.startsWith('https://') ? configuredBackend : '') || SITE_URL;
 
 /**
  * Garantiza que cada item del carrito apunte a un producto REAL de la BD.
@@ -77,69 +87,75 @@ async function resolveCartItemProductId(item: {
 
 export const createPaymentPreference = async (req: Request, res: Response): Promise<void> => {
   try {
+    getPublicKey();
+
     const { items, payer, total } = req.body;
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    if (!items || items.length === 0) {
       res.status(400).json({ message: 'items are required' });
       return;
     }
 
-    const normalizedItems = [];
     for (const item of items) {
-      const quantity = Math.max(1, Number(item.quantity) || 1);
-      const unitPrice = Number(item.price) || 0;
-      normalizedItems.push({
-        productId: await resolveCartItemProductId(item),
-        productName: String(item.title || item.name || 'Producto'),
-        productImage: String(item.image || ''),
-        quantity,
-        unitPrice,
-        totalPrice: unitPrice * quantity,
-        variant: item.variant || null,
-        variantId: item.variantId || null,
-      });
+      if (!item.price || Number(item.price) <= 0) {
+        res.status(400).json({
+          message: 'unit_price invalid',
+          detail: `Producto ${item.title} sin precio válido. En producción MP no acepta $0`,
+        });
+        return;
+      }
     }
 
-    const itemsTotal = normalizedItems.reduce((sum, i) => sum + i.totalPrice, 0);
+    const mpItems = items.map((item: any) => ({
+      id: String(item.id || item.productId || ''),
+      title: String(item.title || item.name || 'Producto'),
+      description: String(item.variant || ''),
+      quantity: Math.max(1, Number(item.quantity) || 1),
+      unit_price: Number(item.price),
+      currency_id: 'CLP',
+      ...(item.image ? { picture_url: String(item.image) } : {}),
+    }));
+
+    const itemsTotal = mpItems.reduce((sum: number, i: any) => sum + i.unit_price * i.quantity, 0);
     const clientTotal = Number(total) || 0;
-    // El frontend manda el total CON envío; Mercado Pago cobra la suma de items.
-    // Agregamos el envío como item para que el cobro coincida con lo mostrado.
     const shippingCost = Math.max(0, Math.round((clientTotal - itemsTotal) * 100) / 100);
-    const finalTotal = clientTotal > 0 ? clientTotal : itemsTotal;
+
+    if (shippingCost > 0) {
+      mpItems.push({ id: 'envio', title: 'Envío', description: '', quantity: 1, unit_price: shippingCost, currency_id: 'CLP' });
+    }
 
     const order = await createOrder({
       userId: (req as any).user?.id,
-      items: normalizedItems,
+      items: mpItems.map((i: any) => ({
+        productId: i.id,
+        productName: i.title,
+        productImage: i.picture_url || '',
+        quantity: i.quantity,
+        unitPrice: i.unit_price,
+        totalPrice: i.unit_price * i.quantity,
+        variant: i.description || null,
+        variantId: null,
+      })),
       subtotal: itemsTotal,
       shipping: shippingCost,
       discount: 0,
-      total: finalTotal,
+      total: clientTotal > 0 ? clientTotal : itemsTotal + shippingCost,
       shippingAddress: {},
     });
 
-    const mpItems: any[] = normalizedItems.map((item) => ({
-      id: item.productId,
-      title: item.productName,
-      description: item.variant || '',
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-      ...(item.productImage ? { picture_url: item.productImage } : {}),
-    }));
-    if (shippingCost > 0) {
-      mpItems.push({ id: 'envio', title: 'Envío', description: '', quantity: 1, unit_price: shippingCost });
-    }
+    const frontendUrl = process.env.FRONTEND_URL?.replace(/\/$/, '') || '';
+    const backendUrl = process.env.BACKEND_URL?.replace(/\/$/, '') || '';
 
     const preferenceData: any = {
       items: mpItems,
       external_reference: order.id,
       back_urls: {
-        success: `${SITE_URL}/payment/success`,
-        failure: `${SITE_URL}/payment/failure`,
-        pending: `${SITE_URL}/payment/pending`,
+        success: `${frontendUrl}/payment/success`,
+        failure: `${frontendUrl}/payment/failure`,
+        pending: `${frontendUrl}/payment/pending`,
       },
       auto_return: 'approved',
-      // El webhook vive en el MISMO dominio (api.yesyes.cl está caído).
-      notification_url: `${SITE_URL}/api/webhooks/mercadopago`,
+      notification_url: `${backendUrl}/api/payments/webhook`,
     };
 
     if (payer) {
@@ -147,7 +163,6 @@ export const createPaymentPreference = async (req: Request, res: Response): Prom
       const payerData: any = {
         ...(String(payer.name || '').trim() ? { name: String(payer.name).trim() } : {}),
         ...(String(payer.surname || '').trim() ? { surname: String(payer.surname).trim() } : {}),
-        // Solo enviar email si es plausible; un email vacío/invalido rechaza MP.
         ...(email.includes('@') && email.includes('.') ? { email } : {}),
       };
       const rawPhone = String(payer.phone?.number || '').replace(/[^0-9]/g, '');
@@ -160,6 +175,7 @@ export const createPaymentPreference = async (req: Request, res: Response): Prom
       }
     }
 
+    const publicKey = getPublicKey();
     const preferenceClient = getPreferenceClient();
     const response = await preferenceClient.create({ body: preferenceData });
 
@@ -167,19 +183,40 @@ export const createPaymentPreference = async (req: Request, res: Response): Prom
       id: response.id,
       init_point: response.init_point,
       sandbox_init_point: response.sandbox_init_point,
-      public_key: getPublicKey(),
+      public_key: publicKey,
       orderId: order.id,
     });
   } catch (error: any) {
-    // Detalle completo en el log del servidor y detalle breve al cliente
-    // para que un fallo de MP no sea un misterioso "Error al procesar el pago".
     console.error('Error creating payment preference:', error?.message || error);
     if (error?.error) console.error('Mercado Pago API error:', JSON.stringify(error.error));
-    res.status(500).json({
+    if (error?.causes) console.error('Mercado Pago causes:', JSON.stringify(error.causes));
+
+    const httpStatus = error?.status || 500;
+    const detail = error?.cause || error?.message || 'Error desconocido';
+
+    res.status(httpStatus).json({
       message: 'Error creating payment preference',
-      detail: error?.message || 'Error desconocido',
+      detail,
+      ...(error?.status ? { mp_status: error.status } : {}),
+      ...(MP_ERROR_MAP[error?.name] ? { error_type: MP_ERROR_MAP[error?.name] } : {}),
     });
   }
+};
+
+const MP_ERROR_MAP: Record<string, string> = {
+  MPBadRequestError: 'bad_request',
+  MPAuthenticationError: 'authentication_error',
+  MPPaymentError: 'payment_error',
+  MPForbiddenError: 'forbidden',
+  MPNotFoundError: 'not_found',
+  MPIdempotencyError: 'idempotency_conflict',
+  MPValidationError: 'validation_error',
+  MPRateLimitError: 'rate_limit',
+  MPResourceLockedError: 'resource_locked',
+  MPDependencyError: 'dependency_error',
+  MPServerError: 'server_error',
+  MPConnectionError: 'connection_error',
+  MercadoPagoError: 'mercadopago_error',
 };
 
 export const getPaymentStatus = async (req: Request, res: Response): Promise<void> => {

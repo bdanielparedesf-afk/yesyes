@@ -51,9 +51,10 @@ export default function Checkout() {
       // solo existe con credenciales de prueba. Preferimos el real.
       const initPoint = response.init_point || response.sandbox_init_point;
       window.location.href = initPoint;
-    } catch (error) {
-      console.error('Error creating payment preference:', error);
-      toast.error('Error al procesar el pago. Intenta nuevamente.');
+        } catch (error: any) {
+      const errDetail = error?.response?.data?.detail || error?.message || 'Error desconocido';
+      console.error('Error creating payment preference:', errDetail);
+      toast.error(error.response?.data?.detail || error.response?.data?.message || 'Error al crear preferencia');
       setLoading(false);
     }
   };
