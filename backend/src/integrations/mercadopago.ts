@@ -1,8 +1,7 @@
 import { MercadoPagoConfig, Preference, WebhookSignatureValidator } from 'mercadopago';
-import dotenv from 'dotenv';
 
-dotenv.config();
-
+// En Vercel serverless NO hay archivo .env: las variables las inyecta el runtime
+// directamente en process.env. Por eso se lee process.env directamente (sin dotenv).
 const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
 const publicKey = process.env.MERCADOPAGO_PUBLIC_KEY;
 const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
