@@ -174,11 +174,18 @@ export default function AdminImport() {
     });
   };
 
-  const handlePreview = async () => {
-    if (!url) return;
+  const [previewError, setPreviewError] = useState('');
+
+  const handlePreview = async (overrideUrl?: string) => {
+    const targetUrl = (overrideUrl ?? url).trim();
+    if (!targetUrl) {
+      setPreviewError('Pega primero el link del producto CJ.');
+      return;
+    }
     setLoading(true);
+    setPreviewError('');
     try {
-      const res = await api.post('/admin/preview-cj', { url });
+      const res = await api.post('/admin/preview-cj', { url: targetUrl });
       const data = res.data;
       setPreview(data);
       setEditedTitle(data.titleEs);
@@ -203,13 +210,34 @@ export default function AdminImport() {
       const finalPriceCLP = roundToTen(finalPriceUSD * dollarRate);
 
       setForm({ cjPrice, shipping, totalCost, stock, margin, finalPriceUSD, finalPriceCLP });
-      setEditedCollection(data.autoCategory || data.collectionSlug);
-      setEditedDescription(data.description);
+      setEditedCollection(data.collectionSlug || data.autoCategory || '');
+      setEditedDescription(data.description || '');
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Error al obtener preview');
+      const msg =
+        e.response?.data?.message ||
+        e.response?.data?.error ||
+        (e.response?.status === 404
+          ? 'CJ no devolvió ese producto. Revisa que el link sea de cjdropshipping.com y contenga el ID.'
+          : e.response?.status === 400
+            ? 'Ese link no trae un ID válido de CJ. Copia el link completo desde el navegador.'
+            : 'Error al obtener preview. Intenta de nuevo.');
+      setPreviewError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
+  };
+
+  const onUrlChange = (value: string) => {
+    setUrl(value);
+    if (previewError) setPreviewError('');
+  };
+
+  const onUrlPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text').trim();
+    if (!pasted) return;
+    // Deja que el input se actualice y luego dispara el preview solo
+    setTimeout(() => handlePreview(pasted), 150);
   };
 
   const handleImport = async () => {
@@ -286,23 +314,42 @@ export default function AdminImport() {
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <label className="block text-sm font-medium text-gray-700 mb-2">URL del producto CJ</label>
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <input
               type="text"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => onUrlChange(e.target.value)}
+              onPaste={onUrlPaste}
+              onKeyDown={(e) => { if (e.key === 'Enter') handlePreview(); }}
               className="flex-1 px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              placeholder="https://www.cjdropshipping.com/product/..."
+              placeholder="Pega aquí el link de CJ, ej: https://www.cjdropshipping.com/product/..."
             />
             <button
-              onClick={handlePreview}
-              disabled={loading}
+              onClick={() => handlePreview()}
+              disabled={loading || !url.trim()}
               className="px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-lg flex items-center gap-2 transition-colors"
             >
               <Eye className="w-5 h-5" />
               {loading ? 'Cargando...' : 'Preview'}
             </button>
           </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Acepta links de cjdropshipping.com (product, list, tienda) o un ID directo. Al pegar se busca solo.
+          </p>
+          {previewError && (
+            <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              {previewError}
+              <div className="text-xs text-red-600 mt-1">
+                Tip: abre el producto en CJ, copia la URL completa de la barra del navegador y pégala aquí.
+              </div>
+            </div>
+          )}
+          {loading && (
+            <div className="mt-3 text-sm text-gray-600 flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              Buscando producto en CJ, espera unos segundos...
+            </div>
+          )}
         </div>
 
         {preview && (

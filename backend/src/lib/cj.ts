@@ -7,6 +7,10 @@ const CJ_API_KEY = process.env.CJ_API_KEY;
 let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
 
+const RE_PROD = /\/product\/([A-Za-z0-9-]+)/i;
+const RE_DETAIL = /\/product-detail\/([A-Za-z0-9-]+)/i;
+const RE_NUM6 = /(\d{6,})/;
+
 export async function getCJToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry) {
     return cachedToken;
@@ -28,29 +32,73 @@ export async function getCJToken(): Promise<string> {
 }
 
 export function extractPID(url: string): string | null {
+  const raw = (url || '').trim();
+  if (!raw) return null;
   try {
-    const u = new URL(url);
-    if (u.hostname.includes('cjdropshipping.com')) {
-      const match = u.pathname.match(/\/product\/(\d+)/);
-      if (match && match[1]) return match[1];
-      const pMatch = u.pathname.match(/p-([A-Za-z0-9-]+)/);
-      if (pMatch && pMatch[1]) return pMatch[1];
-    }
-    const num = url.match(/(\d{6,})/);
-    return num?.[1] ?? null;
+    const full = raw.startsWith('http') ? raw : 'https://' + raw;
+    const u = new URL(full);
+    const qp =
+      u.searchParams.get('pid') ||
+      u.searchParams.get('productId') ||
+      u.searchParams.get('id') ||
+      u.searchParams.get('goodsId');
+    if (qp && /^[A-Za-z0-9-]{4,}$/.test(qp)) return qp;
+    const hay = u.pathname + ' ' + u.search + ' ' + u.hash + ' ' + raw;
+    let m = hay.match(/pid=([A-Za-z0-9-]{4,})/i);
+    if (m) return m[1];
+    m = hay.match(/\/product\/([A-Za-z0-9-]{5,})/i);
+    if (m) return m[1];
+    m = hay.match(/\/product-detail\/([A-Za-z0-9-]{5,})/i);
+    if (m) return m[1];
+    m = hay.match(/p-([A-Za-z0-9-]{6,})/i);
+    if (m) return m[1];
+    m = hay.match(/([A-F0-9]{8}-[A-F0-9-]{4,}-[A-F0-9-]{4,})/i);
+    if (m) return m[1];
+    m = hay.match(/([0-9a-fA-F]{32})/);
+    if (m) return m[1];
+    m = hay.match(/(CJ[0-9]{6,})/i);
+    if (m) return m[1].toUpperCase();
+    m = hay.match(/(VID[0-9]+)/i);
+    if (m) return m[1].toUpperCase();
   } catch {
-    const num = url.match(/(\d{6,})/);
-    return num?.[1] ?? null;
+    // sigue abajo con regex plana
   }
+  let m = raw.match(/pid=([A-Za-z0-9-]{4,})/i);
+  if (m) return m[1];
+  m = raw.match(/p-([A-Za-z0-9-]{6,})/i);
+  if (m) return m[1];
+  m = raw.match(/(\d{6,})/);
+  return m ? m[1] : null;
 }
 
 export async function getCJProduct(pid: string): Promise<any> {
   const token = await getCJToken();
-  const response = await axios.get(`${CJ_API_BASE}/product/query`, {
-    headers: { 'CJ-Access-Token': token },
-    params: { pid },
-  });
-  return response.data?.data || response.data;
+  const cleanPid = String(pid || '').trim();
+  const attempts: Array<{ url: string; params: Record<string, any> }> = [
+    { url: `${CJ_API_BASE}/product/query`, params: { pid: cleanPid } },
+    { url: `${CJ_API_BASE}/product/query`, params: { pid: cleanPid, productId: cleanPid } },
+    { url: `${CJ_API_BASE}/product/list`, params: { pid: cleanPid, pageNum: 1, pageSize: 10 } },
+  ];
+  for (const att of attempts) {
+    try {
+      const response = await axios.get(att.url, {
+        headers: { 'CJ-Access-Token': token },
+        params: att.params,
+        timeout: 15000,
+      });
+      const payload = response.data?.data ?? response.data;
+      if (Array.isArray(payload) && payload.length > 0) return payload[0];
+      if (payload?.list && Array.isArray(payload.list) && payload.list.length > 0) return payload.list[0];
+      if (payload?.content && Array.isArray(payload.content) && payload.content.length > 0) return payload.content[0];
+      if (payload && (payload.productNameEn || payload.productName || payload.pid || payload.id)) return payload;
+      console.warn('[CJ] sin match pid=' + cleanPid + ' resp=' + JSON.stringify(response.data)?.slice(0, 600));
+    } catch (err: any) {
+      const st = err?.response?.status ?? 'no-status';
+      const body = err?.response ? JSON.stringify(err.response.data)?.slice(0, 600) : String(err?.message ?? err);
+      console.warn('[CJ] fallo pid=' + cleanPid + ' status=' + st + ' body=' + body);
+    }
+  }
+  return null;
 }
 
 export function detectCollection(title: string, description: string): string {

@@ -266,19 +266,29 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
   try {
     const { url } = req.body;
     if (!url) {
-      res.status(400).json({ message: 'URL is required' });
+      res.status(400).json({ message: 'Pega el link del producto CJ.' });
       return;
     }
 
     const pid = extractPID(url);
     if (!pid) {
-      res.status(400).json({ message: 'Could not extract product ID from URL' });
+      console.warn('[CJ preview] no se pudo extraer PID de:', url);
+      res.status(400).json({ message: 'No pude leer el ID desde ese link. Copia la URL completa del producto en CJ.' });
       return;
     }
 
-    const cjData = await getCJProduct(pid);
+    console.log('[CJ preview] pid extraido:', pid);
+
+    let cjData: any = null;
+    try {
+      cjData = await getCJProduct(pid);
+    } catch (err: any) {
+      console.error('[CJ preview] error CJ api:', err?.response?.status, err?.response?.data ?? err?.message);
+      res.status(502).json({ message: 'CJ respondió con error. Revisa tu API key o intenta de nuevo.', error: err?.message });
+      return;
+    }
     if (!cjData) {
-      res.status(404).json({ message: 'Product not found on CJ' });
+      res.status(404).json({ message: 'CJ no encontró producto con ID ' + pid + '. Abre el producto en CJ y copia el link completo.' });
       return;
     }
 
