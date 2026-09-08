@@ -4,7 +4,34 @@ import { prisma } from '../lib/prisma';
 
 // Margen 100% = x2 (si cuesta 1, vendemos a 2)
 const MARGIN_MULTIPLIER = 2;
-const EXCHANGE_RATE = Number(process.env.EXCHANGE_RATE) || 950; // USD -> CLP
+
+/**
+ * Obtiene el tipo de cambio USD -> CLP desde mindicador.cl.
+ * Retorna un número; si falla, usa 950 por defecto.
+ */
+async function getDollarRate(): Promise<number> {
+  try {
+    const res = await fetch('https://mindicador.cl/api/dolar');
+    if (!res.ok) return 950;
+    const json = await res.json();
+    // mindicador.cl devuelve { resultado: [...], utm: {...}, ...
+
+    // `dolar` suele ser un array de objetos con `valor`
+    const dolarEntry = (json.dolar && json.dolar.length)
+      ? json.dolar[0]
+      : null;
+    const raw = dolarEntry ? dolarEntry.valor : null;
+    const value = parseFloat(String(raw ?? ''));
+    if (Number.isFinite(value) && value > 0) return value;
+  } catch (error) {
+    console.warn('Error fetching dollar rate from mindicador.cl, using default 950:', error);
+  }
+  return 950;
+}
+
+function roundToTen(value: number): number {
+  return Math.round(value / 10) * 10;
+}
 
 function autoCategory(cjProduct: any): string {
   const title = ((cjProduct.productNameEn || cjProduct.productName || '') + ' ' + (cjProduct.category || '')).toLowerCase();
@@ -156,8 +183,21 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
 
     const shouldApplyMargin = applyMargin !== false;
     const marginMultiplier = incomingMargin ?? MARGIN_MULTIPLIER;
-    const precioFinalUSD = shouldApplyMargin ? totalCost * marginMultiplier : totalCost;
-    const precioFinalCLP = Math.round(precioFinalUSD * EXCHANGE_RATE);
+
+    // Obtener dólar del día desde mindicador.cl
+    const dollarRate = await getDollarRate();
+
+    // Costo Total USD = Precio + Envío
+    const costTotalUSD = totalCost;
+
+    // Costo Total CLP = Costo Total USD * dolar
+    const costTotalCLP = costTotalUSD * dollarRate;
+
+    // Precio Final CLP = Costo Total USD * margen * dolar
+    const precioFinalUSD = shouldApplyMargin ? costTotalUSD * marginMultiplier : costTotalUSD;
+    const precioFinalCLP = roundToTen(precioFinalUSD * dollarRate);
+
+    // finalPrice es el precio de venta en CLP
     const finalPrice =
       incomingFinalPriceCLP ??
       incomingFinalPrice ??
@@ -193,7 +233,7 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
         tags: [finalCollectionSlug],
         categoryId: category.id,
         salePrice: finalPrice,
-        margin: parseFloat(((finalPrice - totalCost * EXCHANGE_RATE) / finalPrice * 100).toFixed(2)),
+        margin: parseFloat(((finalPrice - costTotalCLP) / finalPrice * 100).toFixed(2)),
         totalCost: totalCost,
         productCost: cjPrice,
         shippingCost: Number.isFinite(shippingCost) ? shippingCost : 0,
@@ -255,8 +295,13 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
     const titleEs = translateToChileanSpanish(productNameEn);
     const collectionSlug = detectCollection(titleEs, description);
 
-    const suggestedPriceUSD = totalCost * MARGIN_MULTIPLIER;
-    const suggestedPriceCLP = Math.round(suggestedPriceUSD * EXCHANGE_RATE);
+    // Obtener dólar del día desde mindicador.cl
+    const dollarRate = await getDollarRate();
+
+    const costTotalUSD = totalCost;
+    const costTotalCLP = costTotalUSD * dollarRate;
+    const suggestedPriceUSD = costTotalUSD * MARGIN_MULTIPLIER;
+    const suggestedPriceCLP = roundToTen(suggestedPriceUSD * dollarRate);
 
     const collections = await prisma.collection.findMany({ orderBy: { name: 'asc' } });
 
@@ -282,6 +327,8 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
       collectionSlug,
       autoCategory: autoCategory(cjData),
       collections,
+      dollarRate,
+      costTotalCLP,
     });
   } catch (error: any) {
     console.error('Error previewing CJ product:', error);

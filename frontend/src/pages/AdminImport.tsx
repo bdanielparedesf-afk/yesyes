@@ -80,7 +80,35 @@ export default function AdminImport() {
     finalPriceCLP: 0,
   });
 
-  const DOLLAR_RATE = 950;
+  const [dollarRate, setDollarRate] = useState(950);
+  const [dollarLoading, setDollarLoading] = useState(false);
+
+  async function fetchDollarRate() {
+    try {
+      setDollarLoading(true);
+      const res = await fetch('https://mindicador.cl/api/dolar');
+      if (!res.ok) throw new Error('HTTP error');
+      const json = await res.json();
+      const dolarEntry = (json.dolar && json.dolar.length) ? json.dolar[0] : null;
+      const raw = dolarEntry ? dolarEntry.valor : null;
+      const value = parseFloat(String(raw ?? ''));
+      if (Number.isFinite(value) && value > 0) {
+        setDollarRate(value);
+      }
+    } catch (e) {
+      console.warn('Error fetching dollar rate, keeping default 950:', e);
+    } finally {
+      setDollarLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchDollarRate();
+  }, []);
+
+  function roundToTen(value: number): number {
+    return Math.round(value / 10) * 10;
+  }
 
   const marginOptions = [
     { value: 1.5, label: '50% (x1.5)' },
@@ -122,19 +150,26 @@ export default function AdminImport() {
   const updateForm = (patch: Partial<typeof form>) => {
     setForm((prev) => {
       const next = { ...prev, ...patch };
+
+      // Si cambia shipping o cjPrice, recalcular totalCost
       if (patch.shipping !== undefined || patch.cjPrice !== undefined) {
         next.totalCost = Number((next.cjPrice + next.shipping).toFixed(2));
       }
+
+      // Si cambia totalCost o margin, recalcular finalPriceUSD y finalPriceCLP
       if (patch.totalCost !== undefined || patch.margin !== undefined) {
         next.finalPriceUSD = Number((next.totalCost * next.margin).toFixed(2));
-        next.finalPriceCLP = Math.round(next.finalPriceUSD * DOLLAR_RATE);
+        next.finalPriceCLP = roundToTen(next.finalPriceUSD * dollarRate);
       }
+
       if (patch.finalPriceUSD !== undefined) {
-        next.finalPriceCLP = Math.round(next.finalPriceUSD * DOLLAR_RATE);
+        next.finalPriceCLP = roundToTen(next.finalPriceUSD * dollarRate);
       }
+
       if (patch.finalPriceCLP !== undefined) {
-        next.finalPriceUSD = Number((next.finalPriceCLP / DOLLAR_RATE).toFixed(2));
+        next.finalPriceUSD = Number((next.finalPriceCLP / dollarRate).toFixed(2));
       }
+
       return next;
     });
   };
@@ -147,13 +182,26 @@ export default function AdminImport() {
       const data = res.data;
       setPreview(data);
       setEditedTitle(data.titleEs);
-      const cjPrice = Number(data.cjPrice || 0);
-      const shipping = Number(data.shipping || 0);
-      const totalCost = Number((cjPrice + shipping).toFixed(2));
-      const stock = data.stock && data.stock > 0 ? data.stock : 100;
+
+      let cjPrice = Number(data.cjPrice || 0);
+      let shipping = Number(data.shipping || 0);
+      let stock = data.stock && data.stock > 0 ? data.stock : 100;
       const margin = 2;
+
+      // Defaults: si shipping viene 0, poner 9.17 por defecto
+      if (shipping === 0) {
+        shipping = 9.17;
+      }
+
+      // Defaults: si stock viene 0, poner 100 por defecto
+      if (stock === 0) {
+        stock = 100;
+      }
+
+      const totalCost = Number((cjPrice + shipping).toFixed(2));
       const finalPriceUSD = Number((totalCost * margin).toFixed(2));
-      const finalPriceCLP = Math.round(finalPriceUSD * DOLLAR_RATE);
+      const finalPriceCLP = roundToTen(finalPriceUSD * dollarRate);
+
       setForm({ cjPrice, shipping, totalCost, stock, margin, finalPriceUSD, finalPriceCLP });
       setEditedCollection(data.autoCategory || data.collectionSlug);
       setEditedDescription(data.description);
@@ -286,7 +334,7 @@ export default function AdminImport() {
                     onChange={(e) => updateForm({ shipping: Number(e.target.value) })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
-                  <p className="text-[11px] text-gray-500 mt-1">Editable si CJ no lo informa</p>
+                  <p className="text-[11px] text-gray-500 mt-1">Si viene 0 → 9.17 por defecto</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Costo Total (USD)</label>
@@ -294,7 +342,7 @@ export default function AdminImport() {
                     type="number"
                     step="0.01"
                     value={form.totalCost}
-                    onChange={(e) => updateForm({ totalCost: Number(e.target.value) })}
+                    readOnly
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
                   <p className="text-[11px] text-gray-500 mt-1">Auto: precio + envío</p>
@@ -333,8 +381,14 @@ export default function AdminImport() {
                     onChange={(e) => updateForm({ finalPriceCLP: Number(e.target.value) })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
-                  <p className="text-[11px] text-gray-500 mt-1">≈ ${Number((form.finalPriceCLP / DOLLAR_RATE).toFixed(2))} USD</p>
+                  <p className="text-[11px] text-gray-500 mt-1">≈ ${Number((form.finalPriceCLP / dollarRate).toFixed(2))} USD</p>
                 </div>
+              </div>
+              <div className="flex justify-between text-sm bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                <span className="text-gray-700 font-medium">Venta:</span>
+                <span className="font-bold text-green-700">
+                  ${form.finalPriceUSD.toFixed(2)} USD / ${form.finalPriceCLP.toLocaleString('es-CL')} CLP
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Ganancia real:</span>
@@ -350,7 +404,7 @@ export default function AdminImport() {
                   onChange={(e) => updateForm({ stock: Number(e.target.value) })}
                   className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
-                <p className="text-xs text-gray-500 mt-1">CJ: {Number(preview.inventory ?? preview.stock ?? 0).toLocaleString('es-CL')} unidades</p>
+                <p className="text-xs text-gray-500 mt-1">Si viene 0 → 100 por defecto · CJ: {Number(preview.inventory ?? preview.stock ?? 0).toLocaleString('es-CL')} unidades</p>
               </div>
             </div>
             <div className="grid md:grid-cols-2 gap-6">
