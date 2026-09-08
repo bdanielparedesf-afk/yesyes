@@ -1,38 +1,47 @@
 import { MercadoPagoConfig, Preference, WebhookSignatureValidator } from 'mercadopago';
 
 // En Vercel serverless NO hay archivo .env: las variables las inyecta el runtime
-// directamente en process.env. Por eso se lee process.env directamente (sin dotenv).
-const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
-const publicKey = process.env.MERCADOPAGO_PUBLIC_KEY;
-const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
+// directamente en process.env. Se leen de forma DINÁMICA (dentro de las funciones)
+// para evitar que el módulo se cargue antes de que el runtime inyecte las variables.
+let _mpClient: MercadoPagoConfig | null = null;
+let _preferenceClient: Preference | null = null;
 
-let mpClient: MercadoPagoConfig | null = null;
-let preferenceClient: Preference | null = null;
+const getAccessToken = (): string | undefined => process.env.MERCADOPAGO_ACCESS_TOKEN;
+const getPublicKeyValue = (): string | undefined => process.env.MERCADOPAGO_PUBLIC_KEY;
+const getWebhookSecretValue = (): string | undefined => process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
-if (accessToken) {
-  mpClient = new MercadoPagoConfig({ accessToken });
-  preferenceClient = new Preference(mpClient);
-}
+const buildClient = (): void => {
+  const token = getAccessToken();
+  if (token) {
+    _mpClient = new MercadoPagoConfig({ accessToken: token });
+    _preferenceClient = new Preference(_mpClient);
+  }
+};
 
 export { WebhookSignatureValidator };
 
 export const getPublicKey = (): string => {
-  if (!publicKey) {
+  const key = getPublicKeyValue();
+  if (!key) {
     throw new Error('MERCADOPAGO_PUBLIC_KEY is not defined');
   }
-  return publicKey;
+  return key;
 };
 
 export const getWebhookSecret = (): string => {
-  if (!webhookSecret) {
+  const secret = getWebhookSecretValue();
+  if (!secret) {
     throw new Error('MERCADOPAGO_WEBHOOK_SECRET is not defined');
   }
-  return webhookSecret;
+  return secret;
 };
 
 export const getPreferenceClient = (): Preference => {
-  if (!preferenceClient) {
+  if (!_preferenceClient) {
+    buildClient();
+  }
+  if (!_preferenceClient) {
     throw new Error('MERCADOPAGO_ACCESS_TOKEN is not defined');
   }
-  return preferenceClient;
+  return _preferenceClient;
 };
