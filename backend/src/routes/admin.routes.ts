@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { authenticate, requireAdmin, isAdmin } from '../middlewares/auth';
 import {
   getRecentProducts,
@@ -14,7 +14,6 @@ import { getOrders, updateOrderStatus } from '../controllers/order.controller';
 import { getUsers, updateUserRole } from '../controllers/user.controller';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 router.use(authenticate, requireAdmin, isAdmin);
 

@@ -108,6 +108,10 @@ export async function signIn(provider: 'google' | 'github' | string = 'google', 
 }
 
 export async function signOut(callbackUrl = '/') {
+  // Limpia el caché de sesión ANTES de cerrar: si no, durante 5 minutos
+  // checkSession() seguía devolviendo la sesión vieja y el usuario aparecía
+  // logueado después de cerrar sesión (la "confusión").
+  clearSessionCache();
   try {
     const csrfRes = await api.get('/auth/csrf', { withCredentials: true });
     const csrfToken = csrfRes.data?.csrfToken;
@@ -121,6 +125,7 @@ export async function signOut(callbackUrl = '/') {
   } catch (error) {
     console.error('Logout error', error);
   } finally {
+    clearSessionCache();
     window.location.href = callbackUrl;
   }
 }
@@ -132,5 +137,22 @@ export async function register(data: { name: string; lastName: string; email: st
 
 export async function login(data: { email: string; password: string }) {
   const res = await api.post('/auth/login', data);
+  clearSessionCache();
   return res.data;
+}
+
+/**
+ * Valida el token JWT propio (login email/contraseña) contra /auth/me.
+ * Se usa como fallback cuando no hay cookie de sesión de Auth.js
+ * (que solo existe tras un login con Google).
+ */
+export async function verifyToken(token: string): Promise<SessionUser | null> {
+  try {
+    const res = await api.get('/auth/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return (res.data?.user as SessionUser) ?? null;
+  } catch {
+    return null;
+  }
 }

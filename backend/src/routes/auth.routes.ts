@@ -3,10 +3,9 @@ import { handleAuth, handleAuthError } from '../lib/auth-handler';
 import { logger } from '../utils/logger';
 import { registerUser, loginUser, generateToken, verifyEmail, createVerificationToken, sendVerificationEmail, getCurrentUser, registerSchema, loginSchema } from '../services/auth.service';
 import { loginLimiter } from '../middlewares/rateLimiter';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'bdanielparedesf@gmail.com').toLowerCase().trim();
 

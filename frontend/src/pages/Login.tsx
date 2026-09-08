@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -18,10 +18,22 @@ export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     checkSession();
   }, [checkSession]);
+
+  // Muestra los errores que llegan de vuelta del flujo de Google
+  // (/login?error=...) y limpia el parámetro de la URL.
+  useEffect(() => {
+    const oauthError = searchParams.get('error');
+    if (oauthError) {
+      toast.error(oauthError);
+      searchParams.delete('error');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (status === 'authenticated') {
@@ -136,7 +148,16 @@ export default function Login() {
           </div>
 
           <button
-            onClick={() => signIn('google', '/')}
+            onClick={() => {
+              // Marca de retorno: tras el callback de Google, el admin aterriza
+              // en /admin y el resto de usuarios en el inicio (/).
+              try {
+                sessionStorage.setItem('yesyes_post_login', '1');
+              } catch {
+                /* sessionStorage no disponible */
+              }
+              signIn('google', '/');
+            }}
             className="w-full flex items-center justify-center space-x-3 px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

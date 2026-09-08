@@ -1,7 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 /** Garantiza una categoría válida (crea "General" si no existe). */
 async function resolveCategoryId(categoryId?: string): Promise<string> {

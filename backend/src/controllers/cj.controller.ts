@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { getCJProduct, extractPID, detectCollection, calculatePrice, translateToChileanSpanish } from '../lib/cj';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 /**
  * Devuelve la categoría a usar. Si no existe una con el slug indicado,

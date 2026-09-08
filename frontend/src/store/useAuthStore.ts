@@ -6,8 +6,32 @@ import {
   signOut as signOutService,
   register as registerService,
   login as loginService,
+  verifyToken,
   Session,
 } from '@/services/auth';
+
+const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
+
+/**
+ * Tras un login con Google, la página de retorno se recarga completa.
+ * Si la marca `yesyes_post_login` está presente (la pone el botón de Google
+ * en Login.tsx), redirigimos UNA sola vez: el admin a /admin y el resto de
+ * usuarios al inicio (/). Así cada quien aterriza donde le corresponde.
+ */
+function consumePostLoginRedirect(user: { email?: string; role?: string } | null | undefined) {
+  try {
+    if (sessionStorage.getItem('yesyes_post_login') !== '1') return;
+    sessionStorage.removeItem('yesyes_post_login');
+    const isAdmin =
+      user?.email?.toLowerCase().trim() === ADMIN_EMAIL || user?.role === 'ADMIN';
+    const target = isAdmin ? '/admin' : '/';
+    if (window.location.pathname !== target) {
+      window.location.assign(target);
+    }
+  } catch {
+    // sessionStorage no disponible → ignorar
+  }
+}
 
 interface AuthState {
   user: Session['user'] | null;
@@ -23,7 +47,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       status: 'loading',
@@ -32,9 +56,33 @@ export const useAuthStore = create<AuthState>()(
         const session = await getSession();
         if (session?.user) {
           set({ user: session.user, status: 'authenticated' });
-        } else {
-          set({ user: null, status: 'unauthenticated' });
+          consumePostLoginRedirect(session.user);
+          return;
         }
+
+        // Fallback: el login con email/contraseña usa un JWT propio (NO crea la
+        // cookie de sesión de Auth.js que /auth/session lee). Sin este fallback,
+        // al recargar /admin el usuario era pateado a /login.
+        const token = get().token;
+        if (token) {
+          const meUser = await verifyToken(token);
+          if (meUser) {
+            set({
+              user: {
+                id: meUser.id,
+                email: meUser.email,
+                name: meUser.name,
+                role: meUser.role,
+                image: meUser.image,
+              },
+              status: 'authenticated',
+            });
+            consumePostLoginRedirect(meUser);
+            return;
+          }
+        }
+
+        set({ user: null, token: null, status: 'unauthenticated' });
       },
       signIn: (provider = 'google', callbackUrl = '/') => {
         signInService(provider, callbackUrl);

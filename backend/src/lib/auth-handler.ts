@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client';
 import { loginUser, getCurrentUser } from '../services/auth.service';
 import { env } from '../config/env';
 import '../config/env';
-
-const prisma = new PrismaClient();
+import { prisma } from './prisma';
 
 let _authModules: { Auth: any; Google: any; Credentials: any } | null = null;
 
@@ -66,14 +64,9 @@ function createAuthConfig(google: (opts: any) => any, credentials: (opts: any) =
       google({
         clientId: googleClientId,
         clientSecret: googleClientSecret,
-        authorization: {
-          url: 'https://accounts.google.com/o/oauth2/v2/auth',
-          params: {
-            prompt: 'consent',
-            access_type: 'offline',
-            response_type: 'code',
-          },
-        },
+        // Sin `prompt: 'consent'` ni `access_type: 'offline'`: Google solo pide
+        // consentimiento la primera vez y los inicios de sesión siguientes son
+        // directos. Antes se forzaba consent en CADA login (fricción innecesaria).
       }),
     );
   }
