@@ -35,9 +35,16 @@ interface PreviewProduct {
   productImages: string[];
   variants: ProductVariant[];
   cjPrice: number;
-  price: number;
-  comparePrice: number;
+  shipping?: number;
+  totalCost?: number;
+  stock?: number;
+  inventory?: number;
+  suggestedPriceUSD?: number;
+  suggestedPriceCLP?: number;
+  suggestedPrice?: number;
+  comparePrice?: number;
   collectionSlug: string;
+  autoCategory?: string;
   collections: Collection[];
 }
 
@@ -61,9 +68,27 @@ export default function AdminImport() {
   const [importing, setImporting] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [editedTitle, setEditedTitle] = useState('');
-  const [editedPrice, setEditedPrice] = useState('');
   const [editedCollection, setEditedCollection] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
+  const [form, setForm] = useState({
+    cjPrice: 0,
+    shipping: 0,
+    totalCost: 0,
+    stock: 100,
+    margin: 2,
+    finalPriceUSD: 0,
+    finalPriceCLP: 0,
+  });
+
+  const DOLLAR_RATE = 950;
+
+  const marginOptions = [
+    { value: 1.5, label: '50% (x1.5)' },
+    { value: 2, label: '100% (x2)' },
+    { value: 2.5, label: '150% (x2.5)' },
+    { value: 3, label: '200% (x3)' },
+    { value: 4, label: '300% (x4)' },
+  ];
 
   const isAdmin =
     user?.email?.toLowerCase().trim() === ADMIN_EMAIL || user?.role === 'ADMIN';
@@ -88,9 +113,30 @@ export default function AdminImport() {
     try {
       const res = await api.get('/admin/recent-products');
       setProducts(res.data.products);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      toast.error(e.response?.data?.message || 'Error al cargar productos');
     }
+  };
+
+  const updateForm = (patch: Partial<typeof form>) => {
+    setForm((prev) => {
+      const next = { ...prev, ...patch };
+      if (patch.shipping !== undefined || patch.cjPrice !== undefined) {
+        next.totalCost = Number((next.cjPrice + next.shipping).toFixed(2));
+      }
+      if (patch.totalCost !== undefined || patch.margin !== undefined) {
+        next.finalPriceUSD = Number((next.totalCost * next.margin).toFixed(2));
+        next.finalPriceCLP = Math.round(next.finalPriceUSD * DOLLAR_RATE);
+      }
+      if (patch.finalPriceUSD !== undefined) {
+        next.finalPriceCLP = Math.round(next.finalPriceUSD * DOLLAR_RATE);
+      }
+      if (patch.finalPriceCLP !== undefined) {
+        next.finalPriceUSD = Number((next.finalPriceCLP / DOLLAR_RATE).toFixed(2));
+      }
+      return next;
+    });
   };
 
   const handlePreview = async () => {
@@ -101,8 +147,15 @@ export default function AdminImport() {
       const data = res.data;
       setPreview(data);
       setEditedTitle(data.titleEs);
-      setEditedPrice(String(data.price));
-      setEditedCollection(data.collectionSlug);
+      const cjPrice = Number(data.cjPrice || 0);
+      const shipping = Number(data.shipping || 0);
+      const totalCost = Number((cjPrice + shipping).toFixed(2));
+      const stock = data.stock && data.stock > 0 ? data.stock : 100;
+      const margin = 2;
+      const finalPriceUSD = Number((totalCost * margin).toFixed(2));
+      const finalPriceCLP = Math.round(finalPriceUSD * DOLLAR_RATE);
+      setForm({ cjPrice, shipping, totalCost, stock, margin, finalPriceUSD, finalPriceCLP });
+      setEditedCollection(data.autoCategory || data.collectionSlug);
       setEditedDescription(data.description);
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Error al obtener preview');
@@ -118,14 +171,27 @@ export default function AdminImport() {
       await api.post('/admin/import-cj', {
         url,
         titleEs: editedTitle,
-        price: Number(editedPrice),
+        price: form.finalPriceCLP,
         collectionSlug: editedCollection,
         description: editedDescription,
+        applyMargin: true,
+        productPrice: form.cjPrice,
+        shippingPrice: form.shipping,
+        totalCost: form.totalCost,
+        finalPriceCLP: form.finalPriceCLP,
+        stock: form.stock,
+        margin: form.margin,
       });
       toast.success('Producto publicado en yesyes.cl');
       setPreview(null);
       setUrl('');
-      loadProducts();
+      setEditedTitle('');
+      setEditedCollection('');
+      setEditedDescription('');
+      setProducts([]);
+      setTimeout(() => {
+        loadProducts();
+      }, 400);
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Error al importar');
     } finally {
@@ -198,6 +264,95 @@ export default function AdminImport() {
             className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-6"
           >
             <h2 className="text-lg font-semibold text-gray-900">Preview del Producto</h2>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Costos CJ</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Precio CJ (USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.cjPrice}
+                    onChange={(e) => updateForm({ cjPrice: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Envío CJ (USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.shipping}
+                    onChange={(e) => updateForm({ shipping: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">Editable si CJ no lo informa</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Costo Total (USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.totalCost}
+                    onChange={(e) => updateForm({ totalCost: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">Auto: precio + envío</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Margen</label>
+                  <select
+                    value={form.margin}
+                    onChange={(e) => updateForm({ margin: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    {marginOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Precio Final Sugerido (USD)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.finalPriceUSD}
+                    onChange={(e) => updateForm({ finalPriceUSD: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">≈ ${form.finalPriceCLP.toLocaleString('es-CL')} CLP</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Precio Final (CLP)</label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={form.finalPriceCLP}
+                    onChange={(e) => updateForm({ finalPriceCLP: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">≈ ${Number((form.finalPriceCLP / DOLLAR_RATE).toFixed(2))} USD</p>
+                </div>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Ganancia real:</span>
+                <span className="font-medium text-green-600">${Number((form.totalCost * (form.margin - 1)).toFixed(2))} USD</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Stock en tu tienda</label>
+                <input
+                  type="number"
+                  value={form.stock}
+                  onChange={(e) => updateForm({ stock: Number(e.target.value) })}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">CJ: {Number(preview.inventory ?? preview.stock ?? 0).toLocaleString('es-CL')} unidades</p>
+              </div>
+            </div>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
@@ -213,8 +368,8 @@ export default function AdminImport() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Precio (CLP)</label>
                   <input
                     type="number"
-                    value={editedPrice}
-                    onChange={(e) => setEditedPrice(e.target.value)}
+                    value={form.finalPriceCLP}
+                    onChange={(e) => updateForm({ finalPriceCLP: Number(e.target.value) })}
                     className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
                 </div>
@@ -263,7 +418,7 @@ export default function AdminImport() {
           </motion.div>
         )}
 
-        <div>
+        <div key={`products-${products.length}-${Date.now()}`}>
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Últimos 20 productos</h2>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">

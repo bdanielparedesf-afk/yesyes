@@ -33,6 +33,8 @@ export function extractPID(url: string): string | null {
     if (u.hostname.includes('cjdropshipping.com')) {
       const match = u.pathname.match(/\/product\/(\d+)/);
       if (match && match[1]) return match[1];
+      const pMatch = u.pathname.match(/p-([A-Za-z0-9-]+)/);
+      if (pMatch && pMatch[1]) return pMatch[1];
     }
     const num = url.match(/(\d{6,})/);
     return num?.[1] ?? null;
@@ -69,7 +71,7 @@ export function detectCollection(title: string, description: string): string {
 }
 
 export function calculatePrice(cjPrice: number): { price: number; comparePrice: number } {
-  const price = Math.round(cjPrice * 2.8);
+  const price = Math.round(cjPrice * 2);
   const comparePrice = Math.round(price * 1.35);
   return { price, comparePrice };
 }

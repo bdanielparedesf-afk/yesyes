@@ -1,6 +1,59 @@
 import { Request, Response } from 'express';
-import { getCJProduct, extractPID, detectCollection, calculatePrice, translateToChileanSpanish } from '../lib/cj';
+import { getCJProduct, extractPID, detectCollection, translateToChileanSpanish } from '../lib/cj';
 import { prisma } from '../lib/prisma';
+
+// Margen 100% = x2 (si cuesta 1, vendemos a 2)
+const MARGIN_MULTIPLIER = 2;
+const EXCHANGE_RATE = Number(process.env.EXCHANGE_RATE) || 950; // USD -> CLP
+
+function autoCategory(cjProduct: any): string {
+  const title = ((cjProduct.productNameEn || cjProduct.productName || '') + ' ' + (cjProduct.category || '')).toLowerCase();
+
+  if (/water bottle|hot water|guatero/.test(title)) return 'guateros';
+  if (/plush|peluche/.test(title)) return 'peluches';
+  if (/bottle|taza|termo/.test(title)) return 'hogar';
+  if (/necklace|bracelet|earring|ring|pendant|chain|jewelry|jewellery|joyer|pulsera|arete|anillo|dije|collar/.test(title)) return 'joyeria';
+  if (/dress|shirt|pants|jeans|jacket|coat|skirt|blouse|hoodie|sweater|top|t-shirt|pantalon|vestido|chaqueta|sueter|falda|blusa/.test(title)) return 'ropa';
+  if (/shoes|sneaker|boot|sandal|shoe|zapato|zapatilla|bota|sandalia/.test(title)) return 'calzado';
+  if (/watch|clock|reloj/.test(title)) return 'relojes';
+  if (/bag|backpack|handbag|mochila|cartera|bolso/.test(title)) return 'bolsos';
+  if (/phone case|case for|protector|funda|carcasa/.test(title)) return 'accesorios-telefono';
+  if (/headphone|earphone|speaker|bluetooth|audifono|audífono|parlante/.test(title)) return 'electronica';
+  if (/mouse|keyboard|monitor|usb|cable|charger|teclado|mouse gamer/.test(title)) return 'computacion';
+  if (/makeup|maquillaje|lipstick|foundation|mascara|labial|base de maquillaje/.test(title)) return 'belleza';
+  if (/hair|pelu|wig|hair extension|peluca|extensiones/.test(title)) return 'belleza';
+  if (/massager|masajeador|facial|skincare|skin care|rostro/.test(title)) return 'belleza';
+  if (/gym|fitness|deporte|yoga|correr|running|pesa|dumbbell|ejercicio/.test(title)) return 'deportes';
+  if (/toy|juguete|niños|kids|bebe|baby/.test(title)) return 'juguetes';
+  if (/pet|dog|cat|perro|gato|mascota/.test(title)) return 'mascotas';
+  if (/home|hogar|cocina|luz|lampara|light|despacho|decor|decoracion/.test(title)) return 'hogar';
+  if (/gamer|rgb|mouse gamer|teclado mecanico/.test(title)) return 'tech-gamer';
+
+  return 'importados';
+}
+
+function extractShippingCost(cjData: any, cjPrice: number): number {
+  const raw = cjData.shippingCost ?? cjData.freight ?? cjData.freightPrice ?? cjData.shippingPrice ?? cjData.shipping ?? cjData.totalCost ?? cjData.totalPrice ?? cjData.productTotal ?? 0;
+  const value = parseFloat(String(raw));
+  if (Number.isFinite(value) && value > 0) return value;
+  const total = parseFloat(String(cjData.totalCost ?? cjData.totalPrice ?? cjData.productTotal ?? 0));
+  if (Number.isFinite(total) && total > cjPrice) return total - cjPrice;
+  return 0;
+}
+
+function extractCJStock(cjData: any): number {
+  const raw = cjData.inventoryNum ?? cjData.stock ?? cjData.totalStock ?? cjData.availableStock ?? 0;
+  const value = parseInt(String(raw), 10);
+  if (Number.isInteger(value) && value >= 0) return value;
+  if (Array.isArray(cjData.variants)) {
+    const sum = cjData.variants.reduce((acc: number, v: any) => {
+      const s = parseInt(v.inventoryNum || v.stock || '0', 10);
+      return acc + (Number.isInteger(s) && s >= 0 ? s : 0);
+    }, 0);
+    if (sum > 0) return sum;
+  }
+  return 0;
+}
 
 function parseCJImages(cjData: any): string[] {
   const images: string[] = [];
@@ -54,7 +107,21 @@ async function resolveCategory(slug?: string): Promise<{ id: string; name: strin
 
 export const importCJProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { url, titleEs, price, collectionSlug, description: editedDescription } = req.body;
+    const {
+      url,
+      titleEs,
+      price,
+      collectionSlug,
+      description: editedDescription,
+      applyMargin,
+      productPrice,
+      shippingPrice,
+      totalCost: incomingTotalCost,
+      finalPrice: incomingFinalPrice,
+      finalPriceCLP: incomingFinalPriceCLP,
+      stock: incomingStock,
+      margin: incomingMargin,
+    } = req.body;
     if (!url) {
       res.status(400).json({ message: 'URL is required' });
       return;
@@ -78,17 +145,28 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     const productImage = cjImages[0] || '';
     const productImages = cjImages.slice(1);
     const variants = cjData.variants || [];
-    const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0');
+    const cjPrice = parseFloat(productPrice ?? cjData.price ?? cjData.sellPrice ?? '0');
+    const shippingCost = parseFloat(shippingPrice ?? String(extractShippingCost(cjData, cjPrice)));
+    const totalCost = incomingTotalCost ?? cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
+    const stock = incomingStock ?? extractCJStock(cjData);
     const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
 
-    // Respetar las ediciones hechas en el panel admin (si vienen en el body)
     const finalTitle = (titleEs && String(titleEs).trim()) || translateToChileanSpanish(productNameEn);
     const finalDescription = (editedDescription !== undefined && String(editedDescription).trim()) || description;
-    const { price: computedPrice, comparePrice } = calculatePrice(cjPrice);
-    const finalPrice = price !== undefined && price !== null && String(price).trim() !== '' ? Number(price) : computedPrice;
+
+    const shouldApplyMargin = applyMargin !== false;
+    const marginMultiplier = incomingMargin ?? MARGIN_MULTIPLIER;
+    const precioFinalUSD = shouldApplyMargin ? totalCost * marginMultiplier : totalCost;
+    const precioFinalCLP = Math.round(precioFinalUSD * EXCHANGE_RATE);
+    const finalPrice =
+      incomingFinalPriceCLP ??
+      incomingFinalPrice ??
+      (price !== undefined && price !== null && String(price).trim() !== '' ? Number(price) : precioFinalCLP);
+
+    const autoSlug = autoCategory(cjData);
     const finalCollectionSlug = collectionSlug?.trim() || detectCollection(finalTitle, finalDescription);
 
-    const category = await resolveCategory();
+    const category = await resolveCategory(autoSlug);
     const collection = await prisma.collection.findUnique({ where: { slug: finalCollectionSlug } });
     const collectionId = collection?.id ?? (await prisma.collection.create({
       data: {
@@ -115,9 +193,11 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
         tags: [finalCollectionSlug],
         categoryId: category.id,
         salePrice: finalPrice,
-        margin: parseFloat(((finalPrice - cjPrice) / finalPrice * 100).toFixed(2)),
-        totalCost: cjPrice,
+        margin: parseFloat(((finalPrice - totalCost * EXCHANGE_RATE) / finalPrice * 100).toFixed(2)),
+        totalCost: totalCost,
         productCost: cjPrice,
+        shippingCost: Number.isFinite(shippingCost) ? shippingCost : 0,
+        stock,
         weight: cjWeight,
         status: 'PUBLISHED',
         importSource: 'CJ_DROPSHIPPING',
@@ -169,9 +249,14 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
     const productImages = cjImages.slice(1);
     const variants = cjData.variants || [];
     const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0');
+    const shippingCost = extractShippingCost(cjData, cjPrice);
+    const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
+    const stock = extractCJStock(cjData);
     const titleEs = translateToChileanSpanish(productNameEn);
     const collectionSlug = detectCollection(titleEs, description);
-    const { price, comparePrice } = calculatePrice(cjPrice);
+
+    const suggestedPriceUSD = totalCost * MARGIN_MULTIPLIER;
+    const suggestedPriceCLP = Math.round(suggestedPriceUSD * EXCHANGE_RATE);
 
     const collections = await prisma.collection.findMany({ orderBy: { name: 'asc' } });
 
@@ -186,9 +271,16 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
         sellPrice: parseFloat(v.variantSellPrice || v.price || String(cjPrice)),
       })),
       cjPrice,
-      price,
-      comparePrice,
+      shipping: shippingCost,
+      totalCost,
+      stock,
+      inventory: stock,
+      suggestedPriceUSD,
+      suggestedPriceCLP,
+      suggestedPrice: suggestedPriceCLP,
+      comparePrice: suggestedPriceCLP,
       collectionSlug,
+      autoCategory: autoCategory(cjData),
       collections,
     });
   } catch (error: any) {
