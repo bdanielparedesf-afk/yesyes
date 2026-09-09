@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Truck, Shield, Headphones, ChevronRight } from 'lucide-react';
+import { Truck, Shield, ShieldCheck, ChevronRight } from 'lucide-react';
 import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
 import api from '@/lib/axios';
@@ -216,8 +216,8 @@ export default function Home() {
               <Truck className="w-6 h-6 text-primary-500" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Envío 7-15 días</h3>
-              <p className="text-sm text-gray-500">A todo Chile por correo certificado</p>
+              <h3 className="font-semibold text-gray-900">Envío 15-25 días</h3>
+              <p className="text-sm text-gray-500">Despachado por CJdropshipping, solo donde tenga cobertura en Chile</p>
             </div>
           </motion.div>
           <motion.div whileHover={{ y: -4 }} className="flex items-center space-x-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
@@ -231,11 +231,11 @@ export default function Home() {
           </motion.div>
           <motion.div whileHover={{ y: -4 }} className="flex items-center space-x-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <div className="p-3 bg-primary-50 rounded-full">
-              <Headphones className="w-6 h-6 text-primary-500" />
+              <ShieldCheck className="w-6 h-6 text-primary-500" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Garantía</h3>
-              <p className="text-sm text-gray-500">30 días de garantía en todos los productos</p>
+              <h3 className="font-semibold text-gray-900">Garantía legal 6 meses</h3>
+              <p className="text-sm text-gray-500">Por falla de fábrica según Ley 19.496 - Escríbenos a yesyeswebsms@gmail.com</p>
             </div>
           </motion.div>
         </div>
