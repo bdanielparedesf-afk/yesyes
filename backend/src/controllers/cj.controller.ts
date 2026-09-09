@@ -13,7 +13,7 @@ async function getDollarRate(): Promise<number> {
   try {
     const res = await fetch('https://mindicador.cl/api/dolar');
     if (!res.ok) return 950;
-    const json = await res.json();
+    const json: any = await res.json();
     // mindicador.cl devuelve { resultado: [...], utm: {...}, ...
 
     // `dolar` suele ser un array de objetos con `valor`

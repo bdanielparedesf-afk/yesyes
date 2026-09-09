@@ -5,10 +5,10 @@ const CJ_EMAIL = process.env.CJ_EMAIL;
 const CJ_API_KEY = process.env.CJ_API_KEY;
 
 let cachedToken: string | null = null;
-let tokenExpiry: number = 0;
+let tokenExpiry = 0;
 
-const RE_PROD = /\/product\/([A-Za-z0-9-]+)/i;
-const RE_DETAIL = /\/product-detail\/([A-Za-z0-9-]+)/i;
+const RE_PROD = /\/product\/([A-Za-z0-9-]+)/;
+const RE_DETAIL = /\/product-detail\/([A-Za-z0-9-]+)/;
 const RE_NUM6 = /(\d{6,})/;
 
 export async function getCJToken(): Promise<string> {
@@ -44,31 +44,31 @@ export function extractPID(url: string): string | null {
       u.searchParams.get('goodsId');
     if (qp && /^[A-Za-z0-9-]{4,}$/.test(qp)) return qp;
     const hay = u.pathname + ' ' + u.search + ' ' + u.hash + ' ' + raw;
-    let m = hay.match(/pid=([A-Za-z0-9-]{4,})/i);
-    if (m) return m[1];
+    let m: RegExpMatchArray | null = hay.match(/pid=([A-Za-z0-9-]{4,})/i);
+    if (m && m[1]) return m[1];
     m = hay.match(/\/product\/([A-Za-z0-9-]{5,})/i);
-    if (m) return m[1];
+    if (m && m[1]) return m[1];
     m = hay.match(/\/product-detail\/([A-Za-z0-9-]{5,})/i);
-    if (m) return m[1];
+    if (m && m[1]) return m[1];
     m = hay.match(/p-([A-Za-z0-9-]{6,})/i);
-    if (m) return m[1];
+    if (m && m[1]) return m[1];
     m = hay.match(/([A-F0-9]{8}-[A-F0-9-]{4,}-[A-F0-9-]{4,})/i);
-    if (m) return m[1];
+    if (m && m[1]) return m[1];
     m = hay.match(/([0-9a-fA-F]{32})/);
-    if (m) return m[1];
+    if (m && m[1]) return m[1];
     m = hay.match(/(CJ[0-9]{6,})/i);
-    if (m) return m[1].toUpperCase();
+    if (m && m[1]) return m[1].toUpperCase();
     m = hay.match(/(VID[0-9]+)/i);
-    if (m) return m[1].toUpperCase();
+    if (m && m[1]) return m[1].toUpperCase();
   } catch {
     // sigue abajo con regex plana
   }
-  let m = raw.match(/pid=([A-Za-z0-9-]{4,})/i);
-  if (m) return m[1];
+  let m: RegExpMatchArray | null = raw.match(/pid=([A-Za-z0-9-]{4,})/i);
+  if (m && m[1]) return m[1];
   m = raw.match(/p-([A-Za-z0-9-]{6,})/i);
-  if (m) return m[1];
+  if (m && m[1]) return m[1];
   m = raw.match(/(\d{6,})/);
-  return m ? m[1] : null;
+  return m && m[1] ? m[1] : null;
 }
 
 export async function getCJProduct(pid: string): Promise<any> {

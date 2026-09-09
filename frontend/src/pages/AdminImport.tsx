@@ -81,11 +81,9 @@ export default function AdminImport() {
   });
 
   const [dollarRate, setDollarRate] = useState(950);
-  const [dollarLoading, setDollarLoading] = useState(false);
 
   async function fetchDollarRate() {
     try {
-      setDollarLoading(true);
       const res = await fetch('https://mindicador.cl/api/dolar');
       if (!res.ok) throw new Error('HTTP error');
       const json = await res.json();
@@ -97,8 +95,6 @@ export default function AdminImport() {
       }
     } catch (e) {
       console.warn('Error fetching dollar rate, keeping default 950:', e);
-    } finally {
-      setDollarLoading(false);
     }
   }
 
