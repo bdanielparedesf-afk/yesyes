@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import { Trash2, Eye, Upload, LogOut } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/store/useAuthStore';
+import { cleanDescription, translateToSpanish } from '@/lib/html-utils';
 
 const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
 
@@ -221,7 +222,14 @@ export default function AdminImport() {
 
       setForm({ cjPrice, shipping, totalCost, stock, margin, finalPriceUSD, finalPriceCLP });
       setEditedCollection(data.collectionSlug || data.autoCategory || '');
-      setEditedDescription(data.description || '');
+      // Limpiar HTML sucio y traducir al español antes de mostrar en formulario
+      const cleanedDesc = cleanDescription(data.description || '');
+      const [translatedTitle, translatedDesc] = await Promise.all([
+        translateToSpanish(data.titleEs || ''),
+        translateToSpanish(cleanedDesc),
+      ]);
+      setEditedTitle(translatedTitle);
+      setEditedDescription(translatedDesc);
     } catch (e: any) {
       const msg =
         e.response?.data?.message ||
@@ -254,12 +262,16 @@ export default function AdminImport() {
     if (!preview) return;
     setImporting(true);
     try {
+      // Sanitización final defensiva: asegura que no se guarde HTML sucio ni inglés
+      const finalTitle = cleanDescription(editedTitle || '').trim();
+      const finalDescription = cleanDescription(editedDescription || '').trim();
+
       await api.post('/admin/import-cj', {
         url,
-        titleEs: editedTitle,
+        titleEs: finalTitle,
         price: form.finalPriceCLP,
         collectionSlug: editedCollection,
-        description: editedDescription,
+        description: finalDescription,
         applyMargin: true,
         productPrice: form.cjPrice,
         shippingPrice: form.shipping,
