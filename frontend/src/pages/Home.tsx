@@ -1,51 +1,74 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Truck, Shield, ShieldCheck, ChevronRight } from 'lucide-react';
-import { useCartStore } from '@/store/useCartStore';
-import { toast } from 'react-hot-toast';
+import { Truck, Shield, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
 import api from '@/lib/axios';
+import ProductGrid from '@/components/ProductGrid';
+import type { Product } from '@/services/products';
 
-interface ProductImage {
-  url: string;
-  position: number;
-}
-
-interface CollectionProduct {
+// Producto como viene de la API /products/groups (colecciones)
+interface ApiProduct {
   id: string;
   name: string;
   slug: string;
   description: string;
   salePrice: number;
   compareAtPrice?: number;
-  productImages: ProductImage[];
+  stock?: number;
+  status?: string;
+  isOffer?: boolean;
+  imagenUrl?: string;
+  imagen?: string;
+  images?: string[];
+  productImages?: { url: string; position: number }[];
+  collection?: { name: string; slug: string } | null;
 }
 
 interface Collection {
   id: string;
   name: string;
   slug: string;
-  image: string;
-  products: CollectionProduct[];
+  products: ApiProduct[];
 }
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08 },
-  },
-};
-
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
+/**
+ * Mapea un producto de la API de colecciones al tipo Product usado por ProductGrid.
+ * La API devuelve `name` y `salePrice` (según el schema Prisma del backend).
+ */
+function mapApiProductToProduct(p: ApiProduct): Product {
+  const rawImages = Array.isArray(p.productImages) ? p.productImages : [];
+  // Mapea al tipo ProductImage (requiere `id`) agregando un id generado si no existe
+  const images = rawImages.map((img, idx) => ({
+    id: `img-${p.id}-${idx}`,
+    url: img.url,
+    position: img.position ?? idx,
+  }));
+  const PLACEHOLDER = '/placeholder.png';
+  // Prioridad: productImages > images[] > imagenUrl > imagen > placeholder
+  const first = images[0]?.url || (Array.isArray(p.images) && p.images[0]) || p.imagenUrl || p.imagen || PLACEHOLDER;
+  const second = images[1]?.url || (Array.isArray(p.images) && p.images[1]) || first;
+  return {
+    id: p.id,
+    name: p.name || 'Sin nombre',
+    slug: p.slug,
+    description: p.description || '',
+    price: Number(p.salePrice || 0),
+    providerPrice: 0,
+    image: first,
+    imageHover: second,
+    category: p.collection?.name || 'General',
+    stock: Number(p.stock || 0),
+    offer: Boolean(p.isOffer),
+    productImages: images,
+    productVariants: [],
+    collection: p.collection || null,
+  };
+}
 
 export default function Home() {
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [flatProducts, setFlatProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const addItem = useCartStore((s) => s.addItem);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadCollections();
@@ -53,25 +76,54 @@ export default function Home() {
 
   const loadCollections = async () => {
     try {
-      const res = await api.get('/products/groups');
-      const data = res.data.collections.filter((c: Collection) => c.products.length > 0);
-      setCollections(data);
-    } catch (e) {
-      console.error(e);
+      setError(null);
+      setLoading(true);
+
+      // Timeout manual para evitar carga infinita
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout: la API tardó demasiado')), 10000)
+      );
+
+      // Llamada a la API con timeout de 10 segundos
+      const apiPromise = api.get('/products/groups', { timeout: 10000 });
+      const res: any = await Promise.race([apiPromise, timeoutPromise]);
+
+      // LOG: respuesta cruda de /api/products/groups
+      console.log('[Home] Respuesta cruda de /api/products/groups:', res.data);
+
+      // Maneja ambos casos: { collections: [] } o directamente []
+      let rawCollections: Collection[] = [];
+      if (Array.isArray(res.data?.collections)) {
+        rawCollections = res.data.collections;
+      } else if (Array.isArray(res.data)) {
+        rawCollections = res.data;
+      }
+
+      // Filtra colecciones que tengan productos
+      const validCollections = rawCollections.filter(
+        (c: Collection) => c.products && c.products.length > 0
+      );
+
+      // Aplana todos los productos de las colecciones para el grid unificado
+      const allProducts = validCollections.flatMap((c) =>
+        c.products.map(mapApiProductToProduct)
+      );
+      setFlatProducts(allProducts);
+
+      console.log(`[Home] ${validCollections.length} colecciones con productos, ${allProducts.length} productos totales`);
+    } catch (e: any) {
+      // LOG: error completo para debugging
+      const errorMessage = e?.response?.data?.message || e?.message || 'Error desconocido';
+      const errorStatus = e?.response?.status;
+      console.error('[Home] Error cargando colecciones:', errorMessage, '| Status:', errorStatus);
+      console.error('[Home] Error completo:', e);
+
+      // Muestra el error en pantalla, no deja blanco
+      setError(errorMessage);
+      setFlatProducts([]);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleAdd = (product: CollectionProduct) => {
-    addItem({
-      id: product.id,
-      name: product.name,
-      price: Number(product.salePrice),
-      image: product.productImages[0]?.url || '',
-      stock: 10,
-    });
-    toast.success('Producto agregado al carrito');
   };
 
   return (
@@ -123,83 +175,70 @@ export default function Home() {
 
       <motion.section
         id="colecciones"
-        variants={container}
-        initial="hidden"
-        whileInView="show"
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: '-50px' }}
+        transition={{ duration: 0.5 }}
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
       >
-        {loading ? (
-          <div className="text-center py-20">
-            <div className="inline-block w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
-            <p className="mt-4 text-gray-500">Cargando productos...</p>
+        <div className="text-center mb-12">
+          <h2 className="text-3xl font-bold text-gray-900">Nuestras Colecciones</h2>
+          <p className="text-gray-600 mt-2">Descubre productos seleccionados para ti</p>
+        </div>
+
+        {/* Estado de carga */}
+        {loading && (
+          <div className="text-center py-12">
+            <div className="inline-block w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
+            <p className="mt-4 text-gray-500">Cargando colecciones...</p>
           </div>
-        ) : collections.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-500 text-lg">Próximamente nuevos productos en nuestra tienda</p>
+        )}
+
+        {/* Estado de error */}
+        {!loading && error && (
+          <div className="text-center py-12">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+              <AlertCircle className="w-8 h-8 text-red-500" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Error al cargar productos</h3>
+            <p className="text-gray-500 mb-4 max-w-md mx-auto">{error}</p>
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={loadCollections}
+                className="inline-flex items-center px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition-colors"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Reintentar
+              </button>
+              <Link
+                to="/admin"
+                className="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors"
+              >
+                Ir a Admin
+              </Link>
+            </div>
           </div>
-        ) : (
-          collections.map((col) => (
-            <motion.div key={col.id} variants={item} className="mb-16">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">{col.name}</h2>
-                  <p className="text-gray-500 mt-1">
-                    {col.products.length} producto{col.products.length !== 1 ? 's' : ''}
-                  </p>
-                </div>
-                <Link
-                  to={`/productos?collection=${col.slug}`}
-                  className="hidden sm:flex items-center text-primary-500 hover:text-primary-600 font-medium text-sm"
-                >
-                  Ver todos <ChevronRight className="w-4 h-4" />
-                </Link>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {col.products.map((product) => (
-                  <motion.div
-                    key={product.id}
-                    variants={item}
-                    className="bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all border border-gray-100 overflow-hidden group"
-                  >
-                    <Link to={`/productos/${product.slug}`}>
-                      <div className="relative overflow-hidden aspect-square">
-                        <img
-                          src={product.productImages[0]?.url || 'https://via.placeholder.com/400'}
-                          alt={product.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        {product.compareAtPrice && Number(product.compareAtPrice) > Number(product.salePrice) && (
-                          <span className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                            -{Math.round((1 - Number(product.salePrice) / Number(product.compareAtPrice)) * 100)}%
-                          </span>
-                        )}
-                      </div>
-                      <div className="p-4 space-y-2">
-                        <h3 className="font-semibold text-gray-800 line-clamp-2">{product.name}</h3>
-                        <div className="flex items-center gap-2">
-                          <p className="text-lg font-bold text-primary-600">
-                            ${Number(product.salePrice).toLocaleString('es-CL')}
-                          </p>
-                          {product.compareAtPrice && Number(product.compareAtPrice) > Number(product.salePrice) && (
-                            <p className="text-sm text-gray-400 line-through">
-                              ${Number(product.compareAtPrice).toLocaleString('es-CL')}
-                            </p>
-                          )}
-                        </div>
-                        <button
-                          onClick={(e) => { e.preventDefault(); handleAdd(product); }}
-                          className="w-full mt-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
-                        >
-                          Agregar al carrito
-                        </button>
-                      </div>
-                    </Link>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          ))
+        )}
+
+        {/* Estado vacío: no hay productos */}
+        {!loading && !error && flatProducts.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-lg text-gray-500 mb-4">No hay productos para mostrar</p>
+            <p className="text-sm text-gray-400 mb-6">
+              Los productos pueden estar importados pero con status != PUBLISHED o la API no está respondiendo.
+            </p>
+            <Link
+              to="/admin"
+              className="inline-flex items-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition-colors"
+            >
+              Ir a Admin
+            </Link>
+          </div>
+        )}
+
+        {/* Productos cargados: usa el mismo ProductGrid que Products.tsx */}
+        {!loading && !error && flatProducts.length > 0 && (
+          <ProductGrid products={flatProducts} />
         )}
       </motion.section>
 
