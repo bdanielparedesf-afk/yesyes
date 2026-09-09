@@ -13,6 +13,7 @@ const quickLinks = [
 const helpLinks = [
   { name: 'Envíos', href: '/envios' },
   { name: 'Devoluciones', href: '/devoluciones' },
+  { name: 'Garantía', href: '/garantia' },
   { name: 'Reembolsos', href: '/reembolsos' },
   { name: 'Cookies', href: '/cookies' },
 ];

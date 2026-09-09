@@ -59,6 +59,7 @@ function App() {
       <Route path="cookies" element={<Legal kind="cookies" />} />
       <Route path="envios" element={<Legal kind="envios" />} />
       <Route path="devoluciones" element={<Legal kind="devoluciones" />} />
+      <Route path="garantia" element={<Legal kind="garantia" />} />
       <Route path="reembolsos" element={<Legal kind="reembolsos" />} />
       <Route path="admin" element={<Admin />} />
       <Route path="admin/import" element={<AdminImport />} />

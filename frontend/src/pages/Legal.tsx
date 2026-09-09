@@ -20,58 +20,46 @@ interface LegalDoc {
 const docs: Record<string, LegalDoc> = {
   envios: {
     title: 'Política de Envíos',
-    subtitle: 'Todo lo que necesitas saber sobre la entrega de tu pedido',
+    subtitle: 'Cómo llega tu pedido hasta tu casa',
     icon: Truck,
     sections: [
       {
-        title: 'Tiempo de entrega',
+        title: 'Envíos',
         items: [
-          'De 15 a 25 días hábiles desde que tu pago es confirmado.',
-          'Trabajamos con despacho internacional vía CJdropshipping.',
-          'Tu pedido se procesa apenas el pago aparece confirmado en MercadoPago.',
-        ],
-      },
-      {
-        title: 'Cobertura',
-        items: [
-          'Despachamos solo a direcciones donde CJdropshipping tenga cobertura dentro de Chile continental.',
-          'No llegamos a bases militares, apartados (casillas) ni zonas sin código postal.',
-          'Si tu dirección no tiene cobertura, te avisamos y te reembolsamos el 100% antes del envío.',
-        ],
-      },
-      {
-        title: 'Seguimiento',
-        items: [
-          `Una vez enviado tu pedido, te llega el número de seguimiento a ${CONTACT_EMAIL}.`,
-          'Los retrasos de aduana o del courier no son responsabilidad de YESYES, pero te ayudamos a rastrear tu pedido.',
+          'Nuestros productos son importados y despachados por CJdropshipping. 15 a 25 días hábiles. Solo Chile donde CJ tenga cobertura.',
         ],
       },
     ],
   },
   devoluciones: {
-    title: 'Devoluciones y Garantía',
-    subtitle: 'Tienes 10 días corridos para cambiar de opinión',
+    title: 'Devoluciones',
+    subtitle: 'Cambia de opinión con tranquilidad',
     icon: RotateCcw,
     sections: [
       {
-        title: 'Devoluciones',
+        title: 'Devolución por arrepentimiento',
         items: [
-          'Tienes 10 días corridos desde que recibes el producto para solicitar devolución.',
-          'Solo aceptamos productos sin uso, en su empaque original.',
-          `Escríbenos a ${CONTACT_EMAIL} con fotos del producto para iniciar el proceso.`,
-          'Si tu comuna no tiene cobertura de CJ, no podemos despachar: te reembolsamos el 100% antes del envío.',
-        ],
-      },
-      {
-        title: 'Garantía',
-        items: [
-          'Garantía de 10 días por falla de fábrica.',
-          `Debes enviar video o foto a ${CONTACT_EMAIL} mostrando la falla.`,
-          'No hay garantía por mal uso, golpes, caídas o desgaste normal del producto.',
+          'Devolución por arrepentimiento: 10 días, sin uso, en caja original.',
+          'Costo de retorno lo paga el comprador.',
+          `Escríbenos a ${CONTACT_EMAIL}.`,
         ],
       },
     ],
-    highlight: 'El costo de envío de retorno lo paga el cliente, salvo que sea falla de fábrica.',
+  },
+  garantia: {
+    title: 'Garantía',
+    subtitle: 'Protegido por la ley chilena',
+    icon: ShieldCheck,
+    sections: [
+      {
+        title: 'Garantía legal',
+        items: [
+          'Garantía legal 6 meses por falla de fábrica según ley chilena.',
+          `Escríbenos a ${CONTACT_EMAIL} con video.`,
+          'No cubre mal uso o golpes.',
+        ],
+      },
+    ],
   },
   reembolsos: {
     title: 'Política de Reembolsos',
@@ -79,18 +67,10 @@ const docs: Record<string, LegalDoc> = {
     icon: DollarSign,
     sections: [
       {
-        title: 'Plazos',
+        title: 'Reembolsos',
         items: [
-          'Si tu devolución es aprobada, el reembolso se hace en 5 a 10 días hábiles.',
-          'El dinero vuelve al mismo medio de pago que usaste en la compra.',
-        ],
-      },
-      {
-        title: 'Costos',
-        items: [
-          'El costo de envío de retorno lo paga el cliente.',
-          'Excepción: si el producto tiene falla de fábrica, YESYES cubre el retorno.',
-          'Si tu dirección no tiene cobertura de CJ, te reembolsamos el 100% antes de despachar.',
+          'Si tu devolución es aprobada, el reembolso se hace en 5 a 10 días hábiles al mismo medio de pago.',
+          `Para cualquier gestión, escríbenos a ${CONTACT_EMAIL}.`,
         ],
       },
     ],
@@ -105,7 +85,7 @@ const docs: Record<string, LegalDoc> = {
         items: [
           'YESYES vende productos importados vía CJdropshipping dentro de Chile.',
           'Al comprar aceptas los tiempos de entrega de 15 a 25 días hábiles.',
-          'Al comprar aceptas la política de devolución de 10 días corridos y garantía de 10 días.',
+          'Al comprar aceptas la política de devolución de 10 días corridos y garantía legal de 6 meses.',
         ],
       },
       {
@@ -179,7 +159,8 @@ const docs: Record<string, LegalDoc> = {
 
 const relatedLinks: Array<{ to: string; label: string }> = [
   { to: '/envios', label: 'Envíos' },
-  { to: '/devoluciones', label: 'Devoluciones y Garantía' },
+  { to: '/devoluciones', label: 'Devoluciones' },
+  { to: '/garantia', label: 'Garantía' },
   { to: '/reembolsos', label: 'Reembolsos' },
   { to: '/terminos', label: 'Términos y Condiciones' },
   { to: '/privacidad', label: 'Privacidad' },

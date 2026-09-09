@@ -10,17 +10,17 @@ const faqs = [
   },
   {
     question: '¿Cuánto tarda el envío?',
-    answer: 'De 15 a 25 días hábiles desde la confirmación de tu compra. Trabajamos con CJdropshipping, por lo que solo despachamos a comunas y regiones donde ellos tengan cobertura dentro de Chile. Una vez enviado tu pedido, te llegará el seguimiento a tu correo.',
+    answer: 'Nuestros productos son importados y despachados por CJdropshipping. 15 a 25 días hábiles. Solo Chile donde CJ tenga cobertura.',
     icon: Truck,
   },
   {
     question: '¿Puedo devolver un producto?',
-    answer: 'Sí. Tienes 10 días corridos desde que lo recibes. Debe estar sin uso, en su caja original. Escríbenos a yesyeswebsms@gmail.com con fotos. Si ya te hicimos el envío, el costo de retorno lo pagas tú. Si no tiene cobertura de CJ en tu dirección, te reembolsamos el 100% antes de despachar.',
+    answer: 'Devolución por arrepentimiento: 10 días, sin uso, en caja original. Costo de retorno lo paga el comprador. Escríbenos a yesyeswebsms@gmail.com.',
     icon: RotateCcw,
   },
   {
     question: '¿Qué garantía tienen los productos?',
-    answer: '10 días de garantía por falla de fábrica. Debes enviar un video a yesyeswebsms@gmail.com mostrando la falla. No cubre mal uso, caídas o desgaste.',
+    answer: 'Garantía legal 6 meses por falla de fábrica según ley chilena. Escríbenos a yesyeswebsms@gmail.com con video. No cubre mal uso o golpes.',
     icon: Shield,
   },
   {
