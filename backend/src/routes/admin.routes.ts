@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
-import { authenticate, requireAdmin, isAdmin } from '../middlewares/auth';
+import { authenticate, requireAdmin } from '../middlewares/auth';
 import {
   getRecentProducts,
   getAllProducts,
@@ -15,9 +15,7 @@ import { getUsers, updateUserRole } from '../controllers/user.controller';
 
 const router = Router();
 
-router.use(authenticate, requireAdmin, isAdmin);
-
-router.get('/stats', async (req, res) => {
+router.get('/stats', authenticate, requireAdmin, async (req, res) => {
   try {
     const [totalProducts, pendingOrders, totalUsers] = await Promise.all([
       prisma.product.count(),
@@ -31,21 +29,21 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-router.get('/products', getAllProducts);
-router.get('/products/recent', getRecentProducts);
-router.post('/products', createProduct);
-router.put('/products/:id', updateProduct);
-router.delete('/products/:id', deleteProduct);
+router.get('/products', authenticate, requireAdmin, getAllProducts);
+router.get('/products/recent', authenticate, requireAdmin, getRecentProducts);
+router.post('/products', authenticate, requireAdmin, createProduct);
+router.put('/products/:id', authenticate, requireAdmin, updateProduct);
+router.delete('/products/:id', authenticate, requireAdmin, deleteProduct);
 
-router.get('/categories', getCategories);
-router.post('/categories', createCategory);
-router.put('/categories/:id', updateCategory);
-router.delete('/categories/:id', deleteCategory);
+router.get('/categories', authenticate, requireAdmin, getCategories);
+router.post('/categories', authenticate, requireAdmin, createCategory);
+router.put('/categories/:id', authenticate, requireAdmin, updateCategory);
+router.delete('/categories/:id', authenticate, requireAdmin, deleteCategory);
 
-router.get('/orders', getOrders);
-router.put('/orders/:id/status', updateOrderStatus);
+router.get('/orders', authenticate, requireAdmin, getOrders);
+router.put('/orders/:id/status', authenticate, requireAdmin, updateOrderStatus);
 
-router.get('/users', getUsers);
-router.put('/users/:id/role', updateUserRole);
+router.get('/users', authenticate, requireAdmin, getUsers);
+router.put('/users/:id/role', authenticate, requireAdmin, updateUserRole);
 
 export default router;
