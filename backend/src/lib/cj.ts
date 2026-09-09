@@ -31,44 +31,131 @@ export async function getCJToken(): Promise<string> {
   return token;
 }
 
-export function extractPID(url: string): string | null {
+/**
+ * CJ limita la API a 1 request por segundo (QPS). Si encadenamos intentos
+ * (query, list, candidatos, keyword) el 2do en adelante devuelve 429
+ * "Too Many Requests, QPS limit is 1 time/1second" y el preview muere.
+ * Estas helpers espacian las llamadas y reintentan cuando llega un 429.
+ */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+let lastCjCallAt = 0;
+
+async function cjThrottle(): Promise<void> {
+  const MIN_GAP_MS = 1100;
+  const waitMs = lastCjCallAt + MIN_GAP_MS - Date.now();
+  if (waitMs > 0) await sleep(waitMs);
+  lastCjCallAt = Date.now();
+}
+
+function isCjRateLimit(err: any): boolean {
+  const msg = String(err?.response?.data?.message ?? '');
+  return err?.response?.status === 429 || msg.includes('QPS') || msg.includes('Too Many Requests');
+}
+
+async function cjGet(url: string, params: Record<string, any>, token: string): Promise<any> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await cjThrottle();
+    try {
+      return await axios.get(url, {
+        headers: { 'CJ-Access-Token': token },
+        params,
+        timeout: 15000,
+      });
+    } catch (err: any) {
+      if (isCjRateLimit(err) && attempt < 2) {
+        console.warn('[CJ] 429 rate limit, reintentando en 1.2s (intento ' + (attempt + 1) + '/3)...');
+        await sleep(1200);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('CJ request failed after retries');
+}
+
+/**
+ * Extrae TODOS los posibles IDs de producto CJ desde un link.
+ * Formatos soportados:
+ *  - ?pid=2609080924111626000 / ?productId= / ?goodsId=
+ *  - /product/<slug>,p-2609080924111626000.html  (formato web clásico)
+ *  - /product/<slug>-2609080924111626000.html
+ *  - /product/2609080924111626000.html
+ *  - token clásico CJ1910162202 embebido en el slug
+ *  - UUID: /product/e8b41a1c-4a11-4a97-a3f8-5f0b091bb387.html
+ */
+export function extractPidCandidates(url: string): string[] {
   const raw = (url || '').trim();
-  if (!raw) return null;
+  if (!raw) return [];
+  const out: string[] = [];
+  const push = (v?: string | null) => {
+    if (!v) return;
+    const t = String(v).trim();
+    if (t && !out.includes(t)) out.push(t);
+  };
   try {
     const full = raw.startsWith('http') ? raw : 'https://' + raw;
     const u = new URL(full);
-    const qp =
-      u.searchParams.get('pid') ||
-      u.searchParams.get('productId') ||
-      u.searchParams.get('id') ||
-      u.searchParams.get('goodsId');
-    if (qp && /^[A-Za-z0-9-]{4,}$/.test(qp)) return qp;
-    const hay = u.pathname + ' ' + u.search + ' ' + u.hash + ' ' + raw;
-    let m: RegExpMatchArray | null = hay.match(/pid=([A-Za-z0-9-]{4,})/i);
-    if (m && m[1]) return m[1];
-    m = hay.match(/\/product\/([A-Za-z0-9-]{5,})/i);
-    if (m && m[1]) return m[1];
-    m = hay.match(/\/product-detail\/([A-Za-z0-9-]{5,})/i);
-    if (m && m[1]) return m[1];
-    m = hay.match(/p-([A-Za-z0-9-]{6,})/i);
-    if (m && m[1]) return m[1];
-    m = hay.match(/([A-F0-9]{8}-[A-F0-9-]{4,}-[A-F0-9-]{4,})/i);
-    if (m && m[1]) return m[1];
-    m = hay.match(/([0-9a-fA-F]{32})/);
-    if (m && m[1]) return m[1];
-    m = hay.match(/(CJ[0-9]{6,})/i);
-    if (m && m[1]) return m[1].toUpperCase();
-    m = hay.match(/(VID[0-9]+)/i);
-    if (m && m[1]) return m[1].toUpperCase();
+    push(u.searchParams.get('pid'));
+    push(u.searchParams.get('productId'));
+    push(u.searchParams.get('goodsId'));
+    push(u.searchParams.get('id'));
+    const pathAndQuery = u.pathname + '?' + u.search;
+    // token clásico CJ1910162202 (en el slug, case-insensitive) — va PRIMERO:
+    // en links tipo "...-cj1910162202,p-16152996.html" el p-NNN es el VID, no el pid.
+    const mCJ = (pathAndQuery + ' ' + raw).match(/CJ\d{6,}/i);
+    if (mCJ) push(mCJ[0].toUpperCase());
+    // UUID (links nuevos de app.cjdropshipping.com)
+    const mUuid = u.pathname.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
+    if (mUuid && mUuid[1]) push(mUuid[1]);
+    // pid numérico tras -p- / ,p- (formato web ,p-2609080924111626000.html)
+    const mP = pathAndQuery.match(/p-(\d{8,})/i);
+    if (mP && mP[1]) push(mP[1]);
+    // número largo embebido en el slug
+    const mNum = pathAndQuery.match(/(\d{15,})/);
+    if (mNum && mNum[1]) push(mNum[1]);
+    // /product/<solo-numeros>.html
+    const mProd = u.pathname.match(/\/product\/(\d{6,})/i);
+    if (mProd && mProd[1]) push(mProd[1]);
   } catch {
-    // sigue abajo con regex plana
+    // URL malformada: seguimos con regex plana abajo
   }
-  let m: RegExpMatchArray | null = raw.match(/pid=([A-Za-z0-9-]{4,})/i);
-  if (m && m[1]) return m[1];
-  m = raw.match(/p-([A-Za-z0-9-]{6,})/i);
-  if (m && m[1]) return m[1];
-  m = raw.match(/(\d{6,})/);
-  return m && m[1] ? m[1] : null;
+  const mPid = raw.match(/pid=(\d{6,})/i);
+  if (mPid && mPid[1]) push(mPid[1]);
+  const mP2 = raw.match(/p-(\d{8,})/i);
+  if (mP2 && mP2[1]) push(mP2[1]);
+  const mCJ2 = raw.match(/CJ\d{6,}/i);
+  if (mCJ2) push(mCJ2[0].toUpperCase());
+  const mNum2 = raw.match(/(\d{15,})/);
+  if (mNum2 && mNum2[1]) push(mNum2[1]);
+  return out;
+}
+
+/** Compat: primer candidato (antes devolvía el slug, lo que rompía el preview). */
+export function extractPID(url: string): string | null {
+  return extractPidCandidates(url)[0] ?? null;
+}
+
+/**
+ * Saca palabras clave del slug del link para buscar por nombre en CJ
+ * cuando el link no trae ningún ID (/product/cool-phone-case.html).
+ */
+export function extractSlugKeywords(url: string): string {
+  try {
+    const raw = (url || '').trim();
+    const full = raw.startsWith('http') ? raw : 'https://' + raw;
+    const u = new URL(full);
+    const m = u.pathname.match(/\/product(?:-detail)?\/([^/?#]+)/i);
+    if (!m || !m[1]) return '';
+    let slug = m[1];
+    slug = slug.replace(/\.html?$/i, '');
+    slug = slug.replace(/[,._-]*p-?\d{6,}$/i, '');
+    slug = slug.replace(/cj\d{6,}/gi, ' ');
+    slug = slug.replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
+    return slug.replace(/[-,_]+/g, ' ').trim();
+  } catch {
+    return '';
+  }
 }
 
 export async function getCJProduct(pid: string): Promise<any> {
@@ -81,21 +168,92 @@ export async function getCJProduct(pid: string): Promise<any> {
   ];
   for (const att of attempts) {
     try {
-      const response = await axios.get(att.url, {
-        headers: { 'CJ-Access-Token': token },
-        params: att.params,
-        timeout: 15000,
-      });
+      const response = await cjGet(att.url, att.params, token);
       const payload = response.data?.data ?? response.data;
       if (Array.isArray(payload) && payload.length > 0) return payload[0];
       if (payload?.list && Array.isArray(payload.list) && payload.list.length > 0) return payload.list[0];
       if (payload?.content && Array.isArray(payload.content) && payload.content.length > 0) return payload.content[0];
       if (payload && (payload.productNameEn || payload.productName || payload.pid || payload.id)) return payload;
-      console.warn('[CJ] sin match pid=' + cleanPid + ' resp=' + JSON.stringify(response.data)?.slice(0, 600));
+      const msg = String(response.data?.message ?? '');
+      console.warn('[CJ] sin match pid=' + cleanPid + ' via ' + att.url.replace(CJ_API_BASE, '') + ' resp=' + JSON.stringify(response.data)?.slice(0, 400));
+      // "Product not found" es respuesta definitiva del endpoint query:
+      // no sirve de nada quemar QPS con los otros intentos para este pid.
+      if (msg.includes('not found')) return null;
     } catch (err: any) {
       const st = err?.response?.status ?? 'no-status';
-      const body = err?.response ? JSON.stringify(err.response.data)?.slice(0, 600) : String(err?.message ?? err);
+      const body = err?.response ? JSON.stringify(err.response.data)?.slice(0, 400) : String(err?.message ?? err);
       console.warn('[CJ] fallo pid=' + cleanPid + ' status=' + st + ' body=' + body);
+    }
+  }
+  return null;
+}
+
+/**
+ * Score de relevancia 0..1: proporción de palabras significativas de `keywords`
+ * que aparecen en `name`. Evita importar el producto equivocado cuando la
+ * búsqueda por nombre de CJ devuelve resultados flojos/no relacionados.
+ */
+export function keywordRelevance(name: string, keywords: string): number {
+  const STOP = new Set(['for', 'and', 'the', 'with', 'from', 'women', 'men', 'kids', 'unisex', 'new', 'hot', 'style', 'color', 'type']);
+  const kws = String(keywords || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !STOP.has(w));
+  if (kws.length === 0) return 0;
+  const n = String(name || '').toLowerCase();
+  const hits = kws.filter((w) => n.includes(w)).length;
+  return hits / kws.length;
+}
+
+/**
+ * Busca productos en CJ por palabras clave (slug del link) cuando
+ * ningún candidato de ID funcionó. Devuelve el producto MÁS relevante
+ * (>= 60% de coincidencias) o null si nada calza — nunca importa
+ * un producto no relacionado solo porque CJ lo devuelva en la lista.
+ * Prueba la frase completa y variantes cortas porque CJ busca mal frases largas.
+ */
+export async function searchCJProductByKeyword(keywords: string): Promise<any | null> {
+  const kw = String(keywords || '').trim();
+  if (!kw) return null;
+  const token = await getCJToken();
+
+  const STOP = new Set(['for', 'and', 'the', 'with', 'from', 'women', 'men', 'kids', 'unisex', 'new', 'hot', 'style']);
+  const words = kw.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
+  const variants = [kw, words.slice(0, 4).join(' '), words.slice(0, 2).join(' ')].filter(
+    (v, i, arr) => v && arr.indexOf(v) === i
+  );
+
+  for (const variant of variants) {
+    try {
+      const response = await cjGet(
+        `${CJ_API_BASE}/product/list`,
+        { productNameEn: variant, pageNum: 1, pageSize: 10 },
+        token
+      );
+      const payload = response.data?.data ?? response.data;
+      const list: any[] = payload?.list ?? payload?.content ?? (Array.isArray(payload) ? payload : []);
+      if (!Array.isArray(list) || list.length === 0) {
+        console.warn('[CJ] busqueda "' + variant + '" sin resultados');
+        continue;
+      }
+      let best: any = null;
+      let bestScore = 0;
+      for (const item of list) {
+        const score = keywordRelevance(String(item.productNameEn ?? item.productName ?? ''), kw);
+        if (score > bestScore) {
+          best = item;
+          bestScore = score;
+        }
+      }
+      if (best && bestScore >= 0.6) {
+        console.warn('[CJ] busqueda "' + variant + '" -> match relevante (' + Math.round(bestScore * 100) + '%): ' + String(best.productNameEn).slice(0, 60));
+        return best;
+      }
+      console.warn('[CJ] busqueda "' + variant + '" -> ' + list.length + ' resultados pero ninguno relevante (mejor ' + Math.round(bestScore * 100) + '%)');
+    } catch (err: any) {
+      const st = err?.response?.status ?? 'no-status';
+      const body = err?.response ? JSON.stringify(err.response.data)?.slice(0, 400) : String(err?.message ?? err);
+      console.warn('[CJ] fallo busqueda "' + variant + '"', st, body);
     }
   }
   return null;

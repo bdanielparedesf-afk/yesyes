@@ -1,9 +1,52 @@
 import { Request, Response } from 'express';
-import { getCJProduct, extractPID, detectCollection, translateToChileanSpanish } from '../lib/cj';
+import {
+  getCJProduct,
+  extractPidCandidates,
+  extractSlugKeywords,
+  searchCJProductByKeyword,
+  detectCollection,
+  translateToChileanSpanish,
+} from '../lib/cj';
 import { prisma } from '../lib/prisma';
 
 // Margen 100% = x2 (si cuesta 1, vendemos a 2)
 const MARGIN_MULTIPLIER = 2;
+
+/**
+ * Resuelve un producto CJ desde el link pegado por el usuario:
+ * 1) prueba cada candidato de ID extraído del link (?pid=, -p-XXX, CJ19..., uuid, ...)
+ * 2) si ninguno funciona, busca por las palabras del slug en la API de CJ
+ * Devuelve { cjData, pid } o null si no encontró nada.
+ */
+async function resolveCJProductFromUrl(url: string): Promise<{ cjData: any; pid: string } | null> {
+  const candidates = extractPidCandidates(url);
+  console.log('[CJ resolve] candidatos:', candidates.join(', ') || '(ninguno)');
+
+  for (const candidate of candidates) {
+    const found = await getCJProduct(candidate);
+    if (found) {
+      const realPid = String(found.pid ?? found.productId ?? found.id ?? candidate);
+      console.log('[CJ resolve] match con candidato', candidate, '-> pid real', realPid);
+      return { cjData: found, pid: realPid };
+    }
+  }
+
+  // Último recurso: búsqueda por nombre desde el slug del link
+  const keywords = extractSlugKeywords(url);
+  if (keywords) {
+    console.log('[CJ resolve] sin match por ID, buscando por slug:', keywords);
+    const byKeyword = await searchCJProductByKeyword(keywords);
+    if (byKeyword) {
+      const realPid = String(byKeyword.pid ?? byKeyword.productId ?? byKeyword.id ?? '');
+      if (realPid) {
+        console.log('[CJ resolve] match por slug -> pid real', realPid);
+        return { cjData: byKeyword, pid: realPid };
+      }
+    }
+  }
+
+  return null;
+}
 
 /**
  * Obtiene el tipo de cambio USD -> CLP.
@@ -245,17 +288,12 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const pid = extractPID(url);
-    if (!pid) {
-      res.status(400).json({ message: 'Could not extract product ID from URL' });
+    const resolvedImport = await resolveCJProductFromUrl(url);
+    if (!resolvedImport) {
+      res.status(404).json({ message: 'No se encontró el producto en CJ con ese link.' });
       return;
     }
-
-    const cjData = await getCJProduct(pid);
-    if (!cjData) {
-      res.status(404).json({ message: 'Product not found on CJ' });
-      return;
-    }
+    const { cjData, pid } = resolvedImport;
 
     const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
     const description = cjData.description || '';
@@ -361,27 +399,19 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const pid = extractPID(url);
-    if (!pid) {
-      console.warn('[CJ preview] no se pudo extraer PID de:', url);
-      res.status(400).json({ message: 'No pude leer el ID desde ese link. Copia la URL completa del producto en CJ.' });
-      return;
-    }
-
-    console.log('[CJ preview] pid extraido:', pid);
-
-    let cjData: any = null;
+    let resolved: { cjData: any; pid: string } | null = null;
     try {
-      cjData = await getCJProduct(pid);
+      resolved = await resolveCJProductFromUrl(url);
     } catch (err: any) {
       console.error('[CJ preview] error CJ api:', err?.response?.status, err?.response?.data ?? err?.message);
       res.status(502).json({ message: 'CJ respondió con error. Revisa tu API key o intenta de nuevo.', error: err?.message });
       return;
     }
-    if (!cjData) {
-      res.status(404).json({ message: 'CJ no encontró producto con ID ' + pid + '. Abre el producto en CJ y copia el link completo.' });
+    if (!resolved) {
+      res.status(404).json({ message: 'CJ no encontró ese producto. Copia el link completo desde la página del producto en CJ (debe incluir el ID).' });
       return;
     }
+    const { cjData, pid } = resolved;
 
     const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
     const description = cjData.description || '';
