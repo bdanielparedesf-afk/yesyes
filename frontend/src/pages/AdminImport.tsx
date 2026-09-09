@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'react-hot-toast';
@@ -81,17 +81,23 @@ export default function AdminImport() {
   });
 
   const [dollarRate, setDollarRate] = useState(950);
+  // Indica si el fetch del navegador a mindicador.cl funcionó.
+  // Si falló, usamos el dólar que trae el backend (con sus propias fuentes de respaldo).
+  const dollarFromBrowser = useRef(false);
 
   async function fetchDollarRate() {
     try {
       const res = await fetch('https://mindicador.cl/api/dolar');
       if (!res.ok) throw new Error('HTTP error');
       const json = await res.json();
+      // mindicador.cl cambió el formato: antes "dolar":[{valor}], ahora "serie":[{valor}]
+      const serieEntry = (json.serie && json.serie.length) ? json.serie[0] : null;
       const dolarEntry = (json.dolar && json.dolar.length) ? json.dolar[0] : null;
-      const raw = dolarEntry ? dolarEntry.valor : null;
+      const raw = serieEntry ? serieEntry.valor : (dolarEntry ? dolarEntry.valor : null);
       const value = parseFloat(String(raw ?? ''));
       if (Number.isFinite(value) && value > 0) {
         setDollarRate(value);
+        dollarFromBrowser.current = true;
       }
     } catch (e) {
       console.warn('Error fetching dollar rate, keeping default 950:', e);
@@ -201,9 +207,17 @@ export default function AdminImport() {
         stock = 100;
       }
 
+      // Dólar real: prioriza el fetch del navegador; si falló, usa el del backend
+      let rate = dollarRate;
+      const backendRate = Number(data.dollarRate || 0);
+      if (!dollarFromBrowser.current && backendRate > 0) {
+        rate = backendRate;
+        setDollarRate(backendRate);
+      }
+
       const totalCost = Number((cjPrice + shipping).toFixed(2));
       const finalPriceUSD = Number((totalCost * margin).toFixed(2));
-      const finalPriceCLP = roundToTen(finalPriceUSD * dollarRate);
+      const finalPriceCLP = roundToTen(finalPriceUSD * rate);
 
       setForm({ cjPrice, shipping, totalCost, stock, margin, finalPriceUSD, finalPriceCLP });
       setEditedCollection(data.collectionSlug || data.autoCategory || '');

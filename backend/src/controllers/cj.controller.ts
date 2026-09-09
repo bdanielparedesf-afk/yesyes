@@ -6,31 +6,122 @@ import { prisma } from '../lib/prisma';
 const MARGIN_MULTIPLIER = 2;
 
 /**
- * Obtiene el tipo de cambio USD -> CLP desde mindicador.cl.
- * Retorna un número; si falla, usa 950 por defecto.
+ * Obtiene el tipo de cambio USD -> CLP.
+ * Orden: caché en memoria -> mindicador.cl -> open.er-api.com -> exchangerate.host -> 950.
+ * Con User-Agent y timeout porque en serverless (Vercel) el fetch sin headers
+ * puede ser bloqueado y colgarse.
  */
-async function getDollarRate(): Promise<number> {
-  try {
-    const res = await fetch('https://mindicador.cl/api/dolar');
-    if (!res.ok) return 950;
-    const json: any = await res.json();
-    // mindicador.cl devuelve { resultado: [...], utm: {...}, ...
+let cachedDollarRate: { value: number; ts: number } | null = null;
+const DOLLAR_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 horas
+const DOLLAR_FALLBACK = 950;
 
-    // `dolar` suele ser un array de objetos con `valor`
-    const dolarEntry = (json.dolar && json.dolar.length)
-      ? json.dolar[0]
-      : null;
-    const raw = dolarEntry ? dolarEntry.valor : null;
-    const value = parseFloat(String(raw ?? ''));
-    if (Number.isFinite(value) && value > 0) return value;
-  } catch (error) {
-    console.warn('Error fetching dollar rate from mindicador.cl, using default 950:', error);
+const FETCH_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'application/json,text/plain,*/*',
+};
+
+async function fetchJsonWithTimeout(url: string, timeoutMs = 8000): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { headers: FETCH_HEADERS, signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return 950;
+}
+
+async function getDollarRate(): Promise<number> {
+  // 1) Caché fresca
+  if (cachedDollarRate && Date.now() - cachedDollarRate.ts < DOLLAR_CACHE_TTL) {
+    return cachedDollarRate.value;
+  }
+
+  // 2) mindicador.cl (fuente oficial para CLP)
+  try {
+    const json: any = await fetchJsonWithTimeout('https://mindicador.cl/api/dolar');
+    // mindicador.cl cambió el formato: antes "dolar":[{valor}], ahora "serie":[{valor}]
+    const serie = Array.isArray(json?.serie) && json.serie.length ? json.serie[0]?.valor : null;
+    const dolar = Array.isArray(json?.dolar) && json.dolar.length ? json.dolar[0]?.valor : null;
+    const value = parseFloat(String(serie ?? dolar ?? ''));
+    if (Number.isFinite(value) && value > 0) {
+      cachedDollarRate = { value, ts: Date.now() };
+      return value;
+    }
+    console.warn('[dolar] mindicador.cl sin valor útil (serie=', serie, 'dolar=', dolar, ')');
+  } catch (error: any) {
+    console.warn('[dolar] falló mindicador.cl:', error?.message ?? error);
+  }
+
+  // 3) Respaldo 1: open.er-api.com (USD -> CLP)
+  try {
+    const json: any = await fetchJsonWithTimeout('https://open.er-api.com/v6/latest/USD');
+    const value = parseFloat(String(json?.rates?.CLP ?? ''));
+    if (Number.isFinite(value) && value > 0) {
+      cachedDollarRate = { value, ts: Date.now() };
+      return value;
+    }
+    console.warn('[dolar] open.er-api.com sin valor útil');
+  } catch (error: any) {
+    console.warn('[dolar] falló open.er-api.com:', error?.message ?? error);
+  }
+
+  // 4) Respaldo 2: exchangerate.host
+  try {
+    const json: any = await fetchJsonWithTimeout('https://api.exchangerate.host/latest?base=USD&symbols=CLP');
+    const value = parseFloat(String(json?.rates?.CLP ?? ''));
+    if (Number.isFinite(value) && value > 0) {
+      cachedDollarRate = { value, ts: Date.now() };
+      return value;
+    }
+    console.warn('[dolar] exchangerate.host sin valor útil');
+  } catch (error: any) {
+    console.warn('[dolar] falló exchangerate.host:', error?.message ?? error);
+  }
+
+  return DOLLAR_FALLBACK;
 }
 
 function roundToTen(value: number): number {
   return Math.round(value / 10) * 10;
+}
+
+function firstNumber(...vals: any[]): number {
+  for (const raw of vals) {
+    if (raw === null || raw === undefined) continue;
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (typeof raw === 'string') {
+      const t = raw.trim();
+      if (!t) continue;
+      // CJ a veces manda rangos: "0.45-28.00" -> tomamos el mínimo
+      const m = t.match(/(\d+(?:\.\d+)?)/);
+      if (m) {
+        const n = parseFloat(m[1] ?? '');
+        if (Number.isFinite(n)) return n;
+      }
+    }
+  }
+  return 0;
+}
+
+function extractCJPrice(cjData: any): number {
+  const variants = Array.isArray(cjData?.variants) ? cjData.variants : [];
+  let min = Infinity;
+  for (const v of variants) {
+    const n = firstNumber(v?.variantSellPrice, v?.price, v?.sellPrice, 0);
+    if (n > 0 && n < min) min = n;
+  }
+  if (Number.isFinite(min) && min !== Infinity && min > 0) return min;
+  return firstNumber(
+    cjData?.sellPrice,
+    cjData?.price,
+    cjData?.suggestSellPrice,
+    cjData?.productSellPrice,
+    cjData?.salePrice,
+    0,
+  );
 }
 
 function autoCategory(cjProduct: any): string {
@@ -39,20 +130,20 @@ function autoCategory(cjProduct: any): string {
   if (/water bottle|hot water|guatero/.test(title)) return 'guateros';
   if (/plush|peluche/.test(title)) return 'peluches';
   if (/bottle|taza|termo/.test(title)) return 'hogar';
-  if (/necklace|bracelet|earring|ring|pendant|chain|jewelry|jewellery|joyer|pulsera|arete|anillo|dije|collar/.test(title)) return 'joyeria';
-  if (/dress|shirt|pants|jeans|jacket|coat|skirt|blouse|hoodie|sweater|top|t-shirt|pantalon|vestido|chaqueta|sueter|falda|blusa/.test(title)) return 'ropa';
+  if (/necklace|bracelet|earring|\bring\b|pendant|chain|jewelry|jewellery|joyer|pulsera|arete|anillo|dije|collar/.test(title)) return 'joyeria';
+  if (/dress|shirt|pants|jeans|jacket|coat|skirt|blouse|hoodie|sweater|\btop\b|t-shirt|pantalon|vestido|chaqueta|sueter|falda|blusa/.test(title)) return 'ropa';
   if (/shoes|sneaker|boot|sandal|shoe|zapato|zapatilla|bota|sandalia/.test(title)) return 'calzado';
   if (/watch|clock|reloj/.test(title)) return 'relojes';
-  if (/bag|backpack|handbag|mochila|cartera|bolso/.test(title)) return 'bolsos';
+  if (/\bbag\b|backpack|handbag|mochila|cartera|bolso/.test(title)) return 'bolsos';
   if (/phone case|case for|protector|funda|carcasa/.test(title)) return 'accesorios-telefono';
   if (/headphone|earphone|speaker|bluetooth|audifono|audífono|parlante/.test(title)) return 'electronica';
   if (/mouse|keyboard|monitor|usb|cable|charger|teclado|mouse gamer/.test(title)) return 'computacion';
   if (/makeup|maquillaje|lipstick|foundation|mascara|labial|base de maquillaje/.test(title)) return 'belleza';
-  if (/hair|pelu|wig|hair extension|peluca|extensiones/.test(title)) return 'belleza';
+  if (/\bhair|pelu|wig|hair extension|peluca|extensiones/.test(title)) return 'belleza';
   if (/massager|masajeador|facial|skincare|skin care|rostro/.test(title)) return 'belleza';
   if (/gym|fitness|deporte|yoga|correr|running|pesa|dumbbell|ejercicio/.test(title)) return 'deportes';
   if (/toy|juguete|niños|kids|bebe|baby/.test(title)) return 'juguetes';
-  if (/pet|dog|cat|perro|gato|mascota/.test(title)) return 'mascotas';
+  if (/\bpet\b|\bdog\b|\bcat\b|perro|gato|mascota/.test(title)) return 'mascotas';
   if (/home|hogar|cocina|luz|lampara|light|despacho|decor|decoracion/.test(title)) return 'hogar';
   if (/gamer|rgb|mouse gamer|teclado mecanico/.test(title)) return 'tech-gamer';
 
