@@ -87,8 +87,6 @@ async function resolveCartItemProductId(item: {
 
 export const createPaymentPreference = async (req: Request, res: Response): Promise<void> => {
   try {
-    getPublicKey();
-
     const { items, payer, total } = req.body;
 
     if (!items || items.length === 0) {

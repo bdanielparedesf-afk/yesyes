@@ -21,11 +21,11 @@ const buildClient = (): void => {
 export { WebhookSignatureValidator };
 
 export const getPublicKey = (): string => {
-  const key = getPublicKeyValue();
-  if (!key) {
-    throw new Error('MERCADOPAGO_PUBLIC_KEY is not defined');
-  }
-  return key;
+  // La public key ES OPCIONAL para crear la preferencia de pago (solo la usa el
+  // SDK/Bricks de Mercado Pago en el frontend, y donde pagamos redirigimos a
+  // init_point). Si no está configurada en Vercel, devolvemos '' en vez de
+  // lanzar un error que rompa el checkout.
+  return getPublicKeyValue() || '';
 };
 
 export const getWebhookSecret = (): string => {
