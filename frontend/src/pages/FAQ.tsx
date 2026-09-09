@@ -5,32 +5,32 @@ import { Search, ChevronDown, HelpCircle, Truck, Shield, RotateCcw, CreditCard }
 const faqs = [
   {
     question: '¿Cuáles son los métodos de pago aceptados?',
-    answer: 'Aceptamos Mercado Pago, que incluye tarjetas de crédito (Visa, Mastercard, American Express), débito y transferencia bancaria. Todos los pagos son seguros y encriptados.',
+    answer: 'Aceptamos tarjetas de crédito, débito y transferencia a través de MercadoPago. Pago 100% seguro. Tu pedido se procesa cuando el pago está confirmado.',
     icon: CreditCard,
   },
   {
     question: '¿Cuánto tarda el envío?',
-    answer: 'Los envíos a todo Chile demoran entre 7 y 15 días hábiles dependiendo de la región. Recibirás un código de seguimiento una vez despachado tu pedido.',
+    answer: 'De 15 a 25 días hábiles desde la confirmación de tu compra. Trabajamos con CJdropshipping, por lo que solo despachamos a comunas y regiones donde ellos tengan cobertura dentro de Chile. Una vez enviado tu pedido, te llegará el seguimiento a tu correo.',
     icon: Truck,
   },
   {
     question: '¿Puedo devolver un producto?',
-    answer: 'Sí, tienes hasta 30 días después de recibir tu pedido para solicitar una devolución. El producto debe estar en su estado original y con todos los empaques.',
+    answer: 'Sí. Tienes 10 días corridos desde que lo recibes. Debe estar sin uso, en su caja original. Escríbenos a yesyeswebsms@gmail.com con fotos. Si ya te hicimos el envío, el costo de retorno lo pagas tú. Si no tiene cobertura de CJ en tu dirección, te reembolsamos el 100% antes de despachar.',
     icon: RotateCcw,
   },
   {
     question: '¿Qué garantía tienen los productos?',
-    answer: 'Todos nuestros productos cuentan con 30 días de garantía por defecto. Algunos productos incluyen garantía extendida del fabricante.',
+    answer: '10 días de garantía por falla de fábrica. Debes enviar un video a yesyeswebsms@gmail.com mostrando la falla. No cubre mal uso, caídas o desgaste.',
     icon: Shield,
   },
   {
     question: '¿Cómo puedo rastrear mi pedido?',
-    answer: 'Una vez que tu pedido sea despachado, recibirás un correo electrónico con el número de seguimiento y el enlace para rastrear tu envío en tiempo real.',
+    answer: 'Una vez despachado tu pedido, recibirás el número de seguimiento en tu correo con el enlace para seguir tu envío en tiempo real. Si tienes dudas, escríbenos a yesyeswebsms@gmail.com y te ayudamos a rastrearlo.',
     icon: HelpCircle,
   },
   {
     question: '¿Hacen envíos a todo Chile?',
-    answer: 'Sí, realizamos envíos a todas las regiones de Chile continental. Para zonas extremas consulta por tiempos de entrega específicos.',
+    answer: 'Despachamos solo a comunas y regiones donde CJdropshipping tenga cobertura dentro de Chile continental. No llegamos a bases militares, apartados ni zonas sin código postal.',
     icon: Truck,
   },
 ];

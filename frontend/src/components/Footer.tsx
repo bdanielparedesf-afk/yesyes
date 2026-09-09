@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Mail, MapPin, Phone, Send } from 'lucide-react';
+import { Mail, MapPin, Send } from 'lucide-react';
 import { useState } from 'react';
 
 const quickLinks = [
@@ -38,16 +38,12 @@ export default function Footer() {
               YES<span className="text-primary-500">YES</span>
             </Link>
             <p className="text-gray-400 text-sm leading-relaxed">
-              Tu tienda online favorita con los mejores productos al mejor precio. Envíos a todo Chile y pagos seguros.
+              Productos novedosos y de tendencia con envíos de 15 a 25 días hábiles dentro de Chile.
             </p>
             <div className="space-y-2">
               <div className="flex items-center space-x-3 text-sm">
                 <Mail className="w-4 h-4 text-primary-500" />
-                <span>hola@yesyes.cl</span>
-              </div>
-              <div className="flex items-center space-x-3 text-sm">
-                <Phone className="w-4 h-4 text-primary-500" />
-                <span>+56 9 1234 5678</span>
+                <span>yesyeswebsms@gmail.com</span>
               </div>
               <div className="flex items-center space-x-3 text-sm">
                 <MapPin className="w-4 h-4 text-primary-500" />

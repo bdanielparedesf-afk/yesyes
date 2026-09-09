@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Mail, Phone, MapPin, Send } from 'lucide-react';
+import { Mail, MapPin, Send } from 'lucide-react';
 
 export default function Contact() {
   const [form, setForm] = useState({ name: '', email: '', message: '' });
@@ -89,16 +89,8 @@ export default function Contact() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900">Email</p>
-                    <p className="text-gray-600">hola@yesyes.cl</p>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-4">
-                  <div className="p-2 bg-primary-50 rounded-full">
-                    <Phone className="w-5 h-5 text-primary-500" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">Teléfono</p>
-                    <p className="text-gray-600">+56 9 1234 5678</p>
+                    <p className="text-gray-600">yesyeswebsms@gmail.com</p>
+                    <p className="text-gray-500 text-sm mt-1">Contacto oficial único. No atendemos por teléfono.</p>
                   </div>
                 </div>
                 <div className="flex items-start space-x-4">

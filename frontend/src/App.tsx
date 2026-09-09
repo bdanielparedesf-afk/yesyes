@@ -15,6 +15,7 @@ import OrderDetail from '@/pages/OrderDetail';
 import Favorites from '@/pages/Favorites';
 import Contact from '@/pages/Contact';
 import FAQ from '@/pages/FAQ';
+import Legal from '@/pages/Legal';
 import Admin from '@/pages/Admin';
 import AdminImport from '@/pages/AdminImport';
 import NotFound from '@/pages/NotFound';
@@ -53,12 +54,12 @@ function App() {
         <Route path="favoritos" element={<Favorites />} />
       <Route path="contacto" element={<Contact />} />
       <Route path="faq" element={<FAQ />} />
-      <Route path="terminos" element={<FAQ />} />
-      <Route path="privacidad" element={<FAQ />} />
-      <Route path="cookies" element={<FAQ />} />
-      <Route path="envios" element={<FAQ />} />
-      <Route path="devoluciones" element={<FAQ />} />
-      <Route path="reembolsos" element={<FAQ />} />
+      <Route path="terminos" element={<Legal kind="terminos" />} />
+      <Route path="privacidad" element={<Legal kind="privacidad" />} />
+      <Route path="cookies" element={<Legal kind="cookies" />} />
+      <Route path="envios" element={<Legal kind="envios" />} />
+      <Route path="devoluciones" element={<Legal kind="devoluciones" />} />
+      <Route path="reembolsos" element={<Legal kind="reembolsos" />} />
       <Route path="admin" element={<Admin />} />
       <Route path="admin/import" element={<AdminImport />} />
       <Route path="*" element={<NotFound />} />
