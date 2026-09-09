@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { ShoppingCart, Star, Truck, Shield, ArrowLeft } from 'lucide-react';
+import { ShoppingCart, Truck, Shield, CreditCard, ArrowLeft } from 'lucide-react';
 import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
 import { useEffect, useState } from 'react';
@@ -85,10 +85,10 @@ export default function ProductDetail() {
               </div>
             </div>
             <div className="prose prose-sm max-w-none text-gray-600" dangerouslySetInnerHTML={{ __html: product.description }} />
-            <div className="flex items-center space-x-4 text-sm text-gray-600">
-              <span className="flex items-center"><Truck className="w-4 h-4 mr-1 text-primary-500" /> Envío 7-15 días</span>
-              <span className="flex items-center"><Shield className="w-4 h-4 mr-1 text-primary-500" /> Garantía 30 días</span>
-              <span className="flex items-center"><Star className="w-4 h-4 mr-1 text-yellow-500 fill-yellow-500" /> 4.8 (120)</span>
+            <div className="flex flex-col gap-3 text-sm text-gray-600">
+              <span className="flex items-center"><Truck className="w-4 h-4 mr-2 text-primary-500" /> <b>Envío 15-25 días.</b> Despacho por CJdropshipping, solo con cobertura en Chile.</span>
+              <span className="flex items-center"><CreditCard className="w-4 h-4 mr-2 text-primary-500" /> <b>Pago Seguro MP.</b> Transacciones protegidas con Mercado Pago.</span>
+              <span className="flex items-center"><Shield className="w-4 h-4 mr-2 text-primary-500" /> <b>Garantía legal 6 meses.</b> Por falla de fábrica según Ley 19.496. Escríbenos a yesyeswebsms@gmail.com</span>
             </div>
             <p className="text-sm text-gray-500">Stock disponible: <span className="font-semibold text-gray-900">{product.stock} unidades</span></p>
             <button onClick={handleAdd} className="w-full flex items-center justify-center space-x-2 px-8 py-4 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 transition-all">
