@@ -124,18 +124,68 @@ export const createPaymentPreference = async (req: Request, res: Response): Prom
       mpItems.push({ id: 'envio', title: 'Envío', description: '', quantity: 1, unit_price: shippingCost, currency_id: 'CLP' });
     }
 
-    const order = await createOrder({
-      userId: (req as any).user?.id,
-      items: mpItems.map((i: any) => ({
-        productId: i.id,
+    // Resolver cada ítem contra un producto REAL de la BD. Si el producto del
+    // carrito ya no existe (fue borrado o re-importado), se recrea una ficha
+    // mínima en DRAFT para conservar la FK order_items.productId y el pago no
+    // truene con "Foreign key constraint violated: order_items_productId_fkey".
+    const orderItems: Array<{
+      productId: string;
+      productName: string;
+      productImage: string;
+      quantity: number;
+      unitPrice: number;
+      totalPrice: number;
+      variant?: any;
+      variantId?: string;
+    }> = [];
+
+    for (const i of mpItems) {
+      if (i.id === 'envio') {
+        orderItems.push({
+          productId: '', // placeholder que se completa abajo con producto de costo cero
+          productName: i.title,
+          productImage: '',
+          quantity: 1,
+          unitPrice: i.unit_price,
+          totalPrice: i.unit_price,
+          variant: undefined,
+          variantId: undefined,
+        });
+        continue;
+      }
+      const resolvedProductId = await resolveCartItemProductId({
+        id: i.id,
+        title: i.title,
+        price: i.unit_price,
+        image: i.picture_url,
+      });
+      orderItems.push({
+        productId: resolvedProductId,
         productName: i.title,
         productImage: i.picture_url || '',
         quantity: i.quantity,
         unitPrice: i.unit_price,
         totalPrice: i.unit_price * i.quantity,
-        variant: i.description || null,
-        variantId: null,
-      })),
+        variant: i.description || undefined,
+        variantId: undefined,
+      });
+    }
+
+    // El ítem de envío no es un producto real: usa como FK el primer producto de
+    // la orden (siempre existe tras resolver), con costo 0 en la ficha.
+    const envioIndex = orderItems.findIndex((o) => o.productId === '');
+    if (envioIndex >= 0) {
+      const envioItem = orderItems[envioIndex];
+      if (envioItem) {
+        envioItem.productId =
+          orderItems.find((o) => o.productId !== '')?.productId ??
+          (await resolveCartItemProductId({ title: 'Producto', price: 0 }));
+      }
+    }
+
+    const order = await createOrder({
+      userId: (req as any).user?.id,
+      items: orderItems,
       subtotal: itemsTotal,
       shipping: shippingCost,
       discount: 0,
