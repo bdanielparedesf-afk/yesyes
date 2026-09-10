@@ -10,7 +10,7 @@ import {
 import { prisma } from '../lib/prisma';
 
 // Margen 100% = x2 (si cuesta 1, vendemos a 2)
-const MARGIN_MULTIPLIER = 2;
+export const MARGIN_MULTIPLIER = 2;
 
 /**
  * Resuelve un producto CJ desde el link pegado por el usuario:
@@ -18,7 +18,7 @@ const MARGIN_MULTIPLIER = 2;
  * 2) si ninguno funciona, busca por las palabras del slug en la API de CJ
  * Devuelve { cjData, pid } o null si no encontró nada.
  */
-async function resolveCJProductFromUrl(url: string): Promise<{ cjData: any; pid: string } | null> {
+export async function resolveCJProductFromUrl(url: string): Promise<{ cjData: any; pid: string } | null> {
   const candidates = extractPidCandidates(url);
   console.log('[CJ resolve] candidatos:', candidates.join(', ') || '(ninguno)');
 
@@ -76,7 +76,7 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = 8000): Promise<any>
   }
 }
 
-async function getDollarRate(): Promise<number> {
+export async function getDollarRate(): Promise<number> {
   // 1) Caché fresca
   if (cachedDollarRate && Date.now() - cachedDollarRate.ts < DOLLAR_CACHE_TTL) {
     return cachedDollarRate.value;
@@ -167,7 +167,7 @@ function extractCJPrice(cjData: any): number {
   );
 }
 
-function autoCategory(cjProduct: any): string {
+export function autoCategory(cjProduct: any): string {
   const title = ((cjProduct.productNameEn || cjProduct.productName || '') + ' ' + (cjProduct.category || '')).toLowerCase();
 
   if (/water bottle|hot water|guatero/.test(title)) return 'guateros';
@@ -193,7 +193,7 @@ function autoCategory(cjProduct: any): string {
   return 'importados';
 }
 
-function extractShippingCost(cjData: any, cjPrice: number): number {
+export function extractShippingCost(cjData: any, cjPrice: number): number {
   const raw = cjData.shippingCost ?? cjData.freight ?? cjData.freightPrice ?? cjData.shippingPrice ?? cjData.shipping ?? cjData.totalCost ?? cjData.totalPrice ?? cjData.productTotal ?? 0;
   const value = parseFloat(String(raw));
   if (Number.isFinite(value) && value > 0) return value;
@@ -202,7 +202,7 @@ function extractShippingCost(cjData: any, cjPrice: number): number {
   return 0;
 }
 
-function extractCJStock(cjData: any): number {
+export function extractCJStock(cjData: any): number {
   const raw = cjData.inventoryNum ?? cjData.stock ?? cjData.totalStock ?? cjData.availableStock ?? 0;
   const value = parseInt(String(raw), 10);
   if (Number.isInteger(value) && value >= 0) return value;
@@ -216,7 +216,7 @@ function extractCJStock(cjData: any): number {
   return 0;
 }
 
-function parseCJImages(cjData: any): string[] {
+export function parseCJImages(cjData: any): string[] {
   const images: string[] = [];
   try {
     const parsed = JSON.parse(cjData.productImage || '[]');
@@ -228,7 +228,7 @@ function parseCJImages(cjData: any): string[] {
   return images;
 }
 
-function mapCJVariant(v: any, cjPrice: number) {
+export function mapCJVariant(v: any, cjPrice: number) {
   const sku = v.variantSku || `cj-${v.pid}-${v.vid}`;
   const name = v.variantNameEn || v.variantName || '';
   let color: string | null = null;
@@ -252,7 +252,7 @@ function mapCJVariant(v: any, cjPrice: number) {
  * El esquema exige `categoryId` no nulo en Product, por eso NUNCA debe
  * quedar undefined/'general' como string suelto (violaría la FK).
  */
-async function resolveCategory(slug?: string): Promise<{ id: string; name: string; slug: string }> {
+export async function resolveCategory(slug?: string): Promise<{ id: string; name: string; slug: string }> {
   const targetSlug = slug?.trim().toLowerCase() || 'general';
 
   const existing = await prisma.category.findUnique({ where: { slug: targetSlug } });
@@ -297,7 +297,7 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
 
     const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
     const description = cjData.description || '';
-    const cjImages = parseCJImages(cjData);
+    const cjImages = parseCJImages(cjData).slice(0, 5); // FASE 4A: máximo 5 fotos
     const productImage = cjImages[0] || '';
     const productImages = cjImages.slice(1);
     const variants = cjData.variants || [];
@@ -374,6 +374,12 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
         cjVariants: variants,
         variants: [],
         collectionId,
+        // FASE 4A: trazabilidad de fuente (link pegado, plataforma, ID y costo USD)
+        sourceUrl: url,
+        sourcePlatform: 'CJ',
+        sourceId: String(pid),
+        costUsd: Number(totalCost) || null,
+        lastCheckedAt: new Date(),
         productImages: {
           create: cjImages.map((url, i) => ({ url, position: i })),
         },

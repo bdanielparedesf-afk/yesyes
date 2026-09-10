@@ -39,7 +39,7 @@ function mapProduct(p: any): Product {
   const second = images[1]?.url || first;
   return {
     id: p.id,
-    name: p.name,
+    name: p.name || '',
     slug: p.slug,
     description: p.description || '',
     price: Number(p.salePrice || 0),
@@ -61,6 +61,6 @@ export async function getProducts(): Promise<Product[]> {
 }
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
-  const products = await getProducts();
-  return products.find((p) => p.slug === slug) || null;
+  const { data } = await api.get(`/products/${slug}`);
+  return data.product ? mapProduct(data.product) : null;
 }

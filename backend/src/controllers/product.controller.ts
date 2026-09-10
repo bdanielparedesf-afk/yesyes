@@ -17,7 +17,9 @@ async function resolveCategoryId(categoryId?: string): Promise<string> {
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
     const { collection, search, limit = 50, offset = 0 } = req.query;
-    const where: any = { status: 'PUBLISHED' };
+    // El modelo Product usa `status` (enum: DRAFT, PUBLISHED, PAUSED, OUT_OF_STOCK, NOT_PROFITABLE, ARCHIVED)
+    // FASE 5: los productos con `hidden=true` (ocultados desde Admin) no se muestran en tienda.
+    const where: any = { status: 'PUBLISHED', hidden: false };
 
     if (collection) {
       where.collection = { slug: collection };
@@ -31,15 +33,22 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
         where,
         take: Number(limit),
         skip: Number(offset),
+        // Se eliminó productVariants: true del listado: la página de productos no
+        // muestra variantes y cargar todas las variantes de 50 productos multiplica
+        // innecesariamente el tamaño de la respuesta y el tiempo de consulta.
         include: {
           productImages: { orderBy: { position: 'asc' } },
-          productVariants: true,
           collection: true,
         },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.product.count({ where }),
     ]);
+
+    // Log para debugging: cuántos productos hay en total en BD
+    const totalInDb = await prisma.product.count();
+    const publishedInDb = await prisma.product.count({ where: { status: 'PUBLISHED' } });
+    console.log(`[getProducts] Productos en BD: ${totalInDb} total, ${publishedInDb} publicados, ${products.length} devueltos`);
 
     res.json({ products, total });
   } catch (error: any) {
@@ -48,12 +57,38 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+export const getProductBySlug = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const product = await prisma.product.findUnique({
+      where: { slug: id },
+      include: {
+        productImages: { orderBy: { position: 'asc' } },
+        productVariants: true,
+        collection: true,
+      },
+    });
+    if (!product) {
+      res.status(404).json({ message: 'Product not found' });
+      return;
+    }
+    res.json({ product });
+  } catch (error: any) {
+    console.error('Error fetching product:', error);
+    res.status(500).json({ message: 'Error fetching product', error: error.message });
+  }
+};
+
 export const getAllProducts = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { limit = 100, offset = 0, search } = req.query;
+    const { limit = 100, offset = 0, search, hasAlert } = req.query;
     const where: any = {};
     if (search) {
       where.name = { contains: String(search), mode: 'insensitive' };
+    }
+    // FASE 5: filtro de productos con alerta de sync (link no disponible o precio cambió)
+    if (hasAlert === 'true') {
+      where.hasAlert = true;
     }
 
     const [products, total] = await Promise.all([
@@ -73,19 +108,47 @@ export const getAllProducts = async (req: Request, res: Response): Promise<void>
   }
 };
 
+/**
+ * FASE 5: oculta un producto (PUT /admin/products/:id/hide).
+ * Marca hidden=true y devuelve { active: false, product }.
+ */
+export const hideProduct = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const product = await prisma.product.update({
+      where: { id: String(id) },
+      data: { hidden: true, hasAlert: false, alert: null, alertLevel: 'info' },
+      include: { productImages: true, collection: true, category: true },
+    });
+    res.json({ active: false, hidden: true, product });
+  } catch (error: any) {
+    console.error('Error hiding product:', error);
+    res.status(500).json({ message: 'Error ocultando producto', error: error.message });
+  }
+};
+
 export const getCollections = async (req: Request, res: Response): Promise<void> => {
   try {
     const collections = await prisma.collection.findMany({
       include: {
         products: {
+          // Filtra solo productos publicados
           where: { status: 'PUBLISHED' },
-          include: { productImages: { orderBy: { position: 'asc' } }, collection: true },
+          // Se eliminó collection: true del include anidado: los productos ya
+          // pertenecen a la colección consultada, incluirla de nuevo es redundanto.
+          include: { productImages: { orderBy: { position: 'asc' } } },
           take: 8,
           orderBy: { createdAt: 'desc' },
         },
       },
       orderBy: { name: 'asc' },
     });
+
+    // Log para debugging
+    const totalInDb = await prisma.product.count();
+    const publishedInDb = await prisma.product.count({ where: { status: 'PUBLISHED' } });
+    const collectionsWithProducts = collections.filter((c: any) => c.products && c.products.length > 0).length;
+    console.log(`[getCollections] Productos en BD: ${totalInDb} total, ${publishedInDb} publicados, ${collections.length} colecciones, ${collectionsWithProducts} con productos`);
 
     res.json({ collections });
   } catch (error: any) {
@@ -126,9 +189,15 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
 
 export const createProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, slug, description, salePrice, categoryId, collectionId, status, stock, tags, sku } = req.body;
+    const {
+      name, slug, description, salePrice, categoryId, collectionId, status, stock, tags, sku,
+      // FASE 4B: importación AliExpress (trazabilidad + fotos + costo)
+      images, sourceUrl, sourcePlatform, sourceId, costUsd, productCost, totalCost,
+    } = req.body;
 
     const resolvedCategoryId = await resolveCategoryId(categoryId);
+    const productImages = Array.isArray(images) ? images.slice(0, 5) : [];
+    const numericCostUsd = Number(costUsd) > 0 ? Number(costUsd) : null;
 
     const product = await prisma.product.create({
       data: {
@@ -142,11 +211,24 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
         stock: Number(stock) || 0,
         tags: tags || [],
         sku,
-        productCost: 0,
-        totalCost: 0,
-        margin: 0,
-        images: [],
+        productCost: Number(productCost) || 0,
+        totalCost: Number(totalCost) || Number(productCost) || 0,
+        margin:
+          Number(salePrice) > 0
+            ? parseFloat(
+                (((Number(salePrice) - (Number(totalCost) || Number(productCost) || 0)) / Number(salePrice)) * 100).toFixed(2)
+              )
+            : 0,
+        images: productImages,
         variants: [],
+        // FASE 4B: trazabilidad de fuente (opcional; CJ bulk usa su propio controller)
+        ...(sourceUrl ? { sourceUrl: String(sourceUrl) } : {}),
+        ...(sourcePlatform ? { sourcePlatform: String(sourcePlatform) } : {}),
+        ...(sourceId ? { sourceId: String(sourceId) } : {}),
+        ...(numericCostUsd ? { costUsd: numericCostUsd, lastCheckedAt: new Date() } : {}),
+        ...(productImages.length
+          ? { productImages: { create: productImages.map((url: string, position: number) => ({ url, position })) } }
+          : {}),
       },
       include: { productImages: { orderBy: { position: 'asc' } }, collection: true, category: true },
     });

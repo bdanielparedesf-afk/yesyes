@@ -17,7 +17,12 @@ import Contact from '@/pages/Contact';
 import FAQ from '@/pages/FAQ';
 import Legal from '@/pages/Legal';
 import Admin from '@/pages/Admin';
+import AdminProducts from '@/pages/AdminProducts';
+import AdminOrders from '@/pages/AdminOrders';
+import AdminUsers from '@/pages/AdminUsers';
 import AdminImport from '@/pages/AdminImport';
+import AdminBulk from '@/pages/AdminBulk';
+import AdminLayout from '@/components/admin/AdminLayout';
 import NotFound from '@/pages/NotFound';
 import PaymentResult from '@/pages/PaymentResult';
 
@@ -28,6 +33,7 @@ function Ofertas() {
 function App() {
   return (
     <Routes>
+      {/* Tienda pública con Header/Footer */}
       <Route path="/" element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="productos" element={<Products />} />
@@ -39,7 +45,6 @@ function App() {
         <Route path="ofertas" element={<Ofertas />} />
         <Route path="carrito" element={<Cart />} />
         <Route path="checkout" element={<Checkout />} />
-        {/* Retorno de Mercado Pago (back_urls de la preferencia de pago) */}
         <Route path="payment/success" element={<PaymentResult kind="success" />} />
         <Route path="payment/failure" element={<PaymentResult kind="failure" />} />
         <Route path="payment/pending" element={<PaymentResult kind="pending" />} />
@@ -52,19 +57,29 @@ function App() {
         <Route path="mis-pedidos" element={<Orders />} />
         <Route path="pedido/:id" element={<OrderDetail />} />
         <Route path="favoritos" element={<Favorites />} />
-      <Route path="contacto" element={<Contact />} />
-      <Route path="faq" element={<FAQ />} />
-      <Route path="terminos" element={<Legal kind="terminos" />} />
-      <Route path="privacidad" element={<Legal kind="privacidad" />} />
-      <Route path="cookies" element={<Legal kind="cookies" />} />
-      <Route path="envios" element={<Legal kind="envios" />} />
-      <Route path="devoluciones" element={<Legal kind="devoluciones" />} />
-      <Route path="garantia" element={<Legal kind="garantia" />} />
-      <Route path="reembolsos" element={<Legal kind="reembolsos" />} />
-      <Route path="admin" element={<Admin />} />
-      <Route path="admin/import" element={<AdminImport />} />
-      <Route path="*" element={<NotFound />} />
+        <Route path="contacto" element={<Contact />} />
+        <Route path="faq" element={<FAQ />} />
+        <Route path="terminos" element={<Legal kind="terminos" />} />
+        <Route path="privacidad" element={<Legal kind="privacidad" />} />
+        <Route path="cookies" element={<Legal kind="cookies" />} />
+        <Route path="envios" element={<Legal kind="envios" />} />
+        <Route path="devoluciones" element={<Legal kind="devoluciones" />} />
+        <Route path="garantia" element={<Legal kind="garantia" />} />
+        <Route path="reembolsos" element={<Legal kind="reembolsos" />} />
+        <Route path="*" element={<NotFound />} />
       </Route>
+
+      {/* Admin - fuera del Layout de tienda, con sidebar oscuro */}
+      <Route path="/admin" element={<AdminLayout><Admin /></AdminLayout>} />
+      <Route path="/admin/products" element={<AdminLayout><AdminProducts /></AdminLayout>} />
+      <Route path="/admin/orders" element={<AdminLayout><AdminOrders /></AdminLayout>} />
+      <Route path="/admin/users" element={<AdminLayout><AdminUsers /></AdminLayout>} />
+      <Route path="/admin/import-cj" element={<AdminLayout><AdminImport /></AdminLayout>} />
+      <Route path="/admin/bulk" element={<AdminLayout><AdminBulk /></AdminLayout>} />
+      {/* Compatibilidad: rutas antiguas de importación */}
+      <Route path="/admin/import" element={<Navigate to="/admin/import-cj" replace />} />
+      <Route path="/admin/bulk-import" element={<Navigate to="/admin/bulk" replace />} />
+      <Route path="/admin/import-aliexpress" element={<Navigate to="/admin/import-cj" replace />} />
     </Routes>
   );
 }

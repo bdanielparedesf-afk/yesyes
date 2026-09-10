@@ -1,26 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useCartStore } from '@/store/useCartStore';
-import { toast } from 'react-hot-toast';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { getProducts } from '@/services/products';
 import type { Product } from '@/services/products';
+import ProductGrid from '@/components/ProductGrid';
 
 const categories = ['Todos', 'Tecnología', 'Hogar', 'Moda', 'Belleza', 'Juguetes', 'Deportes'];
-
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.05 },
-  },
-};
-
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 },
-};
 
 export default function Products() {
   const [search, setSearch] = useState('');
@@ -34,12 +19,10 @@ export default function Products() {
   const { nombre, slug } = useParams();
   const [searchParams] = useSearchParams();
 
-  const addItem = useCartStore((s) => s.addItem);
-
   useEffect(() => {
     getProducts()
       .then((data) => setProducts(data))
-      .catch(() => toast.error('Error al cargar productos'))
+      .catch(() => console.error('Error al cargar productos'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -64,19 +47,6 @@ export default function Products() {
       return matchesSearch && matchesCategory && matchesPrice && matchesStock && matchesOffer;
     });
   }, [products, search, category, maxPrice, stockOnly, offerOnly]);
-
-  const handleAdd = (product: Product) => {
-    addItem({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      image: product.image,
-      imageHover: product.imageHover,
-      stock: product.stock,
-      providerPrice: product.providerPrice,
-    });
-    toast.success('Producto agregado al carrito');
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -171,46 +141,7 @@ export default function Products() {
               />
             </div>
 
-            {loading ? (
-              <div className="text-center py-12 text-gray-500">Cargando productos...</div>
-            ) : (
-              <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                {filtered.map((product) => (
-                  <motion.div key={product.id} variants={item} whileHover={{ y: -4 }} className="bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all border border-gray-100 overflow-hidden group">
-                    <Link to={`/productos/${product.slug}`} className="block relative overflow-hidden aspect-square">
-                      <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:opacity-0 transition-opacity duration-300 absolute inset-0" />
-                      <img src={product.imageHover} alt={product.name} className="w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-300 absolute inset-0" />
-                      {product.offer && (
-                        <span className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                          -20%
-                        </span>
-                      )}
-                    </Link>
-                    <div className="p-4 space-y-2">
-                      <h3 className="font-semibold text-gray-800 line-clamp-2">{product.name}</h3>
-                      <div className="flex items-baseline space-x-2">
-                        <span className="text-xs text-gray-400 line-through">${product.providerPrice.toLocaleString('es-CL')}</span>
-                        <span className="text-xl font-bold text-primary-600">${product.price.toLocaleString('es-CL')}</span>
-                      </div>
-                      <p className="text-sm font-medium text-green-600">
-                        Ganancia ${(product.price - product.providerPrice).toLocaleString('es-CL')}
-                      </p>
-                      <p className="text-xs text-gray-500">Stock: {product.stock} unidades</p>
-                      <button
-                        onClick={() => handleAdd(product)}
-                        className="w-full mt-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
-                      >
-                        Agregar
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </motion.div>
-            )}
-
-            {!loading && filtered.length === 0 && (
-              <div className="text-center py-12 text-gray-500">No se encontraron productos.</div>
-            )}
+            <ProductGrid products={filtered} loading={loading} />
           </div>
         </div>
       </div>

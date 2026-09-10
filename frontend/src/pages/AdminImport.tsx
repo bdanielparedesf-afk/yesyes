@@ -60,6 +60,15 @@ interface Product {
   collection: { name: string; slug: string };
 }
 
+interface BulkRow {
+  index: number;
+  url: string;
+  ok: boolean;
+  name?: string;
+  price?: number;
+  error?: string;
+}
+
 export default function AdminImport() {
   const navigate = useNavigate();
   const { user, status, checkSession } = useAuthStore();
@@ -179,7 +188,17 @@ export default function AdminImport() {
 
   const [previewError, setPreviewError] = useState('');
 
-  const handlePreview = async (overrideUrl?: string) => {
+  // ─── Tabs: 1 = CJ individual (1 link), 2 = Importación masiva CJ (30 links) ───
+  const [tab, setTab] = useState<'cj' | 'bulk'>('cj');
+
+  // ─── Tab 2: Importación masiva CJ ───
+  const [bulkLinks, setBulkLinks] = useState('');
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkDone, setBulkDone] = useState(0);
+  const [bulkResults, setBulkResults] = useState<BulkRow[]>([]);
+
+const handlePreview = async (overrideUrl?: string) => {
     const targetUrl = (overrideUrl ?? url).trim();
     if (!targetUrl) {
       setPreviewError('Pega primero el link del producto CJ.');
@@ -188,7 +207,9 @@ export default function AdminImport() {
     setLoading(true);
     setPreviewError('');
     try {
-      const res = await api.post('/admin/preview-cj', { url: targetUrl });
+      // Cache busting: agregar timestamp para asegurar llamada fresca
+      const cacheBustUrl = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}_=${Date.now()}`;
+      const res = await api.post('/admin/preview-cj', { url: cacheBustUrl });
       const data = res.data;
       setPreview(data);
       setEditedTitle(data.titleEs);
@@ -223,11 +244,15 @@ export default function AdminImport() {
       setForm({ cjPrice, shipping, totalCost, stock, margin, finalPriceUSD, finalPriceCLP });
       setEditedCollection(data.collectionSlug || data.autoCategory || '');
       // Limpiar HTML sucio y traducir al español antes de mostrar en formulario
+      console.log('[AdminImport] Descripción ANTES de cleanDescription:', data.description);
       const cleanedDesc = cleanDescription(data.description || '');
+      console.log('[AdminImport] Descripción DESPUÉS de cleanDescription:', cleanedDesc);
       const [translatedTitle, translatedDesc] = await Promise.all([
         translateToSpanish(data.titleEs || ''),
         translateToSpanish(cleanedDesc),
       ]);
+      console.log('[AdminImport] Título traducido:', translatedTitle);
+      console.log('[AdminImport] Descripción traducida:', translatedDesc);
       setEditedTitle(translatedTitle);
       setEditedDescription(translatedDesc);
     } catch (e: any) {
@@ -307,6 +332,68 @@ export default function AdminImport() {
     }
   };
 
+  // Tab 1 (CJ 1 link): fotos del preview — foto grande + miniaturas, máximo 5
+  const previewImages = preview
+    ? [preview.productImage, ...(preview.productImages || [])].filter(Boolean).slice(0, 5)
+    : [];
+
+  // Tab 2: links parseados del textarea — uno por línea, máximo 30
+  const bulkLinkList = bulkLinks
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 30);
+
+  // Tab 2: importa los links contra POST /api/scrape/cj/bulk, uno por request.
+  // Así la barra muestra progreso real (ej: 3/30) y no se muere por el timeout
+  // de serverless (30 productos seguidos en un solo request superarían el límite).
+  const handleBulkImport = async () => {
+    const links = bulkLinkList;
+    if (!links.length) {
+      toast.error('Pega al menos un link de CJ (uno por línea).');
+      return;
+    }
+    setBulkRunning(true);
+    setBulkResults([]);
+    setBulkDone(0);
+    let okCount = 0;
+    for (let i = 0; i < links.length; i++) {
+      try {
+        const res = await api.post('/scrape/cj/bulk', {
+          links: [links[i]],
+          collectionSlug: bulkCategory.trim() || undefined,
+        });
+        const row = res.data?.results?.[0];
+        if (row?.ok) {
+          okCount++;
+          setBulkResults((prev) => [
+            ...prev,
+            { index: i + 1, url: links[i], ok: true, name: row.name, price: row.price },
+          ]);
+        } else {
+          setBulkResults((prev) => [
+            ...prev,
+            { index: i + 1, url: links[i], ok: false, error: row?.error || 'Error desconocido' },
+          ]);
+        }
+      } catch (e: any) {
+        setBulkResults((prev) => [
+          ...prev,
+          {
+            index: i + 1,
+            url: links[i],
+            ok: false,
+            error: e.response?.data?.message || e.message || 'Error de red',
+          },
+        ]);
+      }
+      setBulkDone(i + 1);
+    }
+    toast.success(`Importación masiva terminada: ${okCount}/${links.length} OK`);
+    setBulkRunning(false);
+    loadProducts();
+  };
+
   if (status === 'loading' || !isAdmin) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -334,6 +421,28 @@ export default function AdminImport() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+        {/* ─── Tabs ─── */}
+        <div className="flex flex-wrap gap-2 bg-white p-1.5 rounded-xl border border-gray-100 shadow-sm w-fit">
+          <button
+            onClick={() => setTab('cj')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              tab === 'cj' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            CJ · 1 link
+          </button>
+          <button
+            onClick={() => setTab('bulk')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              tab === 'bulk' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Importación Masiva CJ - 30 links
+          </button>
+        </div>
+
+        {tab === 'cj' && (
+        <>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <label className="block text-sm font-medium text-gray-700 mb-2">URL del producto CJ</label>
           <div className="flex flex-col sm:flex-row gap-3">
@@ -381,6 +490,76 @@ export default function AdminImport() {
             className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-6"
           >
             <h2 className="text-lg font-semibold text-gray-900">Preview del Producto</h2>
+
+            {/* Preview bonito: foto grande a la izquierda + datos a la derecha */}
+            <div className="grid md:grid-cols-2 gap-6 bg-gray-50 border border-gray-100 rounded-2xl p-5">
+              <div>
+                <img
+                  src={previewImages[0] || 'https://via.placeholder.com/600'}
+                  alt={editedTitle || preview.titleEs}
+                  className="w-full aspect-square object-cover rounded-2xl border border-gray-200 bg-white"
+                />
+                <p className="text-xs text-gray-500 mt-2 text-center">
+                  {previewImages.length} foto{previewImages.length === 1 ? '' : 's'} · se guardan máximo 5
+                </p>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between gap-4 border-b border-gray-100 pb-2">
+                  <span className="text-gray-500 shrink-0">ID CJ</span>
+                  <span className="font-medium text-gray-900 text-right break-all">{preview.pid}</span>
+                </div>
+                <div className="flex justify-between gap-4 border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Título</span>
+                  <span className="font-medium text-gray-900 text-right">{preview.titleEs}</span>
+                </div>
+                <div className="flex justify-between gap-4 border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Precio CJ</span>
+                  <span className="font-medium text-gray-900">${Number(preview.cjPrice || 0).toFixed(2)} USD</span>
+                </div>
+                <div className="flex justify-between gap-4 border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Envío CJ</span>
+                  <span className="font-medium text-gray-900">${Number(preview.shipping || 0).toFixed(2)} USD</span>
+                </div>
+                <div className="flex justify-between gap-4 border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Stock CJ</span>
+                  <span className="font-medium text-gray-900">
+                    {Number(preview.inventory ?? preview.stock ?? 0).toLocaleString('es-CL')}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4 border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Colección sugerida</span>
+                  <span className="font-medium text-gray-900">{preview.collectionSlug || preview.autoCategory || '-'}</span>
+                </div>
+                <div className="flex justify-between gap-4 border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Precio sugerido</span>
+                  <span className="font-medium text-green-700">
+                    ${Number(preview.suggestedPriceUSD ?? 0).toFixed(2)} USD /{' '}
+                    ${Number(preview.suggestedPriceCLP ?? preview.suggestedPrice ?? 0).toLocaleString('es-CL')} CLP
+                  </span>
+                </div>
+                <div className="pt-1">
+                  <span className="text-gray-500 block mb-1">Fuente (se guarda como sourceUrl)</span>
+                  <a href={url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline break-all">
+                    {url}
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Miniaturas: solo las primeras 5 fotos */}
+            {previewImages.length > 1 && (
+              <div className="flex flex-wrap gap-3">
+                {previewImages.slice(0, 5).map((img, i) => (
+                  <img
+                    key={i}
+                    src={img}
+                    alt=""
+                    className={`w-20 h-20 rounded-xl object-cover border-2 ${i === 0 ? 'border-green-500' : 'border-gray-200'}`}
+                  />
+                ))}
+              </div>
+            )}
+
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
               <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Costos CJ</h3>
               <div className="grid grid-cols-2 gap-3">
@@ -476,7 +655,7 @@ export default function AdminImport() {
                 <p className="text-xs text-gray-500 mt-1">Si viene 0 → 100 por defecto · CJ: {Number(preview.inventory ?? preview.stock ?? 0).toLocaleString('es-CL')} unidades</p>
               </div>
             </div>
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-4">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
@@ -518,17 +697,6 @@ export default function AdminImport() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Imágenes</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {preview.productImages.map((img, i) => (
-                    <img key={i} src={img} alt="" className="rounded-lg object-cover aspect-square w-full" />
-                  ))}
-                  {preview.productImages.length === 0 && preview.productImage && (
-                    <img src={preview.productImage} alt="" className="rounded-lg object-cover aspect-square w-full" />
-                  )}
-                </div>
-              </div>
             </div>
             <button
               onClick={handleImport}
@@ -538,6 +706,127 @@ export default function AdminImport() {
               <Upload className="w-6 h-6" />
               {importing ? 'Importando...' : 'Importar a yesyes.cl'}
             </button>
+          </motion.div>
+        )}
+        </>
+        )}
+
+        {tab === 'bulk' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-6"
+          >
+            <h2 className="text-lg font-semibold text-gray-900">Importación Masiva CJ - 30 links</h2>
+            <p className="text-sm text-gray-500 -mt-4">
+              Pega hasta 30 links de CJ (uno por línea). Cada link guarda sourceUrl + 5 fotos y se muestra como OK/Error en la tabla.
+            </p>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Links de productos CJ ({bulkLinkList.length}/30)
+              </label>
+              <textarea
+                value={bulkLinks}
+                onChange={(e) => setBulkLinks(e.target.value)}
+                rows={10}
+                disabled={bulkRunning}
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg font-mono text-xs focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                placeholder={'https://www.cjdropshipping.com/product/... (link 1)\nhttps://www.cjdropshipping.com/product/... (link 2)\n...\n(30 links máximo, uno por línea)'}
+              />
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría (colección)</label>
+                <input
+                  type="text"
+                  value={bulkCategory}
+                  onChange={(e) => setBulkCategory(e.target.value)}
+                  disabled={bulkRunning}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  placeholder="Ej: accesorios-telefono (opcional, vacío = autodetecta)"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={handleBulkImport}
+                  disabled={bulkRunning || bulkLinkList.length === 0}
+                  className="w-full py-3 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Upload className="w-5 h-5" />
+                  {bulkRunning
+                    ? `Importando ${bulkDone}/${bulkLinkList.length}...`
+                    : `IMPORTAR ${bulkLinkList.length || 30} CJ`}
+                </button>
+              </div>
+            </div>
+
+            {(bulkRunning || bulkResults.length > 0) && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm font-medium text-gray-700">
+                  <span>Progreso</span>
+                  <span>
+                    {bulkDone} / {bulkLinkList.length}
+                    {bulkResults.filter((r) => r.ok).length > 0 && (
+                      <span className="ml-2 text-green-600">({bulkResults.filter((r) => r.ok).length} OK)</span>
+                    )}
+                    {bulkResults.filter((r) => !r.ok).length > 0 && (
+                      <span className="ml-1 text-red-600">({bulkResults.filter((r) => !r.ok).length} Error)</span>
+                    )}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                  <div
+                    className="h-3 bg-green-500 rounded-full transition-all duration-300"
+                    style={{ width: `${bulkLinkList.length ? Math.round((bulkDone / bulkLinkList.length) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {bulkResults.length > 0 && (
+              <div className="rounded-2xl border border-gray-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">#</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Link</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Estado</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Producto</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Precio</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Detalle</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {bulkResults.map((r) => (
+                        <tr key={r.index} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm text-gray-500">{r.index}</td>
+                          <td className="px-4 py-3 text-xs max-w-[220px] truncate">
+                            <a href={r.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                              {r.url}
+                            </a>
+                          </td>
+                          <td className="px-4 py-3">
+                            {r.ok ? (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">OK</span>
+                            ) : (
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">Error</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900 max-w-[220px] truncate">{r.name || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {r.price ? `$${Number(r.price).toLocaleString('es-CL')}` : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-red-600 max-w-[220px] truncate">{r.error || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
 

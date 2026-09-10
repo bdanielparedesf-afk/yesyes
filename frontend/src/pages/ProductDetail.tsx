@@ -81,7 +81,6 @@ export default function ProductDetail() {
               <h1 className="text-3xl font-bold text-gray-900 mt-3">{product.name}</h1>
               <div className="flex items-baseline space-x-3 mt-2">
                 <span className="text-3xl font-extrabold text-primary-600">${product.price.toLocaleString('es-CL')}</span>
-                <span className="text-lg text-gray-400 line-through">${product.providerPrice.toLocaleString('es-CL')}</span>
               </div>
             </div>
             <div className="prose prose-sm max-w-none text-gray-600" dangerouslySetInnerHTML={{ __html: product.description }} />

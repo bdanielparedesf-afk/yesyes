@@ -191,19 +191,21 @@ export const createPaymentPreference = async (req: Request, res: Response): Prom
       shippingAddress: {},
     });
 
-    const frontendUrl = process.env.FRONTEND_URL?.replace(/\/$/, '') || '';
-    const backendUrl = process.env.BACKEND_URL?.replace(/\/$/, '') || '';
-
+    // SITE_URL / API_URL ya incluyen el fallback HTTPS (https://yesyes.cl) por si
+    // FRONTEND_URL / BACKEND_URL no están configuradas. Mercado Pago RECHAZA las
+    // preferencias cuando back_urls o notification_url son URLs relativas o HTTP.
+    // El notification_url apunta al webhook real (/webhooks/mercadopago), no a
+    // /payments/webhook que no es ninguna ruta registrada.
     const preferenceData: any = {
       items: mpItems,
       external_reference: order.id,
       back_urls: {
-        success: `${frontendUrl}/payment/success`,
-        failure: `${frontendUrl}/payment/failure`,
-        pending: `${frontendUrl}/payment/pending`,
+        success: `${SITE_URL}/payment/success`,
+        failure: `${SITE_URL}/payment/failure`,
+        pending: `${SITE_URL}/payment/pending`,
       },
       auto_return: 'approved',
-      notification_url: `${backendUrl}/api/payments/webhook`,
+      notification_url: `${API_URL}/api/webhooks/mercadopago`,
     };
 
     if (payer) {

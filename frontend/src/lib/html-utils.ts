@@ -1,7 +1,7 @@
 /**
  * Limpia HTML de proveedor: elimina <img>, <style>, <script>, atributos
- * style="...", convierte <br> y </p> en saltos de línea, quita todas las
- * etiquetas HTML y deja solo texto plano limpio.
+ * style="...", class="...", convierte <br> y </p> en saltos de línea, quita todas las
+ * etiquetas HTML, URLs de imágenes y deja solo texto plano limpio.
  */
 export function cleanDescription(html: string): string {
   if (!html) return '';
@@ -18,6 +18,14 @@ export function cleanDescription(html: string): string {
   text = text.replace(/\s+style="[^"]*"/gi, '');
   text = text.replace(/\s+style='[^']*'/gi, '');
 
+  // Elimina todos los atributos class="..." o class='...'
+  text = text.replace(/\s+class="[^"]*"/gi, '');
+  text = text.replace(/\s+class='[^']*'/gi, '');
+
+  // Elimina URLs de imágenes dentro del texto (https://...jpg, http://...png, etc.)
+  text = text.replace(/https?:\/\/[^\s<>"']+\.(?:jpg|jpeg|png|gif|webp|bmp|svg|ico)(?:\?[^\s<>"']*)?/gi, '');
+  text = text.replace(/https?:\/\/[^\s<>"']*(?:image|img|photo|picture)[^\s<>"']*/gi, '');
+
   // Convierte <br>, <br/>, <br /> en saltos de línea
   text = text.replace(/<br\s*\/?>/gi, '\n');
   // Convierte </p> en saltos de línea
@@ -29,16 +37,16 @@ export function cleanDescription(html: string): string {
   // Decodifica entidades HTML comunes
   text = text
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
+    .replace(/'/g, "'")
     .replace(/&eacute;/g, 'é')
     .replace(/&nbsp;/g, ' ');
 
-  // Última garantía: eliminar cualquier < > o style= remanente (defensa contra HTML en DB)
-  text = text.replace(/</g, ' ').replace(/>/g, ' ').replace(/style\s*=/gi, '');
+  // Última garantía: eliminar cualquier < > o style= o class= remanente (defensa contra HTML en DB)
+  text = text.replace(/</g, ' ').replace(/>/g, ' ').replace(/style\s*=/gi, '').replace(/class\s*=/gi, '');
 
   // Limpia espacios en exceso por línea y elimina líneas vacías
   text = text
@@ -116,16 +124,18 @@ function dictionaryTranslate(text: string): string {
 /**
  * Traduce texto al español usando la API gratuita de MyMemory.
  * Si la API falla, usa el diccionario básico como fallback.
+ * SIEMPRE limpia el HTML primero. Nunca devuelve HTML sucio.
  * Siempre devuelve un string (nunca lanza).
  */
 export async function translateToSpanish(text: string): Promise<string> {
   if (!text || text.trim().length === 0) return '';
 
-  const trimmed = text.trim();
+  // PRIMERO: SIEMPRE limpiar HTML antes de cualquier cosa
+  const cleanText = cleanDescription(text.trim());
 
-  // Textos muy cortos o ya traducidos: intentar igual
+  // Textos muy cortos: intentar traducir igual
   try {
-    const encoded = encodeURIComponent(trimmed);
+    const encoded = encodeURIComponent(cleanText);
     const url = `https://api.mymemory.translated.net/get?q=${encoded}&langpair=en|es`;
 
     const controller = new AbortController();
@@ -149,6 +159,6 @@ export async function translateToSpanish(text: string): Promise<string> {
     console.warn('[translate] MyMemory falló, usando diccionario básico:', String(e).slice(0, 200));
   }
 
-  // Fallback: diccionario básico
-  return dictionaryTranslate(trimmed);
+  // Fallback: diccionario básico SOBRE el texto YA LIMPIO
+  return dictionaryTranslate(cleanText);
 }

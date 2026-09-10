@@ -14,6 +14,8 @@ import wishlistRoutes from './wishlist.routes';
 import supportRoutes from './support.routes';
 import adminRoutes from './admin.routes';
 import cjRoutes from './cj.routes';
+import scrapeRoutes from './scrape.routes';
+import { runPriceSync } from '../jobs/priceSync';
 
 const router = Router();
 
@@ -32,6 +34,27 @@ router.use('/wishlist', wishlistRoutes);
 router.use('/support', supportRoutes);
 router.use('/admin', adminRoutes);
 router.use('/admin', cjRoutes);
+router.use('/scrape', scrapeRoutes);
+
+// FASE 5 — CRON de sync de precios CJ.
+// GET /api/cron/check-prices  → protegido por CRON_SECRET (.env).
+// Se puede llamar con header `x-cron-secret: <secret>` o query `?secret=<secret>`.
+router.get('/cron/check-prices', async (req, res) => {
+  const expected = process.env.CRON_SECRET || '';
+  const provided =
+    String(req.headers['x-cron-secret'] || '') ||
+    String((req.query as any).secret || '');
+  if (!expected || provided !== expected) {
+    res.status(401).json({ message: 'No autorizado: header x-cron-secret inválido.' });
+    return;
+  }
+  try {
+    const result = await runPriceSync();
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, message: 'Error en price sync', error: error.message });
+  }
+});
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'yesyes-backend' });

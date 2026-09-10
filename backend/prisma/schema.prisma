@@ -140,6 +140,15 @@ model Product {
   supplierPrice     Float?
   cjProductId       String?
   cjVariants        Json?
+  sourceUrl         String?
+  sourcePlatform    String?
+  sourceId          String?
+  costUsd           Float?
+  lastCheckedAt     DateTime?
+  hasAlert          Boolean            @default(false)
+  alert             String?
+  alertLevel        String             @default("info")
+  hidden            Boolean            @default(false)
   collectionId      String?
   collection        Collection?      @relation(fields: [collectionId], references: [id])
   productInventory  Inventory[]      @relation("ProductInventory")

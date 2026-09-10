@@ -44,3 +44,24 @@ export const updateUserRole = async (req: Request, res: Response): Promise<void>
     res.status(500).json({ message: 'Error updating user role', error: error.message });
   }
 };
+
+export const toggleUserActive = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const user = await prisma.user.findUnique({ where: { id: String(id) } });
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: String(id) },
+      data: { isActive: !user.isActive },
+    });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error toggling user active:', error);
+    res.status(500).json({ message: 'Error updating user active', error: error.message });
+  }
+};
