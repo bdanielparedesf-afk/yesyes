@@ -197,8 +197,9 @@ export default function AdminImport() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkDone, setBulkDone] = useState(0);
   const [bulkResults, setBulkResults] = useState<BulkRow[]>([]);
+  const [bulkMargin, setBulkMargin] = useState(2); // default 2 = 100% (x2), same as single importer
 
-const handlePreview = async (overrideUrl?: string) => {
+  const handlePreview = async (overrideUrl?: string) => {
     const targetUrl = (overrideUrl ?? url).trim();
     if (!targetUrl) {
       setPreviewError('Pega primero el link del producto CJ.');
@@ -362,6 +363,7 @@ const handlePreview = async (overrideUrl?: string) => {
         const res = await api.post('/scrape/cj/bulk', {
           links: [links[i]],
           collectionSlug: bulkCategory.trim() || undefined,
+          margin: bulkMargin,
         });
         const row = res.data?.results?.[0];
         if (row?.ok) {
@@ -736,7 +738,7 @@ const handlePreview = async (overrideUrl?: string) => {
               />
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Categoría (colección)</label>
                 <input
@@ -747,6 +749,19 @@ const handlePreview = async (overrideUrl?: string) => {
                   className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   placeholder="Ej: accesorios-telefono (opcional, vacío = autodetecta)"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Margen</label>
+                <select
+                  value={bulkMargin}
+                  onChange={(e) => setBulkMargin(Number(e.target.value))}
+                  disabled={bulkRunning}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  {marginOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
               <div className="flex items-end">
                 <button

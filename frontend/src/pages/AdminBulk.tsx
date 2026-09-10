@@ -46,6 +46,14 @@ export default function AdminBulk() {
   const [previewing, setPreviewing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [dollarRate, setDollarRate] = useState(950);
+  const [bulkMargin, setBulkMargin] = useState(2); // default 2 = 100% (x2), same as single importer
+  const marginOptions = [
+    { value: 1.5, label: '50% (x1.5)' },
+    { value: 2, label: '100% (x2)' },
+    { value: 2.5, label: '150% (x2.5)' },
+    { value: 3, label: '200% (x3)' },
+    { value: 4, label: '300% (x4)' },
+  ];
 
   // 1) Descargar plantilla
   const handleDownloadTemplate = async () => {
@@ -130,6 +138,7 @@ export default function AdminBulk() {
     try {
       const res = await api.post('/scrape/cj/bulk-preview', {
         links: links.map((l) => ({ link: l.link, category: l.category })),
+        margin: bulkMargin,
       });
       const data = res.data;
       if (data?.dollarRate) setDollarRate(data.dollarRate);
@@ -165,18 +174,24 @@ export default function AdminBulk() {
     }
   };
 
-  // Traducir títulos y descripciones al español
+    // Traducir títulos y descripciones al español
   const handleTranslateAll = async () => {
     setPreviewing(true);
     try {
-      const updated = await Promise.all(
+      const results = await Promise.allSettled(
         rows.map(async (row) => {
           if (!row.checked || row.status !== 'OK') return row;
-          const t = await translateToSpanish(row.editedTitle || row.titleEs || '');
-          const d = await translateToSpanish(row.description || '');
-          return { ...row, editedTitle: t || row.editedTitle, editedDescription: d || row.description };
+          try {
+            const t = await translateToSpanish(row.editedTitle || row.titleEs || '');
+            const d = await translateToSpanish(row.description || '');
+            return { ...row, editedTitle: t || row.editedTitle, editedDescription: d || row.description };
+          } catch {
+            // Si la traducción falla para esta fila, mantenemos el original
+            return row;
+          }
         })
       );
+      const updated = results.map((r, i) => (r.status === 'fulfilled' ? r.value : rows[i]));
       setRows(updated);
       toast.success('Títulos y descripciones traducidos');
     } catch {
@@ -258,6 +273,19 @@ export default function AdminBulk() {
           Subir Excel (50 links)
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="hidden" />
         </label>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Margen</label>
+          <select
+            value={bulkMargin}
+            onChange={(e) => setBulkMargin(Number(e.target.value))}
+            disabled={previewing || importing}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          >
+            {marginOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
         {rows.length > 0 && rows.some((r) => r.status === "OK") && (
           <button onClick={handleTranslateAll} disabled={previewing} className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors">
             Traducir titulos

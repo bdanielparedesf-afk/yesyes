@@ -42,7 +42,7 @@ interface BulkRowResult {
  */
 export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { links, categorySlugs } = req.body || {};
+    const { links, categorySlugs, margin } = req.body || {};
     const list: { url: string; category?: string }[] = [];
     if (Array.isArray(links)) {
       links.forEach((l: any, i: number) => {
@@ -60,6 +60,7 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
     }
     if (list.length > MAX_BULK_PREVIEW_LINKS) list.length = MAX_BULK_PREVIEW_LINKS;
 
+    const marginMultiplier = Number(margin) > 0 ? Number(margin) : MARGIN_MULTIPLIER;
     const dollarRate = await getDollarRate();
     const results: any[] = [];
 
@@ -81,7 +82,7 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
         const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0') || 0;
         const shippingCost = extractShippingCost(cjData, cjPrice);
         const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
-        const priceClp = roundToTen(totalCost * MARGIN_MULTIPLIER * dollarRate);
+        const priceClp = roundToTen(totalCost * marginMultiplier * dollarRate);
         const autoCat = category?.trim() || autoCategory(cjData);
 
         results.push({
