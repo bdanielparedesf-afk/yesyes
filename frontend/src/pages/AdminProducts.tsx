@@ -229,7 +229,6 @@ export default function AdminProducts() {
               <select value={productForm.collectionId} onChange={(e) => setProductForm({ ...productForm, collectionId: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
                 <option value="">Sin colección</option>
                 {categoriesForSelect.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                {categoriesForSelect.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
               </select>
               {productModal?.sourceUrl && (
                 <div className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
@@ -239,20 +238,10 @@ export default function AdminProducts() {
                   </a>
                 </div>
               )}
-              <select value={productForm.status} onChange={(e) => setProductForm({ ...productForm, status: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
-              </select>
               <select value={productForm.status} onChange={(e) => setProductForm({ ...productForm, status: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
                 <option value="PUBLISHED">Publicado</option>
                 <option value="DRAFT">Borrador</option>
               </select>
-              {productModal?.sourceUrl && (
-                <div className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                  <span className="font-medium">Fuente:</span>{' '}
-                  <a href={productModal.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium">
-                    {productModal.sourcePlatform || 'Link'} — {productModal.sourceUrl.slice(0, 60)}... <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
               <button onClick={handleSaveProduct} disabled={productSaving} className="w-full py-3 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors">
                 {productSaving ? 'Guardando...' : 'Guardar producto'}
               </button>
