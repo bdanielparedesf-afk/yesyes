@@ -344,5 +344,13 @@ export function translateToChileanSpanish(title: string): string {
     const regex = new RegExp(`\\b${en}\\b`, 'gi');
     result = result.replace(regex, es);
   }
-  return result;
+
+  // Normalizar espacios extra por reemplazos tipo 'Speaker' -> ' Parlante'
+  return result.replace(/\s+/g, ' ').trim();
+}
+
+/** Traducción básica de descripción al español (reutiliza diccionario de título). */
+export function translateDescriptionToSpanish(description: string): string {
+  if (!description) return '';
+  return translateToChileanSpanish(description);
 }

@@ -11,7 +11,7 @@ import {
   MARGIN_MULTIPLIER,
   calculateFinalPrice,
 } from './cj.controller';
-import { detectCollection, translateToChileanSpanish } from '../lib/cj';
+import { detectCollection, translateToChileanSpanish, translateDescriptionToSpanish } from '../lib/cj';
 import { prisma } from '../lib/prisma';
 
 // FASE 4A/4C — Importación masiva CJ (hasta 30-50 links). Solo CJ.
@@ -87,7 +87,7 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
           link: url,
           sourceId: String(pid),
           titleEs: translateToChileanSpanish(productNameEn),
-          description,
+          description: translateDescriptionToSpanish(description),
           costUsd: Number(totalCost.toFixed(2)),
           priceClp,
           images,
@@ -169,7 +169,7 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
         const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
 
         const finalTitle = translateToChileanSpanish(productNameEn);
-        const finalDescription = description;
+        const finalDescription = translateDescriptionToSpanish(description);
 
         const costTotalUSD = totalCost;
         const costTotalCLP = costTotalUSD * dollarRate;
