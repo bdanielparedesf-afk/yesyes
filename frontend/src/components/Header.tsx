@@ -27,8 +27,8 @@ export default function Header() {
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          <Link to="/" className="text-2xl font-bold text-primary-500 tracking-tight">
-            YES<span className="text-primary-600">YES</span>
+          <Link to="/" className="flex items-center gap-2">
+            <img src="/logo.svg" alt="YESYES" className="h-8 w-auto" />
           </Link>
 
           <nav className="hidden md:flex items-center space-x-8">

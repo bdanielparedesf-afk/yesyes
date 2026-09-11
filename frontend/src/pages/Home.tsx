@@ -132,43 +132,17 @@ export default function Home() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6 }}
-        className="relative bg-gradient-to-b from-white to-gray-100 overflow-hidden"
+        className="relative bg-[#111111] overflow-hidden"
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
-              className="space-y-6"
-            >
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight">
-                Nuevos productos llegando esta semana 🔥
-              </h1>
-              <p className="text-lg text-gray-600 max-w-lg">
-                Envío a todo Chile. Los mejores precios en tecnología, hogar, belleza y más.
-              </p>
-              <div className="flex flex-wrap gap-4">
-                <Link to="/productos" className="inline-flex items-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg shadow-primary-500/30 transition-all">
-                  Ver Productos
-                </Link>
-                <a href="#colecciones" className="inline-flex items-center px-6 py-3 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 font-semibold rounded-lg shadow-sm transition-all">
-                  Explorar
-                </a>
-              </div>
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6, delay: 0.4 }}
-              className="relative"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&h=600&fit=crop"
-                alt="Productos ecommerce"
-                className="rounded-2xl shadow-2xl w-full object-cover"
-              />
-            </motion.div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
+          <div className="bg-[#111111] rounded-[24px] py-20 px-6 flex flex-col items-center justify-center text-center">
+            <img
+              src="/logo-icon.svg"
+              alt="YESYES"
+              className="w-[180px] h-[180px] drop-shadow-[0_0_40px_rgba(255,107,43,0.4)]"
+            />
+            <h1 className="text-7xl font-black text-white tracking-tighter mt-6">YESYES</h1>
+            <p className="text-white/60 mt-3">🔥 Nuevos productos llegando esta semana</p>
           </div>
         </div>
       </motion.section>
@@ -189,7 +163,7 @@ export default function Home() {
         {/* Estado de carga */}
         {loading && (
           <div className="text-center py-12">
-            <div className="inline-block w-8 h-8 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
+            <img src="/logo-icon.svg" className="w-12 h-12 animate-pulse" alt="loading" />
             <p className="mt-4 text-gray-500">Cargando colecciones...</p>
           </div>
         )}
