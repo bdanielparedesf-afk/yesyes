@@ -243,22 +243,58 @@ export function parseCJImages(cjData: any): string[] {
   return images;
 }
 
-export function mapCJVariant(v: any, cjPrice: number) {
-  const sku = v.variantSku || `cj-${v.pid}-${v.vid}`;
-  const name = v.variantNameEn || v.variantName || '';
+export function mapCJVariant(
+  v: any,
+  _cjPrice: number,
+  _shippingUSD = 0,
+  marginMultiplier = MARGIN_MULTIPLIER,
+  dollarRate = 950,
+  variantImage?: string
+) {
+  const sku = String(v.variantSku || v.sku || `cj-${v.pid || 'x'}-${v.vid || Math.random().toString(36).slice(2, 8)}`);
+  const variantNameEn = v.variantNameEn || v.variantName || '';
+  const name = variantNameEn;
+  const nameEs = translateToChileanSpanish(variantNameEn);
   let color: string | null = null;
   let size: string | null = null;
-  if (name.toLowerCase().includes('purple')) color = 'Morado';
-  else if (name.toLowerCase().includes('pink')) color = 'Rosado';
-  else if (name.toLowerCase().includes('blue')) color = 'Azul';
+  const lower = String(name || '').toLowerCase();
+  if (lower.includes('purple')) color = 'Morado';
+  else if (lower.includes('pink')) color = 'Rosado';
+  else if (lower.includes('blue')) color = 'Azul';
   size = name || null;
+  // Precio de ESTA variante (NO el global): cada variante tiene su propio variantSellPrice
+  const rawSell = v.variantSellPrice ?? v.sellPrice ?? v.price ?? v.variantPrice ?? _cjPrice;
+  let sellPrice = parseFloat(String(rawSell ?? '0'));
+  if (!Number.isFinite(sellPrice) || sellPrice <= 0) sellPrice = Number(_cjPrice) || 0;
+  const shipNum = Number(_shippingUSD);
+  const shipping = Number.isFinite(shipNum) && shipNum > 0 ? shipNum : 0;
+  const totalCostVariant = sellPrice + shipping;
+  const { precioFinalCLP, precioFinalUSD } = calculateFinalPrice(totalCostVariant, marginMultiplier, dollarRate);
+  const rawStock = v.variantInventory ?? v.inventoryNum ?? v.stock ?? v.quantity ?? '0';
+  let stock = parseInt(String(rawStock ?? '0'), 10);
+  if (!Number.isInteger(stock) || stock < 0) stock = 0;
   return {
+    vid: String(v.vid || v.variantId || sku),
     sku,
-    price: parseFloat(v.variantSellPrice || v.price || String(cjPrice)),
-    stock: parseInt(v.inventoryNum || v.stock || '999', 10),
+    name,
+    nameEs,
+    image: variantImage || v.variantImage || v.image || '',
+    sellPrice,
+    shipping,
+    finalPrice: precioFinalCLP,
+    finalPriceCLP: precioFinalCLP,
+    finalPriceUSD: precioFinalUSD,
+    price: precioFinalCLP,
+    stock,
     size,
     color,
   };
+}
+
+async function getVariantShippingCost(_vid: string, cjData: any, defaultShipping: number): Promise<number> {
+  // Placeholder: si en el futuro la API de CJ o un servicio de envíos provee
+  // shipping por variante, se calcula aquí. Por ahora retorna el shipping global.
+  return defaultShipping;
 }
 
 /**
@@ -326,7 +362,7 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     const finalDescription = (editedDescription !== undefined && String(editedDescription).trim()) || description;
 
     const shouldApplyMargin = applyMargin !== false;
-    const marginMultiplier = incomingMargin ?? MARGIN_MULTIPLIER;
+    const marginMultiplier = Number(incomingMargin) > 0 ? Number(incomingMargin) : MARGIN_MULTIPLIER;
 
     // Obtener dólar del día desde mindicador.cl
     const dollarRate = await getDollarRate();
@@ -340,13 +376,8 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     // Precio Final CLP = Costo Total USD * margen * dolar (usa función compartida)
     const effectiveMargin = shouldApplyMargin ? marginMultiplier : 1;
     const { precioFinalCLP } = calculateFinalPrice(costTotalUSD, effectiveMargin, dollarRate);
+    const finalPriceCLP = precioFinalCLP;
     const precioFinalUSD = costTotalUSD * effectiveMargin;
-
-    // finalPrice es el precio de venta en CLP
-    const finalPrice =
-      incomingFinalPriceCLP ??
-      incomingFinalPrice ??
-      (price !== undefined && price !== null && String(price).trim() !== '' ? Number(price) : precioFinalCLP);
 
     const autoSlug = autoCategory(cjData);
     const finalCollectionSlug = collectionSlug?.trim() || detectCollection(finalTitle, finalDescription);
@@ -360,7 +391,74 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
       },
     })).id;
 
-    const slug = `${finalTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`.slice(0, 100);
+    // Variantas elegidas por el admin (frontend envía selectedVariantSkus).
+    // Si no envía nada, se importan todas.
+    const selectedSkus: string[] = Array.isArray(req.body.selectedVariantSkus)
+      ? req.body.selectedVariantSkus.map((s: any) => String(s).trim()).filter(Boolean)
+      : [];
+
+    const filteredVariants = selectedSkus.length
+      ? variants.filter((v: any) =>
+          selectedSkus.includes(String(v.variantSku || v.sku || '')) ||
+          selectedSkus.includes(String(v.vid || v.variantId || '')),
+        )
+      : variants;
+
+    // Precio final por variante (shipping por variante: usa getVariantShippingCost placeholder)
+    const shippingUSD = Number.isFinite(shippingCost) ? shippingCost : 0;
+
+    // Mapeo de variantes con precio final (se reutiliza en preview y en import).
+    // effectiveMargin respeta el margen elegido en el admin (x1.5 / x2 / x2.5...).
+    const mappedVariants = filteredVariants.map((v: any) =>
+      mapCJVariant(v, cjPrice, shippingUSD, effectiveMargin, dollarRate)
+    );
+
+    // images = fotos del producto + fotos de variantes (sin duplicados, máximo 10).
+    // cjImages ya viene slice(0,5); allImages guarda imagen real principal en [0].
+    const allImages = Array.from(
+      new Set([
+        ...cjImages,
+        ...mappedVariants.map((v: any) => v.image).filter(Boolean),
+      ])
+    ).slice(0, 10);
+
+    // variants JSON (se guarda en columna variants)
+    const mappedVariantsJSON = mappedVariants.map((v: any) => ({
+      vid: v.sku,
+      name: v.name,
+      nameEs: v.nameEs,
+      sku: v.sku,
+      sellPrice: v.sellPrice,
+      shipping: v.shipping,
+      finalPrice: v.finalPriceCLP,
+      finalPriceUSD: v.finalPriceUSD,
+      stock: v.stock,
+      image: v.image,
+      size: v.size,
+      color: v.color,
+    }));
+
+    // price = precio final de la variante más barata (para listado).
+    // Si el admin editó el precio a mano (incomingFinalPriceCLP), ese manda.
+    const cheapestVariantPrice = mappedVariants.length
+      ? Math.min(...mappedVariants.map((v: any) => Number(v.finalPriceCLP) || 0).filter((n: number) => n > 0))
+      : 0;
+    const editedFinal =
+      Number(incomingFinalPriceCLP) > 0 ? Number(incomingFinalPriceCLP)
+      : Number(incomingFinalPrice) > 0 ? Number(incomingFinalPrice)
+      : Number(price) > 0 ? Number(price)
+      : 0;
+    const finalPrice =
+      editedFinal > 0 ? Math.round(editedFinal)
+      : Number.isFinite(cheapestVariantPrice) && cheapestVariantPrice > 0 ? Math.round(cheapestVariantPrice)
+      : Math.round(finalPriceCLP);
+
+    // stock = suma de stock de variantes importadas (si hay), sino el global editado
+    const variantsStockSum = mappedVariants.reduce((acc: number, v: any) => acc + (Number(v.stock) || 0), 0);
+    const finalStock = variantsStockSum > 0 ? variantsStockSum : Number(stock) || 0;
+
+    // Variantas que llegan a la BD (productVariants)
+    const importedVariants = mappedVariants;
 
     // Evitar duplicados si el producto CJ ya fue importado
     const existingCj = await prisma.product.findFirst({ where: { cjProductId: String(pid) } });
@@ -369,38 +467,47 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
       return;
     }
 
+    const slug = `${finalTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`.slice(0, 100);
+
     const product = await prisma.product.create({
       data: {
         name: finalTitle,
         slug,
         description: finalDescription,
-        images: cjImages,
+        images: allImages,
         tags: [finalCollectionSlug],
         categoryId: category.id,
         salePrice: finalPrice,
-        margin: parseFloat(((finalPrice - costTotalCLP) / finalPrice * 100).toFixed(2)),
+        margin: finalPrice > 0 ? parseFloat((((finalPrice - costTotalCLP) / finalPrice) * 100).toFixed(2)) : 0,
         totalCost: totalCost,
         productCost: cjPrice,
         shippingCost: Number.isFinite(shippingCost) ? shippingCost : 0,
-        stock,
+        stock: finalStock,
         weight: cjWeight,
         status: 'PUBLISHED',
         importSource: 'CJ_DROPSHIPPING',
         cjProductId: String(pid),
-        cjVariants: variants,
-        variants: [],
+        cjVariants: mappedVariantsJSON,
+        variants: mappedVariantsJSON,
         collectionId,
-        // FASE 4A: trazabilidad de fuente (link pegado, plataforma, ID y costo USD)
         sourceUrl: url,
         sourcePlatform: 'CJ',
         sourceId: String(pid),
         costUsd: Number(totalCost) || null,
         lastCheckedAt: new Date(),
         productImages: {
-          create: cjImages.map((url, i) => ({ url, position: i })),
+          create: allImages.map((imgUrl: string, i: number) => ({ url: imgUrl, position: i })),
         },
         productVariants: {
-          create: variants.map((v: any, i: number) => mapCJVariant(v, cjPrice)),
+          create: importedVariants.map((v: any) => ({
+            sku: String(v.sku),
+            // Prisma ProductVariant NO tiene name/image: size guarda el nombre de la
+            // variante (para el selector) y nameEs/image/finalPrice van en el JSON variants.
+            size: (v.name || v.size) ? String(v.name || v.size).slice(0, 60) : undefined,
+            color: v.color ? String(v.color).slice(0, 60) : undefined,
+            price: Math.round(Number(v.finalPriceCLP) || 0),
+            stock: Number(v.stock) || 0,
+          })),
         },
       },
       include: { productImages: true, productVariants: true, collection: true },
@@ -465,10 +572,26 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
       description,
       productImage,
       productImages,
-      variants: variants.map((v: any) => ({
-        ...v,
-        sellPrice: parseFloat(v.variantSellPrice || v.price || String(cjPrice)),
-      })),
+      variants: (() => {
+        const shippingUSD = Number.isFinite(shippingCost) ? shippingCost : 0;
+        const mappedVariants = variants.map((v: any) =>
+          mapCJVariant(v, cjPrice, shippingUSD, MARGIN_MULTIPLIER, dollarRate)
+        );
+        return mappedVariants.map((v: any) => ({
+          sku: v.sku,
+          name: v.name,
+          nameEs: v.nameEs,
+          image: v.image,
+          sellPrice: v.sellPrice,
+          shipping: v.shipping,
+          finalPriceCLP: v.finalPriceCLP,
+          finalPriceUSD: v.finalPriceUSD,
+          price: v.finalPriceCLP,
+          stock: v.stock,
+          size: v.size,
+          color: v.color,
+        }));
+      })(),
       cjPrice,
       shipping: shippingCost,
       totalCost,

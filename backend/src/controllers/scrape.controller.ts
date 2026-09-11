@@ -173,8 +173,38 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
 
         const costTotalUSD = totalCost;
         const costTotalCLP = costTotalUSD * dollarRate;
-        // Usa la misma función que el importador single (reutiliza lógica)
-        const { precioFinalUSD, precioFinalCLP } = calculateFinalPrice(costTotalUSD, marginMultiplier, dollarRate);
+        const { precioFinalCLP: fallbackCLP } = calculateFinalPrice(costTotalUSD, marginMultiplier, dollarRate);
+        // Variantes: precio final POR VARIANTE (vid/nameEs/stock/imagen/precio)
+        const bulkShipping = Number.isFinite(shippingCost) ? shippingCost : 0;
+        const bulkMapped = variants.map((v: any) =>
+          mapCJVariant(v, cjPrice, bulkShipping, marginMultiplier, dollarRate)
+        );
+        const bulkVariantsJSON = bulkMapped.map((v: any) => ({
+          vid: v.vid || v.sku,
+          name: v.name,
+          nameEs: v.nameEs,
+          sku: v.sku,
+          sellPrice: v.sellPrice,
+          shipping: v.shipping,
+          finalPrice: v.finalPriceCLP,
+          finalPriceCLP: v.finalPriceCLP,
+          finalPriceUSD: v.finalPriceUSD,
+          stock: v.stock,
+          image: v.image,
+          size: v.size,
+          color: v.color,
+        }));
+        const bulkCheapest =
+          bulkMapped.length
+            ? Math.min(...bulkMapped.map((v: any) => Number(v.finalPriceCLP) || 0).filter((n: number) => n > 0))
+            : 0;
+        const bulkFinalPrice =
+          Number.isFinite(bulkCheapest) && bulkCheapest > 0 ? Math.round(bulkCheapest) : Math.round(fallbackCLP);
+        const bulkVariantsStock = bulkMapped.reduce((acc: number, v: any) => acc + (Number(v.stock) || 0), 0);
+        const bulkFinalStock = bulkVariantsStock > 0 ? bulkVariantsStock : stock;
+        const bulkAllImages = Array.from(
+          new Set([...cjImages, ...bulkMapped.map((v: any) => v.image).filter(Boolean)])
+        ).slice(0, 10);
 
         const categorySlug = autoCategory(cjData);
         const finalCollectionSlug: string =
@@ -205,24 +235,24 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
             name: finalTitle,
             slug,
             description: finalDescription,
-            images: cjImages,
+            images: bulkAllImages,
             tags: [finalCollectionSlug],
             categoryId: category.id,
-            salePrice: precioFinalCLP,
+            salePrice: bulkFinalPrice,
             margin:
-              precioFinalCLP > 0
-                ? parseFloat((((precioFinalCLP - costTotalCLP) / precioFinalCLP) * 100).toFixed(2))
+              bulkFinalPrice > 0
+                ? parseFloat((((bulkFinalPrice - costTotalCLP) / bulkFinalPrice) * 100).toFixed(2))
                 : 0,
             totalCost,
             productCost: cjPrice,
             shippingCost: Number.isFinite(shippingCost) ? shippingCost : 0,
-            stock,
+            stock: bulkFinalStock,
             weight: cjWeight,
             status: 'PUBLISHED',
             importSource: 'CJ_DROPSHIPPING',
             cjProductId: String(pid),
-            cjVariants: variants,
-            variants: [],
+            cjVariants: bulkVariantsJSON,
+            variants: bulkVariantsJSON,
             collectionId,
             // FASE 4A: trazabilidad de fuente
             sourceUrl: rawUrl,
@@ -231,10 +261,18 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
             costUsd: Number.isFinite(totalCost) ? totalCost : null,
             lastCheckedAt: new Date(),
             productImages: {
-              create: cjImages.map((imgUrl, imgIndex) => ({ url: imgUrl, position: imgIndex })),
+              create: bulkAllImages.map((imgUrl, imgIndex) => ({ url: imgUrl, position: imgIndex })),
             },
             productVariants: {
-              create: variants.map((v: any) => mapCJVariant(v, cjPrice)),
+              create: bulkMapped.map((v: any) => ({
+                sku: String(v.sku),
+                // Prisma ProductVariant NO tiene name/image: el nombre de la variante
+                // va en `size` y nameEs/image/finalPrice se cruzan desde el JSON `variants`.
+                size: (v.name || v.size) ? String(v.name || v.size).slice(0, 60) : undefined,
+                color: v.color ? String(v.color).slice(0, 60) : undefined,
+                price: Math.round(Number(v.finalPriceCLP) || 0),
+                stock: Number(v.stock) || 0,
+              })),
             },
           },
           include: { productImages: true, collection: true },
@@ -245,8 +283,8 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
           url: rawUrl,
           ok: true,
           productId: product.id,
-          name: product.name,
-          price: precioFinalCLP,
+          name: String(finalTitle),
+          price: Number(bulkFinalPrice),
         });
       } catch (rowError: any) {
         console.error(`[scrape/cj/bulk] error en link ${i + 1}:`, rowError?.message || rowError);

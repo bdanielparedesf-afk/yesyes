@@ -14,18 +14,25 @@ interface ProductImage {
   position: number;
 }
 
-interface ProductVariant {
-  sku: string;
-  price: number;
-  stock: number;
-  size?: string;
-  color?: string;
-}
-
 interface Collection {
   id: string;
   name: string;
   slug: string;
+}
+
+interface PreviewVariant {
+  sku: string;
+  name: string;
+  nameEs: string;
+  image: string;
+  sellPrice: number;
+  shipping: number;
+  finalPriceCLP: number;
+  finalPriceUSD: number;
+  price: number;
+  stock: number;
+  size?: string | null;
+  color?: string | null;
 }
 
 interface PreviewProduct {
@@ -34,7 +41,7 @@ interface PreviewProduct {
   description: string;
   productImage: string;
   productImages: string[];
-  variants: ProductVariant[];
+  variants: PreviewVariant[];
   cjPrice: number;
   shipping?: number;
   totalCost?: number;
@@ -88,11 +95,10 @@ export default function AdminImport() {
     margin: 2,
     finalPriceUSD: 0,
     finalPriceCLP: 0,
+    selectedVariantSkus: [] as string[],
   });
 
   const [dollarRate, setDollarRate] = useState(950);
-  // Indica si el fetch del navegador a mindicador.cl funcionó.
-  // Si falló, usamos el dólar que trae el backend (con sus propias fuentes de respaldo).
   const dollarFromBrowser = useRef(false);
 
   async function fetchDollarRate() {
@@ -239,10 +245,30 @@ export default function AdminImport() {
       }
 
       const totalCost = Number((cjPrice + shipping).toFixed(2));
-      const finalPriceUSD = Number((totalCost * margin).toFixed(2));
-      const finalPriceCLP = roundToTen(finalPriceUSD * rate);
 
-      setForm({ cjPrice, shipping, totalCost, stock, margin, finalPriceUSD, finalPriceCLP });
+      // Precio de listado por defecto = precio final de la VARIANTE MÁS BARATA.
+      // Si el preview no trae variantes, cae al cálculo global (costo * margen * dólar).
+      const variantFinals: number[] = Array.isArray(data.variants)
+        ? data.variants
+            .map((v: any) => Number(v.finalPriceCLP || v.price || 0))
+            .filter((n: number) => n > 0)
+        : [];
+      const cheapestVariant = variantFinals.length ? Math.min(...variantFinals) : 0;
+      const finalPriceUSD =
+        cheapestVariant > 0 ? Number((cheapestVariant / rate).toFixed(2)) : Number((totalCost * margin).toFixed(2));
+      const finalPriceCLP =
+        cheapestVariant > 0 ? roundToTen(cheapestVariant) : roundToTen(finalPriceUSD * rate);
+
+      setForm({
+        cjPrice,
+        shipping,
+        totalCost,
+        stock,
+        margin,
+        finalPriceUSD,
+        finalPriceCLP,
+        selectedVariantSkus: Array.isArray(data.variants) ? data.variants.map((v: any) => String(v.sku)) : [],
+      });
       setEditedCollection(data.collectionSlug || data.autoCategory || '');
       // Limpiar HTML sucio y traducir al español antes de mostrar en formulario
       console.log('[AdminImport] Descripción ANTES de cleanDescription:', data.description);
@@ -305,6 +331,7 @@ export default function AdminImport() {
         finalPriceCLP: form.finalPriceCLP,
         stock: form.stock,
         margin: form.margin,
+        selectedVariantSkus: form.selectedVariantSkus,
       });
       toast.success('Producto publicado en yesyes.cl');
       setPreview(null);
@@ -337,6 +364,32 @@ export default function AdminImport() {
   const previewImages = preview
     ? [preview.productImage, ...(preview.productImages || [])].filter(Boolean).slice(0, 5)
     : [];
+
+  // Tab 1 (CJ 1 link): helpers para elegir variantes a importar (checkboxes)
+  const hasVariants = !!(preview && preview.variants && preview.variants.length > 0);
+  const selectedCount = form.selectedVariantSkus.length;
+  const selectedVariantSet = new Set(form.selectedVariantSkus);
+
+  const selectAllVariants = () => {
+    if (!preview) return;
+    setForm((prev) => ({
+      ...prev,
+      selectedVariantSkus: preview.variants.map((v) => v.sku),
+    }));
+  };
+
+  const clearVariantSelection = () => {
+    setForm((prev) => ({ ...prev, selectedVariantSkus: [] }));
+  };
+
+  const toggleVariant = (sku: string) => {
+    setForm((prev) => {
+      const selected = new Set(prev.selectedVariantSkus);
+      if (selected.has(sku)) selected.delete(sku);
+      else selected.add(sku);
+      return { ...prev, selectedVariantSkus: Array.from(selected) };
+    });
+  };
 
   // Tab 2: links parseados del textarea — uno por línea, máximo 30
   const bulkLinkList = bulkLinks
@@ -559,6 +612,87 @@ export default function AdminImport() {
                     className={`w-20 h-20 rounded-xl object-cover border-2 ${i === 0 ? 'border-green-500' : 'border-gray-200'}`}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Variantes del link: 1 producto con N opciones elegibles */}
+            {hasVariants && (
+              <div className="rounded-2xl border border-gray-100 overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 bg-gray-50 border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">
+                      Variantes ({preview!.variants.length})
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={selectAllVariants}
+                      className="text-xs font-medium text-primary-600 hover:text-primary-700 underline"
+                    >
+                      Seleccionar todas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearVariantSelection}
+                      className="text-xs font-medium text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {selectedCount} seleccionada{selectedCount === 1 ? '' : 's'} · 1 solo producto en YESYES
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Elegir</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Imagen</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Modelo</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Precio CJ (USD)</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Envío (USD)</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Precio final (CLP)</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {preview!.variants.map((v) => (
+                        <tr key={v.sku} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedVariantSet.has(v.sku)}
+                              onChange={() => toggleVariant(v.sku)}
+                              disabled={importing}
+                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                          </td>
+                          <td className="px-4 py-3">
+                            {v.image ? (
+                              <img src={v.image} alt={v.nameEs || v.name} className="w-10 h-10 rounded-lg object-cover" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-xs text-gray-400">
+                                sin foto
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900 max-w-[220px]">
+                            <div className="font-medium truncate">{v.nameEs || v.name}</div>
+                            {v.size && <div className="text-xs text-gray-500">Talla: {v.size}</div>}
+                            {v.color && <div className="text-xs text-gray-500">Color: {v.color}</div>}
+                            <div className="text-[11px] text-gray-400 font-mono truncate">{v.sku}</div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">${Number(v.sellPrice || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900">${Number(v.shipping || 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                            ${Number(v.finalPriceCLP || v.price || 0).toLocaleString('es-CL')}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">{Number(v.stock || 0).toLocaleString('es-CL')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
