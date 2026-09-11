@@ -8,7 +8,8 @@
  *  - Actualiza lastCheckedAt en cada pasada y limpia hasAlert cuando vuelve a estar OK.
  */
 import { prisma } from '../lib/prisma';
-import { resolveCJProductFromUrl, extractShippingCost } from '../controllers/cj.controller';
+import { resolveCJProductFromUrl, extractCJPrice } from '../controllers/cj.controller';
+import { getCJFreight } from '../lib/cj';
 
 const THRESHOLD_PCT = 0.1;
 
@@ -57,8 +58,24 @@ export async function runPriceSync(): Promise<SyncResult> {
         }
 
         const { cjData, pid } = resolved;
-        const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0') || 0;
-        const shippingCost = extractShippingCost(cjData, cjPrice);
+        const cjPrice = extractCJPrice(cjData);
+        const variants = Array.isArray(cjData?.variants) ? cjData.variants : [];
+
+        // Obtener freight real por la primera variante (para el cálculo del costo total)
+        let shippingCost = 0;
+        if (variants.length > 0) {
+          const firstVariant = variants[0];
+          const firstVid = String(firstVariant?.vid || firstVariant?.variantId || '').trim();
+          if (firstVid) {
+            try {
+              shippingCost = await getCJFreight(pid, { vid: firstVid, country: 'CL' });
+            } catch (err: any) {
+              console.warn(`[priceSync] freight pid:${pid} vid:${firstVid} fallo:`, err?.message ?? err);
+              shippingCost = 0;
+            }
+          }
+        }
+
         const newCostUsd = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
 
         // Quantificar cambio vs. costo guardado (costUsd) asumiendo que la primera

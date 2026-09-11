@@ -7,12 +7,43 @@ import {
   searchCJProductByKeyword,
   detectCollection,
   scrapeCJProductPage,
+  getCJFreight,
 } from '../lib/cj';
 import { translateEnToEs } from '../lib/translate';
 import { prisma } from '../lib/prisma';
 
 // Margen 100% = x2 (si cuesta 1, vendemos a 2)
 export const MARGIN_MULTIPLIER = 2;
+
+/**
+ * Default de país para cálculo de envío CJ (Chile).
+ */
+export const CJ_DEFAULT_COUNTRY = 'CL';
+
+/**
+ * Resuelve el costo de envío (USD) para una variante específica de CJ.
+ *
+ * Flujo:
+ * 1. Intenta freightCalculate(pid, vid=variant.vid, country='CL')
+ * 2. Si falla → 0 (no romper import, price sin envío)
+ */
+export async function resolveVariantShipping(
+  pid: string,
+  variant: any,
+  _shippingGlobalUSD = 0
+): Promise<number> {
+  const vid = String(variant?.vid || variant?.variantId || '').trim();
+  if (!vid) return 0;
+
+  try {
+    const freight = await getCJFreight(pid, { vid, country: CJ_DEFAULT_COUNTRY });
+    console.log(`[CJ Import] freight variante pid:${pid} vid:${vid} -> $${freight}`);
+    return freight;
+  } catch (err: any) {
+    console.warn(`[CJ Import] freight variante pid:${pid} vid:${vid} falló - usando 0 (no romper import):`, err?.message ?? err);
+    return 0;
+  }
+}
 
 /**
  * Calcula el precio final CLP para un producto CJ.
@@ -355,6 +386,46 @@ export function parseCJImages(cjData: any): string[] {
   return images;
 }
 
+/**
+ * Procesa un array de variantes, obteniendo el freight por variante
+ * de manera SECUENCIAL (una a una) para respetar el límite de QPS de CJ
+ * (1 request por segundo). Si una variante falla, usa 0 y sigue con la siguiente.
+ * No rompe la importación.
+ */
+export async function mapCJVariantsWithFreight(
+  variants: any[],
+  pid: string,
+  cjPrice: number,
+  marginMultiplier: number,
+  dollarRate: number,
+  fallbackStock: number
+): Promise<any[]> {
+  const results: any[] = [];
+  for (let i = 0; i < variants.length; i++) {
+    const v = variants[i];
+    const vid = String(v.vid || v.variantId || '').trim();
+    const sku = String(v.variantSku || v.sku || '').trim();
+    const variantSellPrice = Number(v.variantSellPrice ?? v.sellPrice ?? v.price ?? cjPrice);
+    let shippingVariantUSD = 0;
+
+    if (vid) {
+      try {
+        shippingVariantUSD = await getCJFreight(pid, { vid, country: CJ_DEFAULT_COUNTRY });
+      } catch (err: any) {
+        console.warn(`[CJ Import] freight variante pid:${pid} vid:${vid} sku:${sku} falló - usando 0 (no romper import):`, err?.message ?? err);
+        shippingVariantUSD = 0;
+      }
+    } else {
+      console.warn(`[CJ Import] Variante sin vid pid:${pid} sku:${sku} - usando 0 (no romper import)`);
+    }
+
+    console.log(`[CJ Import] ${pid} vid:${vid} sku:${sku} - producto:$${variantSellPrice.toFixed(2)} + envio:$${shippingVariantUSD.toFixed(2)} = base:$${(variantSellPrice + shippingVariantUSD).toFixed(2)}`);
+
+    results.push(await mapCJVariant(v, cjPrice, shippingVariantUSD, marginMultiplier, dollarRate, undefined, fallbackStock));
+  }
+  return results;
+}
+
 export async function mapCJVariant(
   v: any,
   _cjPrice: number,
@@ -379,6 +450,7 @@ export async function mapCJVariant(
   const rawSell = v.variantSellPrice ?? v.sellPrice ?? v.price ?? v.variantPrice ?? _cjPrice;
   let sellPrice = parseFloat(String(rawSell ?? '0'));
   if (!Number.isFinite(sellPrice) || sellPrice <= 0) sellPrice = Number(_cjPrice) || 0;
+  // shippingUSD ya viene resuelto por variante (freight(pid, vid, sku) o fallback global)
   const shipNum = Number(_shippingUSD);
   const shipping = Number.isFinite(shipNum) && shipNum > 0 ? shipNum : 0;
   const totalCostVariant = sellPrice + shipping;
@@ -579,13 +651,15 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     const incomingProductPrice = Number(productPrice);
     const cjPrice = incomingProductPrice > 0 ? incomingProductPrice : extractCJPrice(cjData);
     const incomingShippingPrice = Number(shippingPrice);
-    const shippingCost = incomingShippingPrice > 0
-      ? incomingShippingPrice
-      : extractShippingCost(cjData, cjPrice);
+    // NOTA: shippingCost global ya no se usa para el cálculo de precios.
+    // El freight real se obtiene por variante con freightCalculate(pid, vid).
+    // Mantenemos shippingCost=0 como valor por defecto del producto (el cost real
+    // de envío se almacena en cada variante).
+    const shippingCost = 0;
     const incomingTotalCostValue = Number(incomingTotalCost);
     const totalCost = incomingTotalCostValue > 0 && Number.isFinite(incomingTotalCostValue)
       ? incomingTotalCostValue
-      : cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
+      : cjPrice;
     const incomingStockValue = Number(incomingStock);
     const stock = incomingStockValue >= 0 && Number.isFinite(incomingStockValue)
       ? incomingStockValue
@@ -603,7 +677,7 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     // Obtener dólar del día desde mindicador.cl
     const dollarRate = await getDollarRate();
 
-    // Costo Total USD = Precio + Envío
+    // Costo Total USD = Precio base (el envío se suma por variante)
     const costTotalUSD = totalCost;
 
     // Costo Total CLP = Costo Total USD * dolar
@@ -642,14 +716,21 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
         )
       : variants;
 
-    // Precio final por variante (shipping por variante: usa getVariantShippingCost placeholder)
-    const shippingUSD = Number.isFinite(shippingCost) ? shippingCost : 0;
+    // Precio final por variante: obtiene freight por variante (freightCalculate con vid)
+    // Procesa las variantes SECUENCIALMENTE para respetar el límite de QPS de CJ (1/1s).
+    // Si freight falla: 0 (no romper import, price sin envío).
+    console.log(`[CJ Import] pid:${pid} variantes:${filteredVariants.length} - calculando freight por variante (secuencial)`);
 
-    // Mapeo de variantes con precio final (se reutiliza en preview y en import).
+    // Mapeo de variantes con precio final.
     // effectiveMargin respeta el margen elegido en el admin (x1.5 / x2 / x2.5...).
-    const mappedVariants = await Promise.all(filteredVariants.map((v: any) =>
-      mapCJVariant(v, cjPrice, shippingUSD, effectiveMargin, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
-    ));
+    const mappedVariants = await mapCJVariantsWithFreight(
+      filteredVariants,
+      pid,
+      cjPrice,
+      effectiveMargin,
+      dollarRate,
+      Number(stock) > 0 ? Number(stock) : 100
+    );
 
     // images = fotos del producto + fotos de variantes (sin duplicados, máximo 10).
     // cjImages ya viene slice(0,5); allImages guarda imagen real principal en [0].
@@ -791,8 +872,9 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
     const productImages = cjImages.slice(1);
     const variants = cjData.variants || [];
     const cjPrice = extractCJPrice(cjData);
-    const shippingCost = extractShippingCost(cjData, cjPrice);
-    const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
+    // shippingCost global: no se usa para cálculo de precios (freight real por variante)
+    const shippingCost = 0;
+    const totalCost = cjPrice;
     const stock = extractCJStock(cjData);
     const rawTitle = productNameEn;
     const title = await translateEnToEs(rawTitle);
@@ -811,35 +893,38 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
 
     const collections = await prisma.collection.findMany({ orderBy: { name: 'asc' } });
 
+    console.log(`[CJ Import] pid:${pid} variantes:${variants.length} - calculando freight por variante (secuencial)`);
+
     res.json({
       pid,
       titleEs,
       description: descriptionEs,
       productImage,
       productImages,
-      variants: await (async () => {
-        const shippingUSD = Number.isFinite(shippingCost) ? shippingCost : 0;
-        const mappedVariants = await Promise.all(variants.map((v: any) =>
-          mapCJVariant(v, cjPrice, shippingUSD, MARGIN_MULTIPLIER, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
-        ));
-        return mappedVariants.map((v: any) => ({
-          sku: v.sku,
-          name: v.name,
-          nameEs: v.nameEs,
-          image: v.image,
-          sellPrice: v.sellPrice,
-          shipping: v.shipping,
-          finalPriceCLP: v.finalPriceCLP,
-          finalPriceUSD: v.finalPriceUSD,
-          price: v.finalPriceCLP,
-          stock: v.stock,
-          size: v.size,
-          color: v.color,
-        }));
-      })(),
+      variants: await mapCJVariantsWithFreight(
+        variants,
+        pid,
+        cjPrice,
+        MARGIN_MULTIPLIER,
+        dollarRate,
+        Number(stock) > 0 ? Number(stock) : 100
+      ).then((mapped) => mapped.map((v: any) => ({
+        sku: v.sku,
+        name: v.name,
+        nameEs: v.nameEs,
+        image: v.image,
+        sellPrice: v.sellPrice,
+        shipping: v.shipping,
+        finalPriceCLP: v.finalPriceCLP,
+        finalPriceUSD: v.finalPriceUSD,
+        price: v.finalPriceCLP,
+        stock: v.stock,
+        size: v.size,
+        color: v.color,
+      }))),
       cjPrice,
-      shipping: shippingCost,
-      totalCost,
+      shipping: 0,
+      totalCost: cjPrice,
       stock,
       inventory: stock,
       suggestedPriceUSD,

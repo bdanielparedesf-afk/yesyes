@@ -3,17 +3,16 @@ import {
   resolveCJProductFromUrl,
   resolveCJProductFromUrlWithRetry,
   parseCJImages,
-  extractShippingCost,
   extractCJPrice,
   extractCJStock,
   autoCategory,
-  mapCJVariant,
   getDollarRate,
   detectCategory,
   resolveMainSubCategory,
   normalizeCJCategory,
   MARGIN_MULTIPLIER,
   calculateFinalPrice,
+  mapCJVariantsWithFreight,
 } from './cj.controller';
 import { detectCollection, translateToChileanSpanish, translateDescriptionToSpanish } from '../lib/cj';
 import { translateEnToEs } from '../lib/translate';
@@ -80,28 +79,29 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
         }
         const { cjData, pid } = resolved;
 
-        const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
-        const description = cjData.description || '';
-        const images = parseCJImages(cjData).slice(0, MAX_IMAGES_PER_PRODUCT);
-        const cjPrice = extractCJPrice(cjData);
-        const shippingCost = extractShippingCost(cjData, cjPrice);
-        const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
-        // Usa la misma función que los importadores (single y bulk)
-        const { precioFinalCLP: priceClp } = calculateFinalPrice(totalCost, marginMultiplier, dollarRate);
-        const titleEs = await translateEnToEs(productNameEn);
-        const autoCat = normalizeCJCategory(category, titleEs);
+const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
+          const description = cjData.description || '';
+          const images = parseCJImages(cjData).slice(0, MAX_IMAGES_PER_PRODUCT);
+          const cjPrice = extractCJPrice(cjData);
 
-        results.push({
-          link: url,
-          sourceId: String(pid),
-          titleEs,
-          description: await translateEnToEs(description),
-          costUsd: Number(totalCost.toFixed(2)),
-          priceClp,
-          images,
-          category: autoCat,
-          status: 'OK',
-        });
+          // Costo base del producto (el envío se suma por variante con freightCalculate)
+          const totalCost = cjPrice;
+          // Usa la misma función que los importadores (single y bulk)
+          const { precioFinalCLP: priceClp } = calculateFinalPrice(totalCost, marginMultiplier, dollarRate);
+          const titleEs = await translateEnToEs(productNameEn);
+          const autoCat = normalizeCJCategory(category, titleEs);
+
+          results.push({
+            link: url,
+            sourceId: String(pid),
+            titleEs,
+            description: await translateEnToEs(description),
+            costUsd: Number(totalCost.toFixed(2)),
+            priceClp,
+            images,
+            category: autoCat,
+            status: 'OK',
+          });
       } catch (rowError: any) {
         const detail = rowError instanceof Error ? rowError.message : String(rowError ?? 'Error desconocido');
         console.error(`[scrape/cj/bulk-preview] error en link ${i + 1}:`, rowError);
@@ -187,8 +187,6 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
           const cjImages = parseCJImages(cjData).slice(0, MAX_IMAGES_PER_PRODUCT);
           const variants = cjData.variants || [];
           const cjPrice = extractCJPrice(cjData);
-          const shippingCost = extractShippingCost(cjData, cjPrice);
-          const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
           const cjStock = extractCJStock(cjData);
           const stock = cjStock > 0 ? cjStock : 100;
           const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
@@ -196,13 +194,21 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
           const finalTitle = await translateToChileanSpanish(productNameEn);
           const finalDescription = await translateDescriptionToSpanish(description);
 
-          const costTotalUSD = totalCost;
+          // Costo base del producto (el envío se suma por variante con freightCalculate)
+          const costTotalUSD = cjPrice;
           const costTotalCLP = costTotalUSD * dollarRate;
           const { precioFinalCLP: fallbackCLP } = calculateFinalPrice(costTotalUSD, marginMultiplier, dollarRate);
-          const bulkShipping = Number.isFinite(shippingCost) ? shippingCost : 0;
-          const bulkMapped = await Promise.all(variants.map((v: any) =>
-            mapCJVariant(v, cjPrice, bulkShipping, marginMultiplier, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
-          ));
+
+          console.log(`[CJ Import] pid:${pid} variantes:${variants.length} - calculando freight por variante (secuencial)`);
+
+          const bulkMapped = await mapCJVariantsWithFreight(
+            variants,
+            pid,
+            cjPrice,
+            marginMultiplier,
+            dollarRate,
+            Number(stock) > 0 ? Number(stock) : 100
+          );
           const bulkVariantsJSON = bulkMapped.map((v: any) => ({
             vid: v.vid || v.sku,
             name: v.name,
@@ -267,9 +273,9 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
                 bulkFinalPrice > 0
                   ? parseFloat((((bulkFinalPrice - costTotalCLP) / bulkFinalPrice) * 100).toFixed(2))
                   : 0,
-              totalCost,
+              totalCost: costTotalUSD,
               productCost: cjPrice,
-              shippingCost: Number.isFinite(shippingCost) ? shippingCost : 0,
+              shippingCost: 0,
               stock: bulkFinalStock,
               weight: cjWeight,
               status: 'PUBLISHED',
@@ -281,7 +287,7 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
               sourceUrl: rawUrl,
               sourcePlatform: 'CJ',
               sourceId: String(pid),
-              costUsd: Number.isFinite(totalCost) ? totalCost : null,
+              costUsd: Number.isFinite(costTotalUSD) ? costTotalUSD : null,
               lastCheckedAt: new Date(),
               productImages: {
                 create: bulkAllImages.map((imgUrl, imgIndex) => ({ url: imgUrl, position: imgIndex })),

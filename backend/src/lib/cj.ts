@@ -13,6 +13,62 @@ const RE_PROD = /\/product\/([A-Za-z0-9-]+)/;
 const RE_DETAIL = /\/product-detail\/([A-Za-z0-9-]+)/;
 const RE_NUM6 = /(\d{6,})/;
 
+/**
+ * Obtiene el costo de envío (freight) desde la API de CJ.
+ *
+ * Endpoint: POST /api2.0/v1/logistic/freightCalculate
+ * Body: { startCountryCode: 'CN', endCountryCode: 'CL', products: [{ quantity, vid }] }
+ *   - Requiere vid obligatoriamente (CJ no permite freight sin variante).
+ *   - Devuelve un array de opciones de logística; tomamos la más barata (logisticPrice mínimo).
+ *
+ * Usa cjThrottle + retry para respetar el límite de QPS de CJ (1 request/1s).
+ * Lanza error si la API falla (para que el caller lo maneje con fallback).
+ */
+export async function getCJFreight(
+  pid: string,
+  options: { vid?: string; sku?: string; country?: string } = {}
+): Promise<number> {
+  const token = await getCJToken();
+  const vid = String(options.vid || '').trim();
+  if (!vid) throw new Error('vid requerido para freightCalculate');
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await cjThrottle();
+    try {
+      const response = await axios.post(`${CJ_API_BASE}/logistic/freightCalculate`, {
+        startCountryCode: 'CN',
+        endCountryCode: options.country || 'CL',
+        products: [{ quantity: 1, vid }],
+      }, {
+        headers: {
+          'CJ-Access-Token': token,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      });
+
+      const data = response.data?.data;
+      if (!Array.isArray(data) || data.length === 0) return 0;
+
+      // Tomar el logisticPrice mínimo (la opción más barata)
+      let minPrice = Infinity;
+      for (const item of data) {
+        const price = parseFloat(String(item?.logisticPrice ?? item?.totalPostageFee ?? '0'));
+        if (Number.isFinite(price) && price >= 0 && price < minPrice) minPrice = price;
+      }
+      return Number.isFinite(minPrice) && minPrice !== Infinity ? minPrice : 0;
+    } catch (err: any) {
+      if (isCjRateLimit(err) && attempt < 2) {
+        console.warn('[CJ] 429 rate limit freight, reintentando en 1.2s (intento ' + (attempt + 1) + '/3)...');
+        await sleep(1200);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('CJ freight request failed after retries');
+}
+
 export async function getCJToken(): Promise<string> {
   if (cachedToken && Date.now() < tokenExpiry) {
     return cachedToken;
