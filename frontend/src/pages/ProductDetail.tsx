@@ -6,13 +6,38 @@ import { useEffect, useState } from 'react';
 import { getProductBySlug } from '@/services/products';
 import type { Product, ProductVariant } from '@/services/products';
 
+type GalleryProduct = {
+  id?: string;
+  image?: string;
+  images?: Array<string | { url?: string; image?: string }>;
+  productImages?: Array<string | { url?: string; image?: string }>;
+};
+
+const getGallery = (p: GalleryProduct | null): string[] => {
+  try {
+    const list: string[] = [];
+    if (p?.image) list.push(p.image);
+    if (p?.images && Array.isArray(p.images)) list.push(...p.images.map((i) => typeof i === 'string' ? i : i.url).filter((item): item is string => Boolean(item)));
+    if (p?.productImages && Array.isArray(p.productImages)) list.push(...p.productImages.map((i) => typeof i === 'string' ? i : i.url || i.image).filter((item): item is string => Boolean(item)));
+    return [...new Set(list)].filter(Boolean);
+  } catch {
+    return p?.image ? [p.image] : [];
+  }
+};
+
 export default function ProductDetail() {
   const { slug } = useParams();
   const addItem = useCartStore((s) => s.addItem);
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const gallery = getGallery(product);
+  const [mainImage, setMainImage] = useState<string | null>(null);
 
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+
+  useEffect(() => {
+    if (gallery[0]) setMainImage(gallery[0]);
+  }, [product?.id]);
 
   useEffect(() => {
     if (!slug) return;
@@ -53,29 +78,15 @@ export default function ProductDetail() {
     );
   }
 
-  const [mainImage, setMainImage] = useState(product.image);
   const displayPrice = selectedVariant?.finalPrice || product.price;
   const displayStock = selectedVariant?.stock ?? product.stock;
-
-  useEffect(() => {
-    setMainImage(selectedVariant?.image || product.image);
-  }, [selectedVariant, product.image]);
-
-  const galleryImages: string[] = [];
-  if (product.image) galleryImages.push(product.image);
-  if (product.imageHover && !galleryImages.includes(product.imageHover)) galleryImages.push(product.imageHover);
-  if (product.productImages) {
-    for (const img of product.productImages) {
-      if (img.url && !galleryImages.includes(img.url)) galleryImages.push(img.url);
-    }
-  }
 
   const handleAdd = () => {
     addItem({
       id: selectedVariant ? `${product.id}::${selectedVariant.id}` : product.id,
       name: selectedVariant ? `${product.name} - ${selectedVariant.nameEs || selectedVariant.sku}` : product.name,
       price: displayPrice,
-      image: mainImage,
+      image: mainImage || gallery[0] || product.image,
       imageHover: product.imageHover,
       stock: displayStock,
       providerPrice: product.providerPrice,
@@ -93,26 +104,26 @@ export default function ProductDetail() {
         </Link>
         <div className="grid lg:grid-cols-2 gap-12">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden p-4">
-            <div className="flex gap-4">
-              <div className="flex flex-col gap-2 w-20 flex-shrink-0">
-                {galleryImages.map((img, i) => (
-                  <img
-                    key={i}
-                    src={img}
-                    onClick={() => setMainImage(img)}
-                    className={`w-20 h-20 object-cover border-2 cursor-pointer rounded-lg ${mainImage === img ? 'border-black' : 'border-transparent'}`}
-                  />
-                ))}
+            {gallery.length ? (
+              <div className="flex gap-4">
+                <div className="flex flex-col gap-2">
+                  {gallery.map((img, idx) => (
+                    <img
+                      key={idx}
+                      src={img}
+                      onClick={() => setMainImage(img)}
+                      className="w-20 h-20 object-cover cursor-pointer border"
+                    />
+                  ))}
+                </div>
+                <img
+                  src={mainImage || gallery[0]}
+                  className="flex-1 max-h-[600px] object-contain"
+                />
               </div>
-              <div className="relative flex-1 aspect-square">
-                <img src={mainImage} alt={product.name} className="w-full h-full object-contain" />
-                {product.offer && (
-                  <span className="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                    -20% OFERTA
-                  </span>
-                )}
-              </div>
-            </div>
+            ) : (
+              <img src={product.image} />
+            )}
           </div>
           <div className="space-y-6">
             <div>
