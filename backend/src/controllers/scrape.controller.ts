@@ -1,14 +1,17 @@
 import { Request, Response } from 'express';
 import {
   resolveCJProductFromUrl,
+  resolveCJProductFromUrlWithRetry,
   parseCJImages,
   extractShippingCost,
+  extractCJPrice,
   extractCJStock,
   autoCategory,
   mapCJVariant,
   getDollarRate,
   detectCategory,
   resolveMainSubCategory,
+  normalizeCJCategory,
   MARGIN_MULTIPLIER,
   calculateFinalPrice,
 } from './cj.controller';
@@ -28,6 +31,7 @@ interface BulkRowResult {
   name?: string;
   price?: number;
   error?: string;
+  detail?: string;
 }
 
 /**
@@ -67,9 +71,10 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
       if (!row) continue;
       const { url, category } = row;
       try {
-        const resolved = await resolveCJProductFromUrl(url);
+        const resolved = await resolveCJProductFromUrlWithRetry(url);
         if (!resolved) {
-          results.push({ link: url, status: 'Error', error: 'CJ no encontró el producto con ese link' });
+          const error = 'CJ no encontró el producto con ese link';
+          results.push({ link: url, status: 'Error', error, detail: error });
           continue;
         }
         const { cjData, pid } = resolved;
@@ -77,17 +82,18 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
         const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
         const description = cjData.description || '';
         const images = parseCJImages(cjData).slice(0, MAX_IMAGES_PER_PRODUCT);
-        const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0') || 0;
+        const cjPrice = extractCJPrice(cjData);
         const shippingCost = extractShippingCost(cjData, cjPrice);
         const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
         // Usa la misma función que los importadores (single y bulk)
         const { precioFinalCLP: priceClp } = calculateFinalPrice(totalCost, marginMultiplier, dollarRate);
-        const autoCat = category?.trim() || autoCategory(cjData);
+        const titleEs = translateToChileanSpanish(productNameEn);
+        const autoCat = normalizeCJCategory(category, titleEs);
 
         results.push({
           link: url,
           sourceId: String(pid),
-          titleEs: translateToChileanSpanish(productNameEn),
+          titleEs,
           description: translateDescriptionToSpanish(description),
           costUsd: Number(totalCost.toFixed(2)),
           priceClp,
@@ -96,8 +102,9 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
           status: 'OK',
         });
       } catch (rowError: any) {
-        console.error(`[scrape/cj/bulk-preview] error en link ${i + 1}:`, rowError?.message || rowError);
-        results.push({ link: url, status: 'Error', error: rowError?.message || 'Error desconocido' });
+        const detail = rowError instanceof Error ? rowError.message : String(rowError ?? 'Error desconocido');
+        console.error(`[scrape/cj/bulk-preview] error en link ${i + 1}:`, rowError);
+        results.push({ link: url, status: 'Error', error: detail, detail });
       }
     }
 
@@ -136,161 +143,180 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
     for (let i = 0; i < list.length && i < MAX_BULK_LINKS; i++) {
       const rawUrl = list[i];
       if (!rawUrl) continue;
-      try {
-        const resolved = await resolveCJProductFromUrl(rawUrl);
-        if (!resolved) {
-          results.push({ index: i + 1, url: rawUrl, ok: false, error: 'CJ no encontró el producto con ese link' });
-          continue;
-        }
-        const { cjData, pid } = resolved;
 
-        // Duplicado: el producto CJ ya fue importado (por pid)
-        const existing = await prisma.product.findFirst({ where: { cjProductId: String(pid) } });
-        if (existing) {
+      let lastRowError: string | undefined;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const resolved = await resolveCJProductFromUrlWithRetry(rawUrl);
+          if (!resolved) {
+            const error = 'CJ no encontró el producto con ese link';
+            if (attempt === 0) {
+              lastRowError = error;
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              continue;
+            }
+            results.push({ index: i + 1, url: rawUrl, ok: false, error, detail: error });
+            break;
+          }
+          const { cjData, pid } = resolved;
+
+          // Duplicado: el producto CJ ya fue importado (por pid)
+          const existing = await prisma.product.findFirst({ where: { cjProductId: String(pid) } });
+          if (existing) {
+            const error = 'Duplicado: este producto CJ ya fue importado';
+            if (attempt === 0) {
+              lastRowError = error;
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+              continue;
+            }
+            results.push({
+              index: i + 1,
+              url: rawUrl,
+              ok: false,
+              productId: existing.id,
+              name: existing.name,
+              error,
+              detail: error,
+            });
+            break;
+          }
+
+          const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
+          const description = cjData.description || '';
+          const cjImages = parseCJImages(cjData).slice(0, MAX_IMAGES_PER_PRODUCT);
+          const variants = cjData.variants || [];
+          const cjPrice = extractCJPrice(cjData);
+          const shippingCost = extractShippingCost(cjData, cjPrice);
+          const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
+          const cjStock = extractCJStock(cjData);
+          const stock = cjStock > 0 ? cjStock : 100;
+          const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
+
+          const finalTitle = translateToChileanSpanish(productNameEn);
+          const finalDescription = translateDescriptionToSpanish(description);
+
+          const costTotalUSD = totalCost;
+          const costTotalCLP = costTotalUSD * dollarRate;
+          const { precioFinalCLP: fallbackCLP } = calculateFinalPrice(costTotalUSD, marginMultiplier, dollarRate);
+          const bulkShipping = Number.isFinite(shippingCost) ? shippingCost : 0;
+          const bulkMapped = variants.map((v: any) =>
+            mapCJVariant(v, cjPrice, bulkShipping, marginMultiplier, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
+          );
+          const bulkVariantsJSON = bulkMapped.map((v: any) => ({
+            vid: v.vid || v.sku,
+            name: v.name,
+            nameEs: v.nameEs,
+            sku: v.sku,
+            sellPrice: v.sellPrice,
+            shipping: v.shipping,
+            finalPrice: v.finalPriceCLP,
+            finalPriceCLP: v.finalPriceCLP,
+            finalPriceUSD: v.finalPriceUSD,
+            stock: v.stock,
+            image: v.image,
+            size: v.size,
+            color: v.color,
+          }));
+          const bulkCheapest =
+            bulkMapped.length
+              ? Math.min(...bulkMapped.map((v: any) => Number(v.finalPriceCLP) || 0).filter((n: number) => n > 0))
+              : 0;
+          const bulkFinalPrice =
+            Number.isFinite(bulkCheapest) && bulkCheapest > 0 ? Math.round(bulkCheapest) : Math.round(fallbackCLP);
+          const bulkVariantsStock = bulkMapped.reduce((acc: number, v: any) => acc + (Number(v.stock) || 0), 0);
+          const bulkFinalStock = bulkVariantsStock > 0 ? bulkVariantsStock : stock;
+          const bulkAllImages = Array.from(
+            new Set([...cjImages, ...bulkMapped.map((v: any) => v.image).filter(Boolean)])
+          ).slice(0, 10);
+
+          const finalCollectionSlug: string =
+            (collectionSlug && String(collectionSlug).trim()) || detectCollection(finalTitle, finalDescription);
+          const { main: bulkCatMain, sub: bulkCatSub } = detectCategory(finalTitle, autoCategory(cjData));
+          const category = await resolveMainSubCategory(bulkCatMain, bulkCatSub);
+          const collection = await prisma.collection.findUnique({ where: { slug: finalCollectionSlug } });
+          const collectionId =
+            collection?.id ??
+            (
+              await prisma.collection.create({
+                data: {
+                  name: finalCollectionSlug
+                    .split('-')
+                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                    .join(' '),
+                  slug: finalCollectionSlug,
+                },
+              })
+            ).id;
+
+          const slug = `${finalTitle
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')}-${Date.now()}-${i}`.slice(0, 100);
+
+          const product = await prisma.product.create({
+            data: {
+              name: finalTitle,
+              slug,
+              description: finalDescription,
+              images: bulkAllImages,
+              tags: [finalCollectionSlug],
+              categoryId: category.id,
+              salePrice: bulkFinalPrice,
+              margin:
+                bulkFinalPrice > 0
+                  ? parseFloat((((bulkFinalPrice - costTotalCLP) / bulkFinalPrice) * 100).toFixed(2))
+                  : 0,
+              totalCost,
+              productCost: cjPrice,
+              shippingCost: Number.isFinite(shippingCost) ? shippingCost : 0,
+              stock: bulkFinalStock,
+              weight: cjWeight,
+              status: 'PUBLISHED',
+              importSource: 'CJ_DROPSHIPPING',
+              cjProductId: String(pid),
+              cjVariants: bulkVariantsJSON,
+              variants: bulkVariantsJSON,
+              collectionId,
+              sourceUrl: rawUrl,
+              sourcePlatform: 'CJ',
+              sourceId: String(pid),
+              costUsd: Number.isFinite(totalCost) ? totalCost : null,
+              lastCheckedAt: new Date(),
+              productImages: {
+                create: bulkAllImages.map((imgUrl, imgIndex) => ({ url: imgUrl, position: imgIndex })),
+              },
+              productVariants: {
+                create: bulkMapped.map((v: any) => ({
+                  sku: String(v.sku),
+                  size: (v.name || v.size) ? String(v.name || v.size).slice(0, 60) : undefined,
+                  color: v.color ? String(v.color).slice(0, 60) : undefined,
+                  price: Math.round(Number(v.finalPriceCLP) || 0),
+                  stock: Number(v.stock) || 0,
+                })),
+              },
+            },
+            include: { productImages: true, collection: true },
+          });
+
           results.push({
             index: i + 1,
             url: rawUrl,
-            ok: false,
-            productId: existing.id,
-            name: existing.name,
-            error: 'Duplicado: este producto CJ ya fue importado',
+            ok: true,
+            productId: product.id,
+            name: String(finalTitle),
+            price: Number(bulkFinalPrice),
           });
-          continue;
+          break;
+        } catch (rowError: any) {
+          const detail = rowError instanceof Error ? rowError.message : String(rowError ?? 'Error desconocido');
+          console.error(`[scrape/cj/bulk] error en link ${i + 1}:`, detail);
+          if (attempt === 0) {
+            lastRowError = detail;
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          results.push({ index: i + 1, url: rawUrl, ok: false, error: detail, detail });
         }
-
-        const productNameEn = cjData.productNameEn || cjData.productName || 'Producto CJ';
-        const description = cjData.description || '';
-        const cjImages = parseCJImages(cjData).slice(0, MAX_IMAGES_PER_PRODUCT);
-        const variants = cjData.variants || [];
-        const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0') || 0;
-        const shippingCost = extractShippingCost(cjData, cjPrice);
-        const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
-        const cjStock = extractCJStock(cjData);
-        const stock = cjStock > 0 ? cjStock : 100;
-        const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
-
-        const finalTitle = translateToChileanSpanish(productNameEn);
-        const finalDescription = translateDescriptionToSpanish(description);
-
-        const costTotalUSD = totalCost;
-        const costTotalCLP = costTotalUSD * dollarRate;
-        const { precioFinalCLP: fallbackCLP } = calculateFinalPrice(costTotalUSD, marginMultiplier, dollarRate);
-        // Variantes: precio final POR VARIANTE (vid/nameEs/stock/imagen/precio)
-        const bulkShipping = Number.isFinite(shippingCost) ? shippingCost : 0;
-        const bulkMapped = variants.map((v: any) =>
-          mapCJVariant(v, cjPrice, bulkShipping, marginMultiplier, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
-        );
-        const bulkVariantsJSON = bulkMapped.map((v: any) => ({
-          vid: v.vid || v.sku,
-          name: v.name,
-          nameEs: v.nameEs,
-          sku: v.sku,
-          sellPrice: v.sellPrice,
-          shipping: v.shipping,
-          finalPrice: v.finalPriceCLP,
-          finalPriceCLP: v.finalPriceCLP,
-          finalPriceUSD: v.finalPriceUSD,
-          stock: v.stock,
-          image: v.image,
-          size: v.size,
-          color: v.color,
-        }));
-        const bulkCheapest =
-          bulkMapped.length
-            ? Math.min(...bulkMapped.map((v: any) => Number(v.finalPriceCLP) || 0).filter((n: number) => n > 0))
-            : 0;
-        const bulkFinalPrice =
-          Number.isFinite(bulkCheapest) && bulkCheapest > 0 ? Math.round(bulkCheapest) : Math.round(fallbackCLP);
-        const bulkVariantsStock = bulkMapped.reduce((acc: number, v: any) => acc + (Number(v.stock) || 0), 0);
-        const bulkFinalStock = bulkVariantsStock > 0 ? bulkVariantsStock : stock;
-        const bulkAllImages = Array.from(
-          new Set([...cjImages, ...bulkMapped.map((v: any) => v.image).filter(Boolean)])
-        ).slice(0, 10);
-
-        const finalCollectionSlug: string =
-          (collectionSlug && String(collectionSlug).trim()) || detectCollection(finalTitle, finalDescription);
-        // FEATURE B: categoría main > sub automática (crea las que no existan)
-        const { main: bulkCatMain, sub: bulkCatSub } = detectCategory(finalTitle, autoCategory(cjData));
-        const category = await resolveMainSubCategory(bulkCatMain, bulkCatSub);
-        const collection = await prisma.collection.findUnique({ where: { slug: finalCollectionSlug } });
-        const collectionId =
-          collection?.id ??
-          (
-            await prisma.collection.create({
-              data: {
-                name: finalCollectionSlug
-                  .split('-')
-                  .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                  .join(' '),
-                slug: finalCollectionSlug,
-              },
-            })
-          ).id;
-
-        const slug = `${finalTitle
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')}-${Date.now()}-${i}`.slice(0, 100);
-
-        const product = await prisma.product.create({
-          data: {
-            name: finalTitle,
-            slug,
-            description: finalDescription,
-            images: bulkAllImages,
-            tags: [finalCollectionSlug],
-            categoryId: category.id,
-            salePrice: bulkFinalPrice,
-            margin:
-              bulkFinalPrice > 0
-                ? parseFloat((((bulkFinalPrice - costTotalCLP) / bulkFinalPrice) * 100).toFixed(2))
-                : 0,
-            totalCost,
-            productCost: cjPrice,
-            shippingCost: Number.isFinite(shippingCost) ? shippingCost : 0,
-            stock: bulkFinalStock,
-            weight: cjWeight,
-            status: 'PUBLISHED',
-            importSource: 'CJ_DROPSHIPPING',
-            cjProductId: String(pid),
-            cjVariants: bulkVariantsJSON,
-            variants: bulkVariantsJSON,
-            collectionId,
-            // FASE 4A: trazabilidad de fuente
-            sourceUrl: rawUrl,
-            sourcePlatform: 'CJ',
-            sourceId: String(pid),
-            costUsd: Number.isFinite(totalCost) ? totalCost : null,
-            lastCheckedAt: new Date(),
-            productImages: {
-              create: bulkAllImages.map((imgUrl, imgIndex) => ({ url: imgUrl, position: imgIndex })),
-            },
-            productVariants: {
-              create: bulkMapped.map((v: any) => ({
-                sku: String(v.sku),
-                // Prisma ProductVariant NO tiene name/image: el nombre de la variante
-                // va en `size` y nameEs/image/finalPrice se cruzan desde el JSON `variants`.
-                size: (v.name || v.size) ? String(v.name || v.size).slice(0, 60) : undefined,
-                color: v.color ? String(v.color).slice(0, 60) : undefined,
-                price: Math.round(Number(v.finalPriceCLP) || 0),
-                stock: Number(v.stock) || 0,
-              })),
-            },
-          },
-          include: { productImages: true, collection: true },
-        });
-
-        results.push({
-          index: i + 1,
-          url: rawUrl,
-          ok: true,
-          productId: product.id,
-          name: String(finalTitle),
-          price: Number(bulkFinalPrice),
-        });
-      } catch (rowError: any) {
-        console.error(`[scrape/cj/bulk] error en link ${i + 1}:`, rowError?.message || rowError);
-        results.push({ index: i + 1, url: rawUrl, ok: false, error: rowError?.message || 'Error desconocido' });
       }
     }
 

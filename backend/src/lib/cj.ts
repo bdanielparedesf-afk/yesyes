@@ -1,4 +1,5 @@
 import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 const CJ_API_BASE = 'https://developers.cjdropshipping.com/api2.0/v1';
 const CJ_EMAIL = process.env.CJ_EMAIL;
@@ -38,6 +39,84 @@ export async function getCJToken(): Promise<string> {
  * Estas helpers espacian las llamadas y reintentan cuando llega un 429.
  */
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const CJ_PAGE_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'application/json,text/plain,*/*',
+};
+
+function cleanHtmlText(value?: string | null): string {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function parseHtmlPrice(value?: string | null): number | undefined {
+  const text = cleanHtmlText(value);
+  if (!text) return undefined;
+  const match = text.match(/(?:\$|USD|US\$)\s*([0-9]+(?:[.,][0-9]{1,2})?)/i)
+    || text.match(/([0-9]+(?:[.,][0-9]{1,2})?)/);
+  const raw = match?.[1];
+  if (!raw) return undefined;
+  const price = Number(raw.replace(',', '.'));
+  return Number.isFinite(price) && price > 0 ? price : undefined;
+}
+
+export interface CJPageProduct {
+  title?: string;
+  price?: number;
+  category?: string;
+  images: string[];
+  description?: string;
+}
+
+export async function scrapeCJProductPage(url: string): Promise<CJPageProduct | null> {
+  let html: string;
+  try {
+    const response = await axios.get(url, {
+      headers: CJ_PAGE_HEADERS,
+      timeout: 12000,
+      maxRedirects: 2,
+    });
+    html = typeof response.data === 'string' ? response.data : String(response.data || '');
+  } catch (error: any) {
+    console.warn('[CJ html fallback] request failed:', error?.response?.status ?? error?.message ?? error);
+    return null;
+  }
+
+  console.log('CJ raw data:', html.slice(0, 500));
+  if (!html || html.includes('Human verification') || html.includes('Just a moment')) {
+    return null;
+  }
+
+  const $ = cheerio.load(html);
+  const title = cleanHtmlText($('.product-title').first().text() || $('h1').first().text());
+  const priceRaw = ['.product-price', '.price', '.sale-price', '.product-price-value', '[data-price]']
+    .map((selector) => $(selector).first().text())
+    .find((value) => parseHtmlPrice(value) !== undefined);
+  const category = cleanHtmlText($('.product-category').first().text() || $('.category').first().text());
+  const description = cleanHtmlText(
+    $('.product-description').first().text()
+    || $('.description').first().text()
+    || $('#description').first().text(),
+  );
+  const images = Array.from(
+    new Set(
+      $('img')
+        .map((_, element) => $(element).attr('src') || $(element).attr('data-src'))
+        .get()
+        .map((src) => cleanHtmlText(src).replace(/^\/\//, 'https://'))
+        .filter((src) => /^https?:\/\//i.test(src)),
+    ),
+  ).slice(0, 5);
+
+  return {
+    title: title || undefined,
+    price: parseHtmlPrice(priceRaw),
+    category: category || undefined,
+    images,
+    description: description || undefined,
+  };
+}
 
 let lastCjCallAt = 0;
 
@@ -108,8 +187,8 @@ export function extractPidCandidates(url: string): string[] {
     // UUID (links nuevos de app.cjdropshipping.com)
     const mUuid = u.pathname.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
     if (mUuid && mUuid[1]) push(mUuid[1]);
-    // pid numérico tras -p- / ,p- (formato web ,p-2609080924111626000.html)
-    const mP = pathAndQuery.match(/p-(\d{8,})/i);
+    // pid tras -p- / ,p- (los links nuevos pueden incluir letras y UUID)
+    const mP = pathAndQuery.match(/p-([A-Za-z0-9][A-Za-z0-9-]{5,})/i);
     if (mP && mP[1]) push(mP[1]);
     // número largo embebido en el slug
     const mNum = pathAndQuery.match(/(\d{15,})/);
@@ -122,7 +201,7 @@ export function extractPidCandidates(url: string): string[] {
   }
   const mPid = raw.match(/pid=(\d{6,})/i);
   if (mPid && mPid[1]) push(mPid[1]);
-  const mP2 = raw.match(/p-(\d{8,})/i);
+  const mP2 = raw.match(/p-([A-Za-z0-9][A-Za-z0-9-]{5,})/i);
   if (mP2 && mP2[1]) push(mP2[1]);
   const mCJ2 = raw.match(/CJ\d{6,}/i);
   if (mCJ2) push(mCJ2[0].toUpperCase());
@@ -149,7 +228,7 @@ export function extractSlugKeywords(url: string): string {
     if (!m || !m[1]) return '';
     let slug = m[1];
     slug = slug.replace(/\.html?$/i, '');
-    slug = slug.replace(/[,._-]*p-?\d{6,}$/i, '');
+    slug = slug.replace(/[,._-]*p-[A-Za-z0-9-]+$/i, '');
     slug = slug.replace(/cj\d{6,}/gi, ' ');
     slug = slug.replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
     return slug.replace(/[-,_]+/g, ' ').trim();

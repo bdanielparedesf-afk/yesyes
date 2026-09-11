@@ -5,6 +5,7 @@ import api from '@/lib/axios';
 import { useAuthStore } from '@/store/useAuthStore';
 
 const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
+const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
 
 interface Product {
   id: string; name: string; slug: string; salePrice: number; status?: string; stock?: number;
@@ -41,10 +42,11 @@ export default function AdminProducts() {
 
   // FEATURE A: bulk delete — selección múltiple de productos
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
+  const allProductsSelected = products.length > 0 && products.every((p) => selectedIds.includes(p.id));
   const toggleSelectAll = () => {
-    setSelectedIds(selectedIds.length === products.length ? [] : products.map((p) => p.id));
+    setSelectedIds(allProductsSelected ? [] : products.map((p) => p.id));
   };
   const toggleSelectRow = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -52,16 +54,30 @@ export default function AdminProducts() {
   const handleBulkDelete = async () => {
     if (!selectedIds.length) return;
     if (!window.confirm(`¿Eliminar ${selectedIds.length} producto(s)? Esta acción no se puede deshacer.`)) return;
-    setBulkDeleting(true);
+    setDeleting(true);
     try {
-      const r = await api.delete('/admin/products/bulk', { data: { ids: selectedIds } });
-      toast.success(`${r.data.deleted ?? selectedIds.length} producto(s) eliminado(s)`);
+      const token = useAuthStore.getState().token;
+      const res = await fetch(`${API_URL}/api/products/bulk-delete`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token || ''}`,
+        },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.message || 'Error al eliminar los productos');
+        return;
+      }
+      setProducts((current) => current.filter((product) => !selectedIds.includes(product.id)));
       setSelectedIds([]);
-      loadProducts();
+      toast.success(`${data.deleted ?? selectedIds.length} producto(s) eliminado(s)`);
     } catch {
       toast.error('Error al eliminar los productos');
     } finally {
-      setBulkDeleting(false);
+      setDeleting(false);
     }
   };
 
@@ -144,7 +160,7 @@ export default function AdminProducts() {
             <th className="text-left px-4 py-3">
               <input
                 type="checkbox"
-                checked={products.length > 0 && selectedIds.length === products.length}
+                checked={allProductsSelected}
                 onChange={toggleSelectAll}
                 className="rounded border-gray-300 text-gray-900 focus:ring-gray-500"
                 title="Seleccionar todo"
@@ -263,11 +279,11 @@ export default function AdminProducts() {
             </button>
             <button
               onClick={handleBulkDelete}
-              disabled={bulkDeleting}
+              disabled={deleting}
               className="px-4 py-1 text-sm rounded-full bg-red-500 hover:bg-red-600 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
             >
-              {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-              {bulkDeleting ? 'Eliminando...' : 'Eliminar'}
+              {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              {deleting ? 'Eliminando...' : 'Eliminar'}
             </button>
           </div>
         </div>

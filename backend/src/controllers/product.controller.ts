@@ -276,13 +276,21 @@ export const bulkDeleteProducts = async (req: Request, res: Response): Promise<v
   try {
     const { ids } = req.body || {};
     const list: string[] = Array.isArray(ids)
-      ? ids.map((i: any) => String(i ?? '').trim()).filter(Boolean)
+      ? ids.map((id: any) => String(id ?? '').trim()).filter(Boolean)
       : [];
     if (!list.length) {
       res.status(400).json({ message: 'Envía al menos un id en "ids".' });
       return;
     }
-    const result = await prisma.product.deleteMany({ where: { id: { in: list } } });
+
+    await prisma.productVariant.deleteMany({
+      where: { productId: { in: list } },
+    });
+
+    const result = await prisma.product.deleteMany({
+      where: { id: { in: list } },
+    });
+
     res.json({ deleted: result.count });
   } catch (error: any) {
     console.error('Error bulk deleting products:', error);

@@ -74,6 +74,7 @@ interface BulkRow {
   name?: string;
   price?: number;
   error?: string;
+  detail?: string;
 }
 
 export default function AdminImport() {
@@ -426,19 +427,22 @@ export default function AdminImport() {
             { index: i + 1, url: links[i], ok: true, name: row.name, price: row.price },
           ]);
         } else {
+          const errorDetail = row?.detail || row?.error || 'Error desconocido';
           setBulkResults((prev) => [
             ...prev,
-            { index: i + 1, url: links[i], ok: false, error: row?.error || 'Error desconocido' },
+            { index: i + 1, url: links[i], ok: false, error: errorDetail, detail: errorDetail },
           ]);
         }
       } catch (e: any) {
+        const errorDetail = e.response?.data?.detail || e.response?.data?.message || e.message || 'Error de red';
         setBulkResults((prev) => [
           ...prev,
           {
             index: i + 1,
             url: links[i],
             ok: false,
-            error: e.response?.data?.message || e.message || 'Error de red',
+            error: errorDetail,
+            detail: errorDetail,
           },
         ]);
       }
@@ -968,7 +972,9 @@ export default function AdminImport() {
                           <td className="px-4 py-3 text-sm text-gray-900">
                             {r.price ? `$${Number(r.price).toLocaleString('es-CL')}` : '-'}
                           </td>
-                          <td className="px-4 py-3 text-xs text-red-600 max-w-[220px] truncate">{r.error || ''}</td>
+                           <td className="px-4 py-3 text-xs text-red-600 max-w-[220px] truncate" title={r.detail || r.error || ''}>
+                             {r.error || ''}
+                           </td>
                         </tr>
                       ))}
                     </tbody>

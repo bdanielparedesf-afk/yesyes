@@ -120,6 +120,19 @@ Después de agregar o cambiar variables de entorno en el Dashboard de Vercel, el
 
 4. **Limpia cache del navegador**: borra cookies de `authjs.session-token` y `authjs.csrf-token` en `yesyes.cl` y `api.yesyes.cl`.
 
-## Google OAuth
+## Vercel CLI — Auth y teams (propietario)
 
-Ver `GOOGLE_OAUTH_CHECKLIST.md` para las URIs y origins exactos que deben estar en Google Cloud Console.
+Estado observado en este entorno:
+
+- CLI autenticada con la cuenta personal `bdanielparedesf-4776`.
+- `vercel teams list` solo lista `bdanielparedesf-4776's projects`; **no aparece** el team `team_Xy8elEWXcfl14BkrL1OakXaC`.
+- El proyecto `yesyes` es accesible desde la CLI bajo la cuenta personal (`vercel ls yesyes`, `vercel inspect`, `vercel logs yesyes.cl` funcionan). Por tanto, en este momento el proyecto está registrado en Vercel bajo la ** cuenta personal**, no bajo el team.
+
+Implicancias:
+
+- `vercel --prod` (deploy manual) y `vercel project ls` contra el team fallan con `Not authorized` porque la CLI no pertenece al team. **No usar** `vercel --prod`.
+- Deploy recomendado: `git push origin main`. El repo está conectado a Vercel vía integración GitHub, por lo que el push dispara el deploy automático sin necesidad de autorización del CLI al team.
+
+Acciones para el dueño (opcional, para futuro):
+
+- Si el project debe vivir en el team `team_Xy8elEWXcfl14BkrL1OakXaC`, invitar la cuenta `bdanielparedesf@gmail.com` a ese team y/o transferir el proyecto yesyes al team desde el Dashboard (Settings > General > Transfer project to team). Luego volver a autenticar la CLI (`vercel teams add` / `vercel login`) para que `vercel ls`, `vercel logs` y `vercel --prod` funcionen contra el team.
