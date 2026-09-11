@@ -444,7 +444,9 @@ export async function translateToChileanSpanish(text: string): Promise<string> {
 
 export async function translateDescriptionToSpanish(description: string): Promise<string> {
   if (!description) return '';
-  const ai = await translateWithAI(description);
+
+  const cleaned = description.replace(/<img[^>]*>/gi, '');
+  const ai = await translateWithAI(cleaned);
   if (ai) return ai;
-  return translateWithDictionary(description);
+  return translateWithDictionary(cleaned);
 }

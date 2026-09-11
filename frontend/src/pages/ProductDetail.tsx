@@ -53,9 +53,22 @@ export default function ProductDetail() {
     );
   }
 
-  const mainImage = selectedVariant?.image || product.image;
+  const [mainImage, setMainImage] = useState(product.image);
   const displayPrice = selectedVariant?.finalPrice || product.price;
   const displayStock = selectedVariant?.stock ?? product.stock;
+
+  useEffect(() => {
+    setMainImage(selectedVariant?.image || product.image);
+  }, [selectedVariant, product.image]);
+
+  const galleryImages: string[] = [];
+  if (product.image) galleryImages.push(product.image);
+  if (product.imageHover && !galleryImages.includes(product.imageHover)) galleryImages.push(product.imageHover);
+  if (product.productImages) {
+    for (const img of product.productImages) {
+      if (img.url && !galleryImages.includes(img.url)) galleryImages.push(img.url);
+    }
+  }
 
   const handleAdd = () => {
     addItem({
@@ -79,14 +92,26 @@ export default function ProductDetail() {
           Volver a productos
         </Link>
         <div className="grid lg:grid-cols-2 gap-12">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="relative aspect-square">
-              <img src={mainImage} alt={product.name} className="w-full h-full object-cover" />
-              {product.offer && (
-                <span className="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
-                  -20% OFERTA
-                </span>
-              )}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden p-4">
+            <div className="flex gap-4">
+              <div className="flex flex-col gap-2 w-20 flex-shrink-0">
+                {galleryImages.map((img, i) => (
+                  <img
+                    key={i}
+                    src={img}
+                    onClick={() => setMainImage(img)}
+                    className={`w-20 h-20 object-cover border-2 cursor-pointer rounded-lg ${mainImage === img ? 'border-black' : 'border-transparent'}`}
+                  />
+                ))}
+              </div>
+              <div className="relative flex-1 aspect-square">
+                <img src={mainImage} alt={product.name} className="w-full h-full object-contain" />
+                {product.offer && (
+                  <span className="absolute top-4 left-4 bg-red-500 text-white text-sm font-bold px-3 py-1 rounded-full">
+                    -20% OFERTA
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <div className="space-y-6">
