@@ -56,9 +56,9 @@ export default function ProductDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-[#FFF8FA] flex items-center justify-center px-4">
         <div className="text-center">
-          <p className="text-gray-500">Cargando producto...</p>
+          <p className="text-[#4A2C3A]/60">Cargando producto...</p>
         </div>
       </div>
     );
@@ -66,11 +66,11 @@ export default function ProductDetail() {
 
   if (!product) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-[#FFF8FA] flex items-center justify-center px-4">
         <div className="text-center space-y-4">
-          <h2 className="text-2xl font-bold text-gray-900">Producto no encontrado</h2>
-          <p className="text-gray-500">El producto que buscas no existe.</p>
-          <Link to="/productos" className="inline-flex items-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg shadow-primary-500/30 transition-all">
+          <h2 className="text-2xl font-bold text-[#4A2C3A]">Producto no encontrado</h2>
+          <p className="text-[#4A2C3A]/60">El producto que buscas no existe.</p>
+          <Link to="/productos" className="inline-flex items-center px-6 py-3 bg-[#E8A0BF] hover:bg-[#BA90C6] text-white font-semibold rounded-full shadow-lg shadow-[#E8A0BF]/30 transition-all">
             Ver Productos
           </Link>
         </div>
@@ -96,14 +96,14 @@ export default function ProductDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#FFF8FA]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Link to="/productos" className="inline-flex items-center text-gray-600 hover:text-primary-600 mb-6">
+        <Link to="/productos" className="inline-flex items-center text-[#4A2C3A]/70 hover:text-[#E8A0BF] mb-6">
           <ArrowLeft className="w-4 h-4 mr-1" />
           Volver a productos
         </Link>
         <div className="grid lg:grid-cols-2 gap-12">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden p-4">
+          <div className="bg-white rounded-[24px] shadow-sm border border-[#FAD3E7] overflow-hidden p-4">
             {gallery.length ? (
               <div className="flex gap-4">
                 <div className="flex flex-col gap-2">
@@ -112,7 +112,7 @@ export default function ProductDetail() {
                       key={idx}
                       src={img}
                       onClick={() => setMainImage(img)}
-                      className="w-20 h-20 object-cover cursor-pointer border"
+                      className="w-20 h-20 object-cover cursor-pointer border rounded-xl"
                     />
                   ))}
                 </div>
@@ -127,17 +127,17 @@ export default function ProductDetail() {
           </div>
           <div className="space-y-6">
             <div>
-              <span className="text-sm font-medium text-primary-600 bg-primary-50 px-3 py-1 rounded-full">{product.category}</span>
-              <h1 className="text-3xl font-bold text-gray-900 mt-3">{product.name}</h1>
+              <span className="text-sm font-medium text-[#E8A0BF] bg-[#FAD3E7]/30 px-3 py-1 rounded-full">{product.category}</span>
+              <h1 className="text-3xl font-bold text-[#4A2C3A] mt-3">{product.name}</h1>
               <div className="flex items-baseline space-x-3 mt-2">
-                <span className="text-3xl font-extrabold text-primary-600">${displayPrice.toLocaleString('es-CL')}</span>
+                <span className="text-3xl font-extrabold text-[#E8A0BF]">${displayPrice.toLocaleString('es-CL')}</span>
               </div>
             </div>
-            <div className="prose prose-sm max-w-none text-gray-600" dangerouslySetInnerHTML={{ __html: product.description }} />
+            <div className="prose prose-sm max-w-none text-[#4A2C3A]/70" dangerouslySetInnerHTML={{ __html: product.description }} />
 
             {product.productVariants && product.productVariants.length > 1 && (
               <div className="space-y-3">
-                <p className="text-sm font-medium text-gray-700">Selecciona una opción:</p>
+                <p className="text-sm font-medium text-[#4A2C3A]/80">Selecciona una opción:</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {product.productVariants.map((v) => (
                     <button
@@ -146,13 +146,13 @@ export default function ProductDetail() {
                       onClick={() => setSelectedVariant(v)}
                       className={`flex flex-col items-center gap-2 p-3 border rounded-xl transition-all ${
                         selectedVariant?.id === v.id
-                          ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-300'
-                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                          ? 'border-[#E8A0BF] bg-[#FAD3E7]/20 ring-2 ring-[#E8A0BF]/30'
+                          : 'border-[#FAD3E7] bg-white hover:bg-[#FFF8FA]'
                       }`}
                     >
                       {v.image && <img src={v.image} alt={v.nameEs || v.sku} className="w-12 h-12 rounded-lg object-cover" />}
-                      <span className="text-sm text-gray-900 text-center">{v.nameEs || v.sku}</span>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-sm text-[#4A2C3A] text-center">{v.nameEs || v.sku}</span>
+                      <span className="text-xs text-[#4A2C3A]/60">
                         ${Number(v.finalPrice || v.price).toLocaleString('es-CL')}
                       </span>
                     </button>
@@ -161,16 +161,16 @@ export default function ProductDetail() {
               </div>
             )}
 
-            <div className="flex flex-col gap-3 text-sm text-gray-600">
-              <span className="flex items-center"><Truck className="w-4 h-4 mr-2 text-primary-500" /> <b>Envío 15-25 días.</b> Despacho por CJdropshipping, solo con cobertura en Chile.</span>
-              <span className="flex items-center"><CreditCard className="w-4 h-4 mr-2 text-primary-500" /> <b>Pago Seguro MP.</b> Transacciones protegidas con Mercado Pago.</span>
-              <span className="flex items-center"><Shield className="w-4 h-4 mr-2 text-primary-500" /> <b>Garantía legal 6 meses.</b> Por falla de fábrica según Ley 19.496. Escríbenos a yesyeswebsms@gmail.com</span>
+            <div className="flex flex-col gap-3 text-sm text-[#4A2C3A]/70">
+              <span className="flex items-center"><Truck className="w-4 h-4 mr-2 text-[#E8A0BF]" /> <b>Envío 15-25 días.</b> Despacho por CJdropshipping, solo con cobertura en Chile.</span>
+              <span className="flex items-center"><CreditCard className="w-4 h-4 mr-2 text-[#E8A0BF]" /> <b>Pago Seguro MP.</b> Transacciones protegidas con Mercado Pago.</span>
+              <span className="flex items-center"><Shield className="w-4 h-4 mr-2 text-[#E8A0BF]" /> <b>Garantía legal 6 meses.</b> Por falla de fábrica según Ley 19.496. Escríbenos a yesyeswebsms@gmail.com</span>
             </div>
-            <p className="text-sm text-gray-500">Stock disponible: <span className="font-semibold text-gray-900">{displayStock} unidades</span></p>
+            <p className="text-sm text-[#4A2C3A]/60">Stock disponible: <span className="font-semibold text-[#4A2C3A]">{displayStock} unidades</span></p>
             <button
               onClick={handleAdd}
               disabled={displayStock <= 0}
-              className="w-full flex items-center justify-center space-x-2 px-8 py-4 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 transition-all"
+              className="w-full flex items-center justify-center space-x-2 px-8 py-4 bg-[#E8A0BF] hover:bg-[#BA90C6] disabled:bg-[#4A2C3A]/30 disabled:cursor-not-allowed text-white font-bold rounded-full shadow-lg shadow-[#E8A0BF]/30 transition-all"
             >
               <ShoppingCart className="w-5 h-5" />
               <span>Agregar al carrito</span>

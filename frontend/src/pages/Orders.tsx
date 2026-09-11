@@ -64,20 +64,20 @@ export default function Orders() {
       case 'Procesando':
         return 'bg-yellow-100 text-yellow-700';
       default:
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-[#FAD3E7]/40 text-[#4A2C3A]/70';
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#FFF8FA]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Mis Pedidos</h1>
+        <h1 className="text-3xl font-bold text-[#4A2C3A] mb-8">Mis Pedidos</h1>
         {orders.length === 0 ? (
           <div className="text-center py-16 space-y-4">
-            <Package className="w-16 h-16 text-gray-300 mx-auto" />
-            <h2 className="text-xl font-bold text-gray-900">No tienes pedidos aún</h2>
-            <p className="text-gray-500">Cuando realices tu primera compra, aparecerá aquí.</p>
-            <Link to="/productos" className="inline-flex items-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg shadow-primary-500/30 transition-all">
+            <Package className="w-16 h-16 text-[#FAD3E7] mx-auto" />
+            <h2 className="text-xl font-bold text-[#4A2C3A]">No tienes pedidos aún</h2>
+            <p className="text-[#4A2C3A]/60">Cuando realices tu primera compra, aparecerá aquí.</p>
+            <Link to="/productos" className="inline-flex items-center px-6 py-3 bg-[#E8A0BF] hover:bg-[#BA90C6] text-white font-semibold rounded-full shadow-lg shadow-[#E8A0BF]/30 transition-all">
               <ShoppingBag className="w-5 h-5 mr-2" />
               Ir a Productos
             </Link>
@@ -89,21 +89,21 @@ export default function Orders() {
                 key={order.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6"
+                className="bg-white rounded-[24px] shadow-sm border border-[#FAD3E7] p-6"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <div className="flex items-center space-x-3">
-                      <h3 className="text-lg font-bold text-gray-900">{order.id}</h3>
+                      <h3 className="text-lg font-bold text-[#4A2C3A]">{order.id}</h3>
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
                         {order.status}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-500 mt-1">Fecha: {new Date(order.date).toLocaleDateString('es-CL')}</p>
+                    <p className="text-sm text-[#4A2C3A]/60 mt-1">Fecha: {new Date(order.date).toLocaleDateString('es-CL')}</p>
                   </div>
                   <div className="flex items-center justify-between sm:justify-end space-x-6">
-                    <span className="text-lg font-bold text-gray-900">${order.total.toLocaleString('es-CL')}</span>
-                    <Link to={`/pedido/${order.id}`} className="flex items-center text-primary-600 hover:text-primary-700 font-medium">
+                    <span className="text-lg font-bold text-[#4A2C3A]">${order.total.toLocaleString('es-CL')}</span>
+                    <Link to={`/pedido/${order.id}`} className="flex items-center text-[#E8A0BF] hover:text-[#BA90C6] font-medium">
                       Ver detalle <ChevronRight className="w-4 h-4" />
                     </Link>
                   </div>
@@ -112,7 +112,7 @@ export default function Orders() {
                   {order.items.map((item, idx) => (
                     <img key={idx} src={item.image} alt={item.name} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
                   ))}
-                  <span className="text-sm text-gray-500">{order.items.reduce((a, b) => a + b.quantity, 0)} productos</span>
+                  <span className="text-sm text-[#4A2C3A]/60">{order.items.reduce((a, b) => a + b.quantity, 0)} productos</span>
                 </div>
               </motion.div>
             ))}

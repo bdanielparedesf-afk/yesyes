@@ -66,108 +66,108 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#FFF8FA] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 space-y-6">
+        <div className="bg-white rounded-[24px] shadow-lg border border-[#FAD3E7] p-8 space-y-6">
           <div className="text-center">
-            <Link to="/" className="text-3xl font-bold text-primary-500">YES<span className="text-primary-600">YES</span></Link>
-            <h2 className="mt-4 text-2xl font-bold text-gray-900">Crea tu cuenta</h2>
-            <p className="text-gray-500 text-sm mt-1">Únete a YESYES y empieza a comprar</p>
+            <Link to="/" className="text-3xl font-bold text-[#E8A0BF]">YES<span className="text-[#BA90C6]">YES</span></Link>
+            <h2 className="mt-4 text-2xl font-bold text-[#4A2C3A]">Crea tu cuenta</h2>
+            <p className="text-[#4A2C3A]/60 text-sm mt-1">Únete a YESYES y empieza a comprar</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+              <label className="block text-sm font-medium text-[#4A2C3A]/80 mb-1">Nombre</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#4A2C3A]/40" />
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 border border-[#FAD3E7] rounded-full focus:outline-none focus:ring-2 focus:ring-[#E8A0BF] focus:border-transparent"
                   placeholder="Tu nombre"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
+              <label className="block text-sm font-medium text-[#4A2C3A]/80 mb-1">Apellido</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#4A2C3A]/40" />
                 <input
                   type="text"
                   value={form.lastName}
                   onChange={(e) => setForm({ ...form, lastName: e.target.value })}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 border border-[#FAD3E7] rounded-full focus:outline-none focus:ring-2 focus:ring-[#E8A0BF] focus:border-transparent"
                   placeholder="Tu apellido"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-[#4A2C3A]/80 mb-1">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#4A2C3A]/40" />
                 <input
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 border border-[#FAD3E7] rounded-full focus:outline-none focus:ring-2 focus:ring-[#E8A0BF] focus:border-transparent"
                   placeholder="tu@email.com"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+              <label className="block text-sm font-medium text-[#4A2C3A]/80 mb-1">Contraseña</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#4A2C3A]/40" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required
-                  className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-10 py-3 border border-[#FAD3E7] rounded-full focus:outline-none focus:ring-2 focus:ring-[#E8A0BF] focus:border-transparent"
                   placeholder="••••••••"
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4A2C3A]/40">
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña</label>
+              <label className="block text-sm font-medium text-[#4A2C3A]/80 mb-1">Confirmar contraseña</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#4A2C3A]/40" />
                 <input
                   type={showConfirm ? 'text' : 'password'}
                   value={form.confirmPassword}
                   onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
                   required
-                  className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-10 py-3 border border-[#FAD3E7] rounded-full focus:outline-none focus:ring-2 focus:ring-[#E8A0BF] focus:border-transparent"
                   placeholder="••••••••"
                 />
-                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4A2C3A]/40">
                   {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
-            <button type="submit" disabled={loading} className="w-full py-3 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 transition-all disabled:opacity-50">
+            <button type="submit" disabled={loading} className="w-full py-3 bg-[#E8A0BF] hover:bg-[#BA90C6] text-white font-bold rounded-full shadow-lg shadow-[#E8A0BF]/30 transition-all disabled:opacity-50">
               {loading ? 'Creando cuenta...' : 'Crear Cuenta'}
             </button>
           </form>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
+              <div className="w-full border-t border-[#FAD3E7]"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">o</span>
+              <span className="px-2 bg-white text-[#4A2C3A]/60">o</span>
             </div>
           </div>
 
           <button
             onClick={() => signIn('google', '/')}
-            className="w-full flex items-center justify-center space-x-3 px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-center space-x-3 px-4 py-3 border border-[#FAD3E7] rounded-full hover:bg-[#FFF8FA] transition-colors"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M21.808 10.23H21.75V10.22H12V14.21H17.4556C16.7268 16.2345 14.8918 17.77 12.6667 17.77C9.1803 17.77 6.3513 14.935 6.3513 11.449C6.3513 7.962 9.1803 5.129 12.6667 5.129C14.2845 5.129 15.7519 5.7961 16.7967 6.8596L19.4541 4.2022C17.9347 2.7685 15.9449 2.051 13.8333 2C9.2793 2 5.5019 5.778 5.5019 10.331C5.5019 14.885 9.2793 18.663 13.8333 18.663C16.1873 18.663 18.3499 17.8366 19.9771 16.473C21.4378 15.2715 22.3333 13.5245 22.3333 11.556C22.3333 11.0286 22.2028 10.5316 21.808 10.23Z" fill="#FFC107" stroke="#F57C00" strokeWidth="0.5" />
@@ -176,11 +176,11 @@ export default function Register() {
               <path d="M4.2422 1.7578L9.5999 7.1304C9.5999 7.1304 10.4 8.0833 10.4 9.47C10.4 10.857 9.6 11.764 9.6 11.764C9.6 11.764 8.4 13.083 7.0488 13.083C5.6967 13.083 4.8 12.165 4.8 10.813C4.8 9.461 5.6034 8.5436 6.4 7.8333C6.4 7.8333 7.2 6.9158 7.6 6.3887C8.0 5.8617 8.2 5.2658 8.2 4.6699C8.2 4.0735 7.6 3.4781 7.2 3.125C6.8 2.772 6.3 2.5 5.8 2.333C5.2 2.333 4.8 2.166 4.4 2.166C4 2.166 3.7 2.083 3.5999 2.0001C5.2954 2.1666 9.4844 2.8333 9.6667 11.449C9.4197 12.375 8.4744 13.0271 7.5256 12.5833C6.8981 12.2715 6.4807 11.4159 6.3699 10.5187C6.2525 9.5653 6.1286 8.6266 6.2176 7.686C6.2878 6.9923 6.1359 6.3628 6.1359 5.6691C6.1359 4.9741 6.1359 4.2805 6.2069 3.6143C6.2778 2.9477 6.0204 2.4469 5.8039 1.7578" fill="#EA4335" stroke="#D32F2F" strokeWidth="0.1" />
               <path d="M2.8333 2.8333C2.8333 2.8333 2.8333 2.8333 2.8333 2.8333C4.4266 4.4266 5.7468 6.106 6.125 7.8655C6.5029 9.6255 7.3987 11.2427 8.7477 12.5917C7.4259 13.9193 5.6056 14.5833 3.5999 14.5833C2.8833 14.5833 2.1667 13.8667 2.1667 13.1501C2.1667 12.4335 2.8833 11.7169 3.5999 11.7169" fill="#C1272D" stroke="#B71C1C" strokeWidth="0.5" />
             </svg>
-            <span className="font-medium text-gray-700">Continuar con Google</span>
+            <span className="font-medium text-[#4A2C3A]/80">Continuar con Google</span>
           </button>
 
-          <p className="text-center text-sm text-gray-600">
-            ¿Ya tienes cuenta? <Link to="/login" className="text-primary-500 font-semibold hover:text-primary-600">Inicia Sesión</Link>
+          <p className="text-center text-sm text-[#4A2C3A]/60">
+            ¿Ya tienes cuenta? <Link to="/login" className="text-[#E8A0BF] font-semibold hover:text-[#BA90C6]">Inicia Sesión</Link>
           </p>
         </div>
       </div>

@@ -127,7 +127,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#FFF8FA]">
       <motion.section
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -139,7 +139,7 @@ export default function Home() {
             <img
               src="/logo-icon.svg"
               alt="YESYES"
-              className="w-[180px] h-[180px] drop-shadow-[0_0_40px_rgba(255,107,43,0.4)]"
+              className="w-[180px] h-[180px] drop-shadow-[0_0_40px_rgba(232,160,191,0.4)]"
             />
             <h1 className="text-7xl font-black text-white tracking-tighter mt-6">YESYES</h1>
             <p className="text-white/60 mt-3">🔥 Nuevos productos llegando esta semana</p>
@@ -156,37 +156,37 @@ export default function Home() {
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
       >
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-gray-900">Nuestras Colecciones</h2>
-          <p className="text-gray-600 mt-2">Descubre productos seleccionados para ti</p>
+          <h2 className="text-3xl font-bold text-[#4A2C3A]">Nuestras Colecciones</h2>
+          <p className="text-[#4A2C3A]/60 mt-2">Descubre productos seleccionados para ti</p>
         </div>
 
         {/* Estado de carga */}
         {loading && (
           <div className="text-center py-12">
             <img src="/logo-icon.svg" className="w-12 h-12 animate-pulse" alt="loading" />
-            <p className="mt-4 text-gray-500">Cargando colecciones...</p>
+            <p className="mt-4 text-[#4A2C3A]/50">Cargando colecciones...</p>
           </div>
         )}
 
         {/* Estado de error */}
         {!loading && error && (
           <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
-              <AlertCircle className="w-8 h-8 text-red-500" />
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-[#FAD3E7]/40 rounded-full mb-4">
+              <AlertCircle className="w-8 h-8 text-[#E8A0BF]" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">Error al cargar productos</h3>
-            <p className="text-gray-500 mb-4 max-w-md mx-auto">{error}</p>
+            <h3 className="text-lg font-semibold text-[#4A2C3A] mb-2">Error al cargar productos</h3>
+            <p className="text-[#4A2C3A]/50 mb-4 max-w-md mx-auto">{error}</p>
             <div className="flex items-center justify-center gap-4">
               <button
                 onClick={loadCollections}
-                className="inline-flex items-center px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition-colors"
+                className="inline-flex items-center px-4 py-2 bg-[#E8A0BF] hover:bg-[#BA90C6] text-white font-medium rounded-full transition-colors"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Reintentar
               </button>
               <Link
                 to="/admin"
-                className="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition-colors"
+                className="inline-flex items-center px-4 py-2 bg-[#FAD3E7]/40 hover:bg-[#FAD3E7]/60 text-[#4A2C3A] font-medium rounded-full transition-colors"
               >
                 Ir a Admin
               </Link>
@@ -197,13 +197,13 @@ export default function Home() {
         {/* Estado vacío: no hay productos */}
         {!loading && !error && flatProducts.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-lg text-gray-500 mb-4">No hay productos para mostrar</p>
-            <p className="text-sm text-gray-400 mb-6">
+            <p className="text-lg text-[#4A2C3A]/50 mb-4">No hay productos para mostrar</p>
+            <p className="text-sm text-[#4A2C3A]/40 mb-6">
               Los productos pueden estar importados pero con status != PUBLISHED o la API no está respondiendo.
             </p>
             <Link
               to="/admin"
-              className="inline-flex items-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition-colors"
+              className="inline-flex items-center px-6 py-3 bg-[#E8A0BF] hover:bg-[#BA90C6] text-white font-medium rounded-full transition-colors"
             >
               Ir a Admin
             </Link>
@@ -224,31 +224,31 @@ export default function Home() {
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16"
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <motion.div whileHover={{ y: -4 }} className="flex items-center space-x-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <div className="p-3 bg-primary-50 rounded-full">
-              <Truck className="w-6 h-6 text-primary-500" />
+          <motion.div whileHover={{ y: -4 }} className="flex items-center space-x-4 bg-white p-6 rounded-[24px] shadow-sm border border-[#FAD3E7]">
+            <div className="p-3 bg-[#FAD3E7]/30 rounded-full">
+              <Truck className="w-6 h-6 text-[#E8A0BF]" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Envío 15-25 días</h3>
-              <p className="text-sm text-gray-500">Despachado por CJdropshipping, solo donde tenga cobertura en Chile</p>
+              <h3 className="font-semibold text-[#4A2C3A]">Envío 15-25 días</h3>
+              <p className="text-sm text-[#4A2C3A]/60">Despachado por CJdropshipping, solo donde tenga cobertura en Chile</p>
             </div>
           </motion.div>
-          <motion.div whileHover={{ y: -4 }} className="flex items-center space-x-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <div className="p-3 bg-primary-50 rounded-full">
-              <Shield className="w-6 h-6 text-primary-500" />
+          <motion.div whileHover={{ y: -4 }} className="flex items-center space-x-4 bg-white p-6 rounded-[24px] shadow-sm border border-[#FAD3E7]">
+            <div className="p-3 bg-[#FAD3E7]/30 rounded-full">
+              <Shield className="w-6 h-6 text-[#E8A0BF]" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Pago Seguro MP</h3>
-              <p className="text-sm text-gray-500">Transacciones protegidas con Mercado Pago</p>
+              <h3 className="font-semibold text-[#4A2C3A]">Pago Seguro MP</h3>
+              <p className="text-sm text-[#4A2C3A]/60">Transacciones protegidas con Mercado Pago</p>
             </div>
           </motion.div>
-          <motion.div whileHover={{ y: -4 }} className="flex items-center space-x-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <div className="p-3 bg-primary-50 rounded-full">
-              <ShieldCheck className="w-6 h-6 text-primary-500" />
+          <motion.div whileHover={{ y: -4 }} className="flex items-center space-x-4 bg-white p-6 rounded-[24px] shadow-sm border border-[#FAD3E7]">
+            <div className="p-3 bg-[#FAD3E7]/30 rounded-full">
+              <ShieldCheck className="w-6 h-6 text-[#E8A0BF]" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Garantía legal 6 meses</h3>
-              <p className="text-sm text-gray-500">Por falla de fábrica según Ley 19.496 - Escríbenos a yesyeswebsms@gmail.com</p>
+              <h3 className="font-semibold text-[#4A2C3A]">Garantía legal 6 meses</h3>
+              <p className="text-sm text-[#4A2C3A]/60">Por falla de fábrica según Ley 19.496 - Escríbenos a yesyeswebsms@gmail.com</p>
             </div>
           </motion.div>
         </div>

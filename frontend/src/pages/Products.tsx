@@ -49,14 +49,14 @@ export default function Products() {
   }, [products, search, category, maxPrice, stockOnly, offerOnly]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#FFF8FA]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold text-[#4A2C3A]">
             {offerOnly ? 'Ofertas' : category !== 'Todos' ? category : 'Productos'}
           </h1>
           <button
-            className="lg:hidden flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 rounded-lg"
+            className="lg:hidden flex items-center space-x-2 px-4 py-2 bg-white border border-[#FAD3E7] rounded-full"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
             <SlidersHorizontal className="w-5 h-5" />
@@ -73,7 +73,7 @@ export default function Products() {
             )}
             <div className="space-y-6">
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Categoría</h3>
+                <h3 className="font-semibold text-[#4A2C3A] mb-3">Categoría</h3>
                 <div className="space-y-2">
                   {categories.map((cat) => (
                     <label key={cat} className="flex items-center space-x-2 cursor-pointer">
@@ -82,16 +82,16 @@ export default function Products() {
                         name="category"
                         checked={category === cat}
                         onChange={() => setCategory(cat)}
-                        className="text-primary-500 focus:ring-primary-500"
+                        className="text-[#E8A0BF] focus:ring-[#E8A0BF]"
                       />
-                      <span className="text-sm text-gray-700">{cat}</span>
+                      <span className="text-sm text-[#4A2C3A]/80">{cat}</span>
                     </label>
                   ))}
                 </div>
               </div>
 
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Precio máximo: ${maxPrice.toLocaleString('es-CL')}</h3>
+                <h3 className="font-semibold text-[#4A2C3A] mb-3">Precio máximo: ${maxPrice.toLocaleString('es-CL')}</h3>
                 <input
                   type="range"
                   min="0"
@@ -99,7 +99,7 @@ export default function Products() {
                   step="1000"
                   value={maxPrice}
                   onChange={(e) => setMaxPrice(Number(e.target.value))}
-                  className="w-full accent-primary-500"
+                  className="w-full accent-[#E8A0BF]"
                 />
               </div>
 
@@ -109,9 +109,9 @@ export default function Products() {
                     type="checkbox"
                     checked={stockOnly}
                     onChange={(e) => setStockOnly(e.target.checked)}
-                    className="rounded text-primary-500 focus:ring-primary-500"
+                    className="rounded text-[#E8A0BF] focus:ring-[#E8A0BF]"
                   />
-                  <span className="text-sm text-gray-700">Solo con stock</span>
+                  <span className="text-sm text-[#4A2C3A]/80">Solo con stock</span>
                 </label>
               </div>
 
@@ -121,9 +121,9 @@ export default function Products() {
                     type="checkbox"
                     checked={offerOnly}
                     onChange={(e) => setOfferOnly(e.target.checked)}
-                    className="rounded text-primary-500 focus:ring-primary-500"
+                    className="rounded text-[#E8A0BF] focus:ring-[#E8A0BF]"
                   />
-                  <span className="text-sm text-gray-700">Solo ofertas</span>
+                  <span className="text-sm text-[#4A2C3A]/80">Solo ofertas</span>
                 </label>
               </div>
             </div>
@@ -131,13 +131,13 @@ export default function Products() {
 
           <div className="flex-1">
             <div className="relative mb-6">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#4A2C3A]/50" />
               <input
                 type="text"
                 placeholder="Buscar productos..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-3 bg-white border border-[#FAD3E7] rounded-full focus:outline-none focus:ring-2 focus:ring-[#E8A0BF] focus:border-transparent"
               />
             </div>
 

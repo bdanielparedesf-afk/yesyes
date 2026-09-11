@@ -39,16 +39,16 @@ export default function ProductGrid({ products, loading = false }: ProductGridPr
   };
 
   if (loading) {
-    return <div className="text-center py-12 text-gray-500">Cargando productos...</div>;
+    return     <div className="text-center py-12 text-[#4A2C3A]/60">Cargando productos...</div>;
   }
 
   if (!products || products.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500">
+      <div className="text-center py-12 text-[#4A2C3A]/60">
         <p className="text-lg">No hay productos para mostrar</p>
         <Link
           to="/admin"
-          className="inline-block mt-4 px-6 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium rounded-lg transition-colors"
+          className="inline-block mt-4 px-6 py-2 bg-[#E8A0BF] hover:bg-[#BA90C6] text-white font-medium rounded-full transition-colors"
         >
           Ir a Admin
         </Link>
@@ -69,7 +69,7 @@ export default function ProductGrid({ products, loading = false }: ProductGridPr
           key={product.id}
           variants={item}
           whileHover={{ y: -4 }}
-          className="bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all border border-gray-100 overflow-hidden group"
+          className="bg-white rounded-[24px] shadow-sm hover:shadow-lg transition-all border border-[#FAD3E7] overflow-hidden group"
         >
           <Link to={`/productos/${product.slug}`} className="block relative overflow-hidden aspect-square">
             <img
@@ -83,21 +83,21 @@ export default function ProductGrid({ products, loading = false }: ProductGridPr
               className="w-full h-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-300 absolute inset-0"
             />
             {product.offer && (
-              <span className="absolute top-3 left-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+              <span className="absolute top-3 left-3 bg-[#E8A0BF] text-white text-xs font-bold px-2 py-1 rounded-full">
                 -20%
               </span>
             )}
           </Link>
           <div className="p-4 space-y-2">
-            <h3 className="font-semibold text-gray-800 line-clamp-2">{product.name}</h3>
+            <h3 className="font-semibold text-[#4A2C3A] line-clamp-2">{product.name}</h3>
             <div className="flex items-center">
-              <span className="text-xl font-bold text-primary-600">
+              <span className="text-xl font-bold text-[#E8A0BF]">
                 ${product.price.toLocaleString('es-CL')}
               </span>
             </div>
             <button
               onClick={() => handleAdd(product)}
-              className="w-full mt-2 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium rounded-lg transition-colors"
+              className="w-full mt-2 px-4 py-2 bg-[#E8A0BF] hover:bg-[#BA90C6] text-white text-sm font-medium rounded-full transition-colors"
             >
               Agregar
             </button>

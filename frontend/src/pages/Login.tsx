@@ -71,59 +71,59 @@ export default function Login() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-[#FFF8FA] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#E8A0BF] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-[#FFF8FA] flex items-center justify-center px-4 py-12">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 space-y-6">
+        <div className="bg-white rounded-[24px] shadow-lg border border-[#FAD3E7] p-8 space-y-6">
           <div className="text-center">
-            <Link to="/" className="text-3xl font-bold text-primary-500">
-              YES<span className="text-primary-600">YES</span>
+            <Link to="/" className="text-3xl font-bold text-[#E8A0BF]">
+              YES<span className="text-[#BA90C6]">YES</span>
             </Link>
-            <h2 className="mt-4 text-2xl font-bold text-gray-900">Inicia Sesión</h2>
-            <p className="text-gray-500 text-sm mt-1">Bienvenido de vuelta</p>
+            <h2 className="mt-4 text-2xl font-bold text-[#4A2C3A]">Inicia Sesión</h2>
+            <p className="text-[#4A2C3A]/60 text-sm mt-1">Bienvenido de vuelta</p>
           </div>
 
           <form onSubmit={handleEmailLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label className="block text-sm font-medium text-[#4A2C3A]/80 mb-1">Email</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#4A2C3A]/40" />
                 <input
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 border border-[#FAD3E7] rounded-full focus:outline-none focus:ring-2 focus:ring-[#E8A0BF] focus:border-transparent"
                   placeholder="tu@email.com"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+              <label className="block text-sm font-medium text-[#4A2C3A]/80 mb-1">Contraseña</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#4A2C3A]/40" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   required
-                  className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full pl-10 pr-10 py-3 border border-[#FAD3E7] rounded-full focus:outline-none focus:ring-2 focus:ring-[#E8A0BF] focus:border-transparent"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4A2C3A]/40"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -132,7 +132,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 transition-all disabled:opacity-50"
+              className="w-full py-3 bg-[#E8A0BF] hover:bg-[#BA90C6] text-white font-bold rounded-full shadow-lg shadow-[#E8A0BF]/30 transition-all disabled:opacity-50"
             >
               {loading ? 'Cargando...' : 'Iniciar Sesión'}
             </button>
@@ -140,17 +140,15 @@ export default function Login() {
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
+              <div className="w-full border-t border-[#FAD3E7]"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">o</span>
+              <span className="px-2 bg-white text-[#4A2C3A]/60">o</span>
             </div>
           </div>
 
           <button
             onClick={() => {
-              // Marca de retorno: tras el callback de Google, el admin aterriza
-              // en /admin y el resto de usuarios en el inicio (/).
               try {
                 sessionStorage.setItem('yesyes_post_login', '1');
               } catch {
@@ -158,7 +156,7 @@ export default function Login() {
               }
               signIn('google', '/');
             }}
-            className="w-full flex items-center justify-center space-x-3 px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center justify-center space-x-3 px-4 py-3 border border-[#FAD3E7] rounded-full hover:bg-[#FFF8FA] transition-colors"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path
@@ -186,12 +184,12 @@ export default function Login() {
                 strokeWidth="0.1"
               />
             </svg>
-            <span className="font-medium text-gray-700">Continuar con Google</span>
+            <span className="font-medium text-[#4A2C3A]/80">Continuar con Google</span>
           </button>
 
-          <p className="text-center text-sm text-gray-600">
+          <p className="text-center text-sm text-[#4A2C3A]/60">
             ¿No tienes cuenta?{' '}
-            <Link to="/register" className="text-primary-500 font-semibold hover:text-primary-600">
+            <Link to="/register" className="text-[#E8A0BF] font-semibold hover:text-[#BA90C6]">
               Regístrate
             </Link>
           </p>
