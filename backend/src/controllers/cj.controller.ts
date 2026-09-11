@@ -13,6 +13,21 @@ import { prisma } from '../lib/prisma';
 export const MARGIN_MULTIPLIER = 2;
 
 /**
+ * Calcula el precio final CLP para un producto CJ.
+ * Reutilizado por ambos importadores: single (importCJProduct) y bulk (bulkImportCJ).
+ * Fórmula: costTotalUSD * marginMultiplier * dollarRate, redondeado a múltiplos de 10.
+ */
+export function calculateFinalPrice(
+  costTotalUSD: number,
+  marginMultiplier: number,
+  dollarRate: number
+): { precioFinalUSD: number; precioFinalCLP: number } {
+  const precioFinalUSD = costTotalUSD * marginMultiplier;
+  const precioFinalCLP = Math.round(precioFinalUSD * dollarRate / 10) * 10;
+  return { precioFinalUSD, precioFinalCLP };
+}
+
+/**
  * Resuelve un producto CJ desde el link pegado por el usuario:
  * 1) prueba cada candidato de ID extraído del link (?pid=, -p-XXX, CJ19..., uuid, ...)
  * 2) si ninguno funciona, busca por las palabras del slug en la API de CJ
@@ -322,9 +337,10 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     // Costo Total CLP = Costo Total USD * dolar
     const costTotalCLP = costTotalUSD * dollarRate;
 
-    // Precio Final CLP = Costo Total USD * margen * dolar
-    const precioFinalUSD = shouldApplyMargin ? costTotalUSD * marginMultiplier : costTotalUSD;
-    const precioFinalCLP = roundToTen(precioFinalUSD * dollarRate);
+    // Precio Final CLP = Costo Total USD * margen * dolar (usa función compartida)
+    const effectiveMargin = shouldApplyMargin ? marginMultiplier : 1;
+    const { precioFinalCLP } = calculateFinalPrice(costTotalUSD, effectiveMargin, dollarRate);
+    const precioFinalUSD = costTotalUSD * effectiveMargin;
 
     // finalPrice es el precio de venta en CLP
     const finalPrice =
@@ -437,8 +453,9 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
 
     const costTotalUSD = totalCost;
     const costTotalCLP = costTotalUSD * dollarRate;
+    // Usa la misma función compartida (calculateFinalPrice) para consistencia
+    const { precioFinalCLP: suggestedPriceCLP } = calculateFinalPrice(costTotalUSD, MARGIN_MULTIPLIER, dollarRate);
     const suggestedPriceUSD = costTotalUSD * MARGIN_MULTIPLIER;
-    const suggestedPriceCLP = roundToTen(suggestedPriceUSD * dollarRate);
 
     const collections = await prisma.collection.findMany({ orderBy: { name: 'asc' } });
 

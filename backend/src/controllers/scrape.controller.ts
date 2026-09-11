@@ -9,6 +9,7 @@ import {
   getDollarRate,
   resolveCategory,
   MARGIN_MULTIPLIER,
+  calculateFinalPrice,
 } from './cj.controller';
 import { detectCollection, translateToChileanSpanish } from '../lib/cj';
 import { prisma } from '../lib/prisma';
@@ -17,10 +18,6 @@ import { prisma } from '../lib/prisma';
 const MAX_BULK_LINKS = 30;
 const MAX_BULK_PREVIEW_LINKS = 50;
 const MAX_IMAGES_PER_PRODUCT = 5;
-
-function roundToTen(value: number): number {
-  return Math.round(value / 10) * 10;
-}
 
 interface BulkRowResult {
   index: number;
@@ -82,7 +79,8 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
         const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0') || 0;
         const shippingCost = extractShippingCost(cjData, cjPrice);
         const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
-        const priceClp = roundToTen(totalCost * marginMultiplier * dollarRate);
+        // Usa la misma función que los importadores (single y bulk)
+        const { precioFinalCLP: priceClp } = calculateFinalPrice(totalCost, marginMultiplier, dollarRate);
         const autoCat = category?.trim() || autoCategory(cjData);
 
         results.push({
@@ -175,8 +173,8 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
 
         const costTotalUSD = totalCost;
         const costTotalCLP = costTotalUSD * dollarRate;
-        const precioFinalUSD = costTotalUSD * marginMultiplier;
-        const precioFinalCLP = roundToTen(precioFinalUSD * dollarRate);
+        // Usa la misma función que el importador single (reutiliza lógica)
+        const { precioFinalUSD, precioFinalCLP } = calculateFinalPrice(costTotalUSD, marginMultiplier, dollarRate);
 
         const categorySlug = autoCategory(cjData);
         const finalCollectionSlug: string =
