@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { createHash } from 'crypto';
 import {
   getCJProduct,
   extractPidCandidates,
@@ -6,6 +7,7 @@ import {
   searchCJProductByKeyword,
   detectCollection,
   translateToChileanSpanish,
+  scrapeCJProductPage,
 } from '../lib/cj';
 import { prisma } from '../lib/prisma';
 
@@ -42,11 +44,33 @@ export async function resolveCJProductFromUrl(url: string): Promise<{ cjData: an
     if (found) {
       const realPid = String(found.pid ?? found.productId ?? found.id ?? candidate);
       console.log('[CJ resolve] match con candidato', candidate, '-> pid real', realPid);
+
+      const hasTitle = Boolean(found.productNameEn || found.productName || found.title);
+      const hasPrice = Number(found.price) > 0
+        || Number(found.sellPrice) > 0
+        || (Array.isArray(found.variants) && found.variants.some((variant: any) =>
+          Number(variant.variantSellPrice || variant.price || variant.sellPrice) > 0));
+      if (!hasTitle || !hasPrice) {
+        const pageData = await scrapeCJProductPage(url);
+        if (pageData) {
+          if (pageData.title && !found.productNameEn && !found.productName && !found.title) {
+            found.productNameEn = pageData.title;
+          }
+          if (pageData.price && !Number(found.price) && !Number(found.sellPrice)) {
+            found.price = pageData.price;
+            found.sellPrice = pageData.price;
+          }
+          if (pageData.category && !found.category) found.category = pageData.category;
+          if (pageData.description && !found.description) found.description = pageData.description;
+          if (!Array.isArray(found.productImageSet) && pageData.images.length) {
+            found.productImageSet = pageData.images;
+          }
+        }
+      }
       return { cjData: found, pid: realPid };
     }
   }
 
-  // Último recurso: búsqueda por nombre desde el slug del link
   const keywords = extractSlugKeywords(url);
   if (keywords) {
     console.log('[CJ resolve] sin match por ID, buscando por slug:', keywords);
@@ -60,6 +84,48 @@ export async function resolveCJProductFromUrl(url: string): Promise<{ cjData: an
     }
   }
 
+  const pageData = await scrapeCJProductPage(url);
+  if (pageData?.title || pageData?.price) {
+    const pid = candidates[0] ?? `html-${createHash('sha1').update(url).digest('hex').slice(0, 16)}`;
+    console.log('[CJ resolve] fallback HTML -> pid', pid);
+    return {
+      cjData: {
+        ...pageData,
+        productNameEn: pageData.title || 'Producto CJ',
+        price: pageData.price || 0,
+        sellPrice: pageData.price || 0,
+        variants: pageData.price ? [{
+          variantSku: `html-${pid.slice(-12)}`,
+          variantSellPrice: pageData.price,
+          price: pageData.price,
+          sellPrice: pageData.price,
+        }] : [],
+      },
+      pid,
+    };
+  }
+
+  return null;
+}
+
+export async function resolveCJProductFromUrlWithRetry(
+  url: string,
+  retries = 1,
+): Promise<{ cjData: any; pid: string } | null> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const resolved = await resolveCJProductFromUrl(url);
+      if (resolved) return resolved;
+    } catch (error) {
+      lastError = error;
+      console.warn(`[CJ resolve] intento ${attempt + 1}/${retries + 1} fallido:`, error);
+    }
+    if (attempt < retries) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+  if (lastError) throw lastError;
   return null;
 }
 
@@ -164,7 +230,7 @@ function firstNumber(...vals: any[]): number {
   return 0;
 }
 
-function extractCJPrice(cjData: any): number {
+export function extractCJPrice(cjData: any): number {
   const variants = Array.isArray(cjData?.variants) ? cjData.variants : [];
   let min = Infinity;
   for (const v of variants) {
@@ -205,7 +271,53 @@ export function autoCategory(cjProduct: any): string {
   if (/home|hogar|cocina|luz|lampara|light|despacho|decor|decoracion/.test(title)) return 'hogar';
   if (/gamer|rgb|mouse gamer|teclado mecanico/.test(title)) return 'tech-gamer';
 
-  return 'importados';
+  return 'accesorios';
+}
+
+export const VALID_CATEGORY_SLUGS = new Set([
+  'general',
+  'accesorios',
+  'accesorios-telefono',
+  'joyeria',
+  'ropa',
+  'calzado',
+  'relojes',
+  'bolsos',
+  'electronica',
+  'computacion',
+  'belleza',
+  'deportes',
+  'juguetes',
+  'mascotas',
+  'hogar',
+  'importados',
+  'tech-gamer',
+  'hogar-smart',
+  'fitness',
+  'tendencias-viral',
+  'guateros',
+  'peluches',
+]);
+
+const FALLBACK_CATEGORY_SLUG = 'accesorios';
+
+export function normalizeCategorySlug(category?: unknown): string {
+  const raw = String(category ?? '').trim().toLowerCase();
+  const slug = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug && VALID_CATEGORY_SLUGS.has(slug) ? slug : FALLBACK_CATEGORY_SLUG;
+}
+
+export function normalizeCJCategory(category?: unknown, title = ''): string {
+  const raw = String(category ?? '').trim();
+  const rawSlug = normalizeCategorySlug(raw);
+  if (raw && VALID_CATEGORY_SLUGS.has(rawSlug)) return rawSlug;
+
+  const keywordSlug = normalizeCategorySlug(autoCategory({ productNameEn: title, category: raw }));
+  return VALID_CATEGORY_SLUGS.has(keywordSlug) ? keywordSlug : FALLBACK_CATEGORY_SLUG;
 }
 
 export function extractShippingCost(cjData: any, cjPrice: number): number {
@@ -306,15 +418,15 @@ async function getVariantShippingCost(_vid: string, cjData: any, defaultShipping
  * la crea (y si no se pasa slug, garantiza la categoría "General").
  * El esquema exige `categoryId` no nulo en Product, por eso NUNCA debe
  * quedar undefined/'general' como string suelto (violaría la FK).
+ * Usa upsert para evitar race conditions en importaciones bulk.
  */
 export async function resolveCategory(slug?: string): Promise<{ id: string; name: string; slug: string }> {
-  const targetSlug = slug?.trim().toLowerCase() || 'general';
+  const targetSlug = normalizeCategorySlug(slug);
 
-  const existing = await prisma.category.findUnique({ where: { slug: targetSlug } });
-  if (existing) return existing;
-
-  return prisma.category.create({
-    data: {
+  return prisma.category.upsert({
+    where: { slug: targetSlug },
+    update: {},
+    create: {
       name: targetSlug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
       slug: targetSlug,
     },
@@ -336,11 +448,32 @@ export function detectCategory(name: string, cjCategory?: string): { main: strin
     return { main: 'Hogar', sub: 'Cocina' };
   if (n.includes('toy') || n.includes('juguete'))
     return { main: 'Juguetes', sub: 'General' };
-  // fallback: usa categoría de CJ traducida (slug → Título)
-  const cjTitle = cjCategory
-    ? cjCategory.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-    : '';
-  return { main: 'General', sub: cjTitle || 'General' };
+
+  const normalized = normalizeCJCategory(cjCategory, name);
+  const categories: Record<string, { main: string; sub: string }> = {
+    accesorios: { main: 'Accesorios', sub: 'General' },
+    'accesorios-telefono': { main: 'Tecnología', sub: 'Accesorios Celular' },
+    joyeria: { main: 'General', sub: 'Joyeria' },
+    ropa: { main: 'Moda', sub: 'Ropa' },
+    calzado: { main: 'Moda', sub: 'Calzado' },
+    relojes: { main: 'Tecnología', sub: 'Relojes' },
+    bolsos: { main: 'Moda', sub: 'Bolsos' },
+    electronica: { main: 'Tecnología', sub: 'Electrónica' },
+    computacion: { main: 'Tecnología', sub: 'Computación' },
+    belleza: { main: 'Belleza', sub: 'General' },
+    deportes: { main: 'Deportes', sub: 'General' },
+    juguetes: { main: 'Juguetes', sub: 'General' },
+    mascotas: { main: 'Hogar', sub: 'Mascotas' },
+    hogar: { main: 'Hogar', sub: 'General' },
+    'tech-gamer': { main: 'Tecnología', sub: 'Gamer' },
+    'hogar-smart': { main: 'Hogar', sub: 'Hogar Smart' },
+    fitness: { main: 'Deportes', sub: 'Fitness' },
+    'tendencias-viral': { main: 'Tendencias', sub: 'Viral' },
+    guateros: { main: 'Hogar', sub: 'Guateros' },
+    peluches: { main: 'Juguetes', sub: 'Peluches' },
+    importados: { main: 'General', sub: 'Importados' },
+  };
+  return categories[normalized] || { main: 'Accesorios', sub: 'General' };
 }
 
 function slugifyCategory(name: string): string {
@@ -355,25 +488,56 @@ function slugifyCategory(name: string): string {
 /**
  * FEATURE B: garantiza main > sub (crea las que no existan) y devuelve la sub.
  * Si sub === 'General' se reutiliza la main para no duplicar productos en 2 categorías.
+ * Usa upsert para evitar race conditions en importaciones bulk.
  */
 export async function resolveMainSubCategory(main: string, sub: string): Promise<{ id: string; name: string }> {
-  let mainCat = await prisma.category.findFirst({
-    where: { name: { equals: main, mode: 'insensitive' } },
+  const validMains = new Set(['Tecnología', 'Hogar', 'Juguetes', 'General', 'Accesorios', 'Moda', 'Belleza', 'Deportes', 'Tendencias']);
+  const validSubs = new Set([
+    'General', 'Accesorios Celular', 'Cargadores', 'Smartwatch', 'Audio', 'Cocina', 'Joyeria', 'Ropa', 'Calzado',
+    'Relojes', 'Bolsos', 'Electrónica', 'Computación', 'Gamer', 'Hogar Smart', 'Mascotas', 'Fitness', 'Viral',
+    'Guateros', 'Peluches', 'Importados',
+  ]);
+  const safeMain = validMains.has(main.trim()) ? main.trim() : 'Accesorios';
+  const safeSub = validSubs.has(sub.trim()) ? sub.trim() : 'General';
+
+  const mainSlug = slugifyCategory(safeMain);
+  const mainCat = await prisma.category.upsert({
+    where: { slug: mainSlug },
+    update: { name: safeMain },
+    create: { name: safeMain, slug: mainSlug },
   });
-  if (!mainCat) {
-    mainCat = await prisma.category.create({
-      data: { name: main, slug: slugifyCategory(main) },
-    });
-  }
-  if (!sub || sub.toLowerCase() === 'general' || sub.toLowerCase() === main.toLowerCase()) {
+
+  if (!safeSub || safeSub.toLowerCase() === 'general' || safeSub.toLowerCase() === safeMain.toLowerCase()) {
     return mainCat;
   }
-  const existingSub = await prisma.category.findFirst({
-    where: { name: { equals: sub, mode: 'insensitive' }, parentId: mainCat.id },
+
+  const subSlug = slugifyCategory(safeSub);
+
+  // 1) Sub ya existe bajo esta main (lookup más específico)
+  let existingSub = await prisma.category.findFirst({
+    where: { name: { equals: safeSub, mode: 'insensitive' }, parentId: mainCat.id },
   });
   if (existingSub) return existingSub;
-  return prisma.category.create({
-    data: { name: sub, slug: slugifyCategory(sub), parentId: mainCat.id },
+
+  // 2) El slug ya existe en otra parte (p.ej. categoría root creada por resolveCategory
+  //    en el importador Excel). Reutilizarla y reparentarla bajo la main correcta para
+  //    evitar violación del UNIQUE(slug) y mantener la jerarquía coherente.
+  existingSub = await prisma.category.findUnique({ where: { slug: subSlug } });
+  if (existingSub) {
+    if (existingSub.parentId !== mainCat.id) {
+      await prisma.category.update({
+        where: { id: existingSub.id },
+        data: { parentId: mainCat.id },
+      });
+    }
+    return existingSub;
+  }
+
+  // 3) No existe: crear con upsert para evitar race condition.
+  return prisma.category.upsert({
+    where: { slug: subSlug },
+    update: { name: safeSub, parentId: mainCat.id },
+    create: { name: safeSub, slug: subSlug, parentId: mainCat.id },
   });
 }
 
@@ -399,7 +563,7 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const resolvedImport = await resolveCJProductFromUrl(url);
+    const resolvedImport = await resolveCJProductFromUrlWithRetry(url);
     if (!resolvedImport) {
       res.status(404).json({ message: 'No se encontró el producto en CJ con ese link.' });
       return;
@@ -412,10 +576,20 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     const productImage = cjImages[0] || '';
     const productImages = cjImages.slice(1);
     const variants = cjData.variants || [];
-    const cjPrice = parseFloat(productPrice ?? cjData.price ?? cjData.sellPrice ?? '0');
-    const shippingCost = parseFloat(shippingPrice ?? String(extractShippingCost(cjData, cjPrice)));
-    const totalCost = incomingTotalCost ?? cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
-    const stock = incomingStock ?? extractCJStock(cjData);
+    const incomingProductPrice = Number(productPrice);
+    const cjPrice = incomingProductPrice > 0 ? incomingProductPrice : extractCJPrice(cjData);
+    const incomingShippingPrice = Number(shippingPrice);
+    const shippingCost = incomingShippingPrice > 0
+      ? incomingShippingPrice
+      : extractShippingCost(cjData, cjPrice);
+    const incomingTotalCostValue = Number(incomingTotalCost);
+    const totalCost = incomingTotalCostValue > 0 && Number.isFinite(incomingTotalCostValue)
+      ? incomingTotalCostValue
+      : cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
+    const incomingStockValue = Number(incomingStock);
+    const stock = incomingStockValue >= 0 && Number.isFinite(incomingStockValue)
+      ? incomingStockValue
+      : extractCJStock(cjData);
     const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
 
     const finalTitle = (titleEs && String(titleEs).trim()) || translateToChileanSpanish(productNameEn);
@@ -439,7 +613,7 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     const finalPriceCLP = precioFinalCLP;
     const precioFinalUSD = costTotalUSD * effectiveMargin;
 
-    const autoSlug = autoCategory(cjData);
+    const autoSlug = normalizeCJCategory(cjData?.category, finalTitle);
     const finalCollectionSlug = collectionSlug?.trim() || detectCollection(finalTitle, finalDescription);
 
     // FEATURE B: categoría main > sub automática (crea las que no existan)
@@ -579,8 +753,9 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
 
     res.status(201).json({ message: 'Product imported successfully', product });
   } catch (error: any) {
+    const detail = error instanceof Error ? error.message : String(error ?? 'Error desconocido');
     console.error('Error importing CJ product:', error);
-    res.status(500).json({ message: 'Error importing product', error: error.message });
+    res.status(500).json({ message: 'Error importing product', error: detail, detail });
   }
 };
 
@@ -594,10 +769,11 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
 
     let resolved: { cjData: any; pid: string } | null = null;
     try {
-      resolved = await resolveCJProductFromUrl(url);
+      resolved = await resolveCJProductFromUrlWithRetry(url);
     } catch (err: any) {
-      console.error('[CJ preview] error CJ api:', err?.response?.status, err?.response?.data ?? err?.message);
-      res.status(502).json({ message: 'CJ respondió con error. Revisa tu API key o intenta de nuevo.', error: err?.message });
+      const detail = err instanceof Error ? err.message : String(err ?? 'Error desconocido');
+      console.error('[CJ preview] error CJ api:', err?.response?.status, err?.response?.data ?? detail);
+      res.status(502).json({ message: 'CJ respondió con error. Revisa tu API key o intenta de nuevo.', error: detail, detail });
       return;
     }
     if (!resolved) {
@@ -612,7 +788,7 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
     const productImage = cjImages[0] || '';
     const productImages = cjImages.slice(1);
     const variants = cjData.variants || [];
-    const cjPrice = parseFloat(cjData.price || cjData.sellPrice || '0');
+    const cjPrice = extractCJPrice(cjData);
     const shippingCost = extractShippingCost(cjData, cjPrice);
     const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
     const stock = extractCJStock(cjData);
@@ -666,14 +842,15 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
       suggestedPrice: suggestedPriceCLP,
       comparePrice: suggestedPriceCLP,
       collectionSlug,
-      autoCategory: autoCategory(cjData),
+      autoCategory: normalizeCJCategory(cjData?.category, titleEs),
       collections,
       dollarRate,
       costTotalCLP,
     });
   } catch (error: any) {
+    const detail = error instanceof Error ? error.message : String(error ?? 'Error desconocido');
     console.error('Error previewing CJ product:', error);
-    res.status(500).json({ message: 'Error previewing product', error: error.message });
+    res.status(500).json({ message: 'Error previewing product', error: detail, detail });
   }
 };
 
