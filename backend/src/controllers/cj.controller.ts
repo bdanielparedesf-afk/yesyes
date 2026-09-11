@@ -249,7 +249,8 @@ export function mapCJVariant(
   _shippingUSD = 0,
   marginMultiplier = MARGIN_MULTIPLIER,
   dollarRate = 950,
-  variantImage?: string
+  variantImage?: string,
+  fallbackStock = 100
 ) {
   const sku = String(v.variantSku || v.sku || `cj-${v.pid || 'x'}-${v.vid || Math.random().toString(36).slice(2, 8)}`);
   const variantNameEn = v.variantNameEn || v.variantName || '';
@@ -273,6 +274,9 @@ export function mapCJVariant(
   const rawStock = v.variantInventory ?? v.inventoryNum ?? v.stock ?? v.quantity ?? '0';
   let stock = parseInt(String(rawStock ?? '0'), 10);
   if (!Number.isInteger(stock) || stock < 0) stock = 0;
+  // CJ a veces no envía inventory por variante: fallback para que la variante
+  // sea comprable (mismo criterio que el importador legacy: stock global o 100).
+  if (stock === 0) stock = fallbackStock;
   return {
     vid: String(v.vid || v.variantId || sku),
     sku,
@@ -410,7 +414,7 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     // Mapeo de variantes con precio final (se reutiliza en preview y en import).
     // effectiveMargin respeta el margen elegido en el admin (x1.5 / x2 / x2.5...).
     const mappedVariants = filteredVariants.map((v: any) =>
-      mapCJVariant(v, cjPrice, shippingUSD, effectiveMargin, dollarRate)
+      mapCJVariant(v, cjPrice, shippingUSD, effectiveMargin, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
     );
 
     // images = fotos del producto + fotos de variantes (sin duplicados, máximo 10).
@@ -453,9 +457,11 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
       : Number.isFinite(cheapestVariantPrice) && cheapestVariantPrice > 0 ? Math.round(cheapestVariantPrice)
       : Math.round(finalPriceCLP);
 
-    // stock = suma de stock de variantes importadas (si hay), sino el global editado
-    const variantsStockSum = mappedVariants.reduce((acc: number, v: any) => acc + (Number(v.stock) || 0), 0);
-    const finalStock = variantsStockSum > 0 ? variantsStockSum : Number(stock) || 0;
+    // stock global del producto: si hay variantes usamos el máximo (las variantes
+    // comparten el mismo pool físico en CJ); sino el stock global editado.
+    const variantStocks = mappedVariants.map((v: any) => Number(v.stock) || 0);
+    const maxVariantStock = variantStocks.length ? Math.max(...variantStocks) : 0;
+    const finalStock = maxVariantStock > 0 ? maxVariantStock : Number(stock) || 0;
 
     // Variantas que llegan a la BD (productVariants)
     const importedVariants = mappedVariants;
@@ -575,7 +581,7 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
       variants: (() => {
         const shippingUSD = Number.isFinite(shippingCost) ? shippingCost : 0;
         const mappedVariants = variants.map((v: any) =>
-          mapCJVariant(v, cjPrice, shippingUSD, MARGIN_MULTIPLIER, dollarRate)
+          mapCJVariant(v, cjPrice, shippingUSD, MARGIN_MULTIPLIER, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
         );
         return mappedVariants.map((v: any) => ({
           sku: v.sku,

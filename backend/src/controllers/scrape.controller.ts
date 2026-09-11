@@ -177,7 +177,7 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
         // Variantes: precio final POR VARIANTE (vid/nameEs/stock/imagen/precio)
         const bulkShipping = Number.isFinite(shippingCost) ? shippingCost : 0;
         const bulkMapped = variants.map((v: any) =>
-          mapCJVariant(v, cjPrice, bulkShipping, marginMultiplier, dollarRate)
+          mapCJVariant(v, cjPrice, bulkShipping, marginMultiplier, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
         );
         const bulkVariantsJSON = bulkMapped.map((v: any) => ({
           vid: v.vid || v.sku,
