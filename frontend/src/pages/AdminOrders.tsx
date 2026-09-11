@@ -62,6 +62,7 @@ export default function AdminOrders() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const loadOrders = async () => {
     setLoading(true);
@@ -120,6 +121,32 @@ export default function AdminOrders() {
     if (typeof a === 'string') return a;
     return `${a.street || ''} ${a.number || ''}, ${a.city || ''}, ${a.region || ''}`.replace(/,\s*,/g, ',').trim();
   };
+
+  const handleBulkStatus = async () => {
+    const status = (document.getElementById('bulkStatus') as HTMLSelectElement | null)?.value;
+    if (!status) return;
+    try {
+      await api.put('/admin/orders/bulk-status', { ids: selectedIds, status });
+      toast.success('Estado actualizado en pedidos seleccionados');
+      setSelectedIds([]);
+      loadOrders();
+    } catch {
+      toast.error('Error al actualizar estados');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`¿Eliminar ${selectedIds.length} pedidos?`)) return;
+    try {
+      await api.delete('/admin/orders/bulk-delete', { data: { ids: selectedIds } });
+      toast.success('Pedidos eliminados');
+      setSelectedIds([]);
+      loadOrders();
+    } catch {
+      toast.error('Error al eliminar pedidos');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-900">Pedidos</h2>
@@ -132,6 +159,9 @@ export default function AdminOrders() {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-center">
+                    <input type="checkbox" checked={selectedIds.length === orders.length} onChange={(e) => setSelectedIds(e.target.checked ? orders.map((o) => o.id) : [])} />
+                  </th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Nº</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Cliente</th>
                   <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Fecha</th>
@@ -143,6 +173,9 @@ export default function AdminOrders() {
               <tbody className="divide-y divide-gray-100">
                   {orders.map((o) => (
                     <tr key={o.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-3 text-center">
+                        <input type="checkbox" checked={selectedIds.includes(o.id)} onChange={(e) => { if (e.target.checked) setSelectedIds([...selectedIds, o.id]); else setSelectedIds(selectedIds.filter((id) => id !== o.id)) }} />
+                      </td>
                       <td className="px-6 py-3 text-sm font-medium text-gray-900">#{o.orderNumber || o.id.slice(-6).toUpperCase()}</td>
                       <td className="px-6 py-3 text-sm text-gray-700">{clientName(o)}</td>
                       <td className="px-6 py-3 text-sm text-gray-600">{formatDateTime(o.createdAt)}</td>
@@ -160,13 +193,27 @@ export default function AdminOrders() {
                     </tr>
                   ))}
                   {orders.length === 0 && (
-                    <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500">No hay pedidos</td></tr>
+                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">No hay pedidos</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-black text-white p-3 rounded flex gap-3 items-center">
+          <span>{selectedIds.length} seleccionados</span>
+          <select id="bulkStatus" className="px-2 py-1 rounded text-black">
+            <option value="PENDING_PAYMENT">Pendiente</option>
+            <option value="PAID">Pagado</option>
+            <option value="SHIPPED">Enviado</option>
+            <option value="DELIVERED">Entregado</option>
+            <option value="CANCELLED">Cancelado</option>
+          </select>
+          <button onClick={handleBulkStatus} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm">Aplicar estado</button>
+          <button onClick={handleBulkDelete} className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm">Eliminar</button>
+        </div>
+      )}
       {selectedOrder && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={closeModal}>
           <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>

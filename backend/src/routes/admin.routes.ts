@@ -12,7 +12,7 @@ import {
   hideProduct,
 } from '../controllers/product.controller';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '../controllers/category.controller';
-import { getOrders, getOrderById, updateOrderStatus } from '../controllers/order.controller';
+import { getOrders, getOrderById, updateOrderStatus, bulkUpdateOrderStatus, bulkDeleteOrders } from '../controllers/order.controller';
 import { getUsers, updateUserRole, toggleUserActive } from '../controllers/user.controller';
 import { getProductsTemplateExcel, bulkCreateProducts } from '../controllers/excel.controller';
 
@@ -103,6 +103,8 @@ router.put('/categories/:id', updateCategory);
 router.delete('/categories/:id', deleteCategory);
 
 router.get('/orders', getOrders);
+router.put('/orders/bulk-status', bulkUpdateOrderStatus);
+router.delete('/orders/bulk-delete', bulkDeleteOrders);
 router.get('/orders/:id', getOrderById);
 router.put('/orders/:id/status', updateOrderStatus);
 

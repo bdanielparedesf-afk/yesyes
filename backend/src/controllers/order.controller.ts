@@ -76,3 +76,38 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     res.status(500).json({ message: 'Error updating order status', error: error.message });
   }
 };
+
+export const bulkUpdateOrderStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids, status } = req.body;
+    if (!ids?.length || !status) { res.status(400).json({ message: 'ids y status requeridos' }); return; }
+    const result = await prisma.order.updateMany({
+      where: { id: { in: ids } },
+      data: { status: status as any },
+    });
+    res.json({ updated: result.count });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Error bulk status' });
+  }
+};
+
+export const bulkDeleteOrders = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body;
+    if (!ids?.length) { res.status(400).json({ message: 'ids requeridos' }); return; }
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.orderItem.deleteMany({ where: { orderId: { in: ids } } });
+      await tx.fulfillment.deleteMany({ where: { orderId: { in: ids } } });
+      await tx.trackingEvent.deleteMany({ where: { orderId: { in: ids } } });
+      await tx.returnRequest.deleteMany({ where: { orderId: { in: ids } } });
+      await tx.payment.deleteMany({ where: { orderId: { in: ids } } });
+      await tx.orderStatusHistory.deleteMany({ where: { orderId: { in: ids } } });
+      return tx.order.deleteMany({ where: { id: { in: ids } } });
+    });
+    res.json({ deleted: result.count });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Error bulk delete - FK' });
+  }
+};
