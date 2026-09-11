@@ -16,6 +16,7 @@ import {
   calculateFinalPrice,
 } from './cj.controller';
 import { detectCollection, translateToChileanSpanish, translateDescriptionToSpanish } from '../lib/cj';
+import { translateEnToEs } from '../lib/translate';
 import { prisma } from '../lib/prisma';
 
 // FASE 4A/4C — Importación masiva CJ (hasta 30-50 links). Solo CJ.
@@ -87,14 +88,14 @@ export const bulkPreviewCJ = async (req: Request, res: Response): Promise<void> 
         const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
         // Usa la misma función que los importadores (single y bulk)
         const { precioFinalCLP: priceClp } = calculateFinalPrice(totalCost, marginMultiplier, dollarRate);
-        const titleEs = translateToChileanSpanish(productNameEn);
+        const titleEs = await translateEnToEs(productNameEn);
         const autoCat = normalizeCJCategory(category, titleEs);
 
         results.push({
           link: url,
           sourceId: String(pid),
           titleEs,
-          description: translateDescriptionToSpanish(description),
+          description: await translateEnToEs(description),
           costUsd: Number(totalCost.toFixed(2)),
           priceClp,
           images,
@@ -192,16 +193,16 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
           const stock = cjStock > 0 ? cjStock : 100;
           const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
 
-          const finalTitle = translateToChileanSpanish(productNameEn);
-          const finalDescription = translateDescriptionToSpanish(description);
+          const finalTitle = await translateToChileanSpanish(productNameEn);
+          const finalDescription = await translateDescriptionToSpanish(description);
 
           const costTotalUSD = totalCost;
           const costTotalCLP = costTotalUSD * dollarRate;
           const { precioFinalCLP: fallbackCLP } = calculateFinalPrice(costTotalUSD, marginMultiplier, dollarRate);
           const bulkShipping = Number.isFinite(shippingCost) ? shippingCost : 0;
-          const bulkMapped = variants.map((v: any) =>
+          const bulkMapped = await Promise.all(variants.map((v: any) =>
             mapCJVariant(v, cjPrice, bulkShipping, marginMultiplier, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
-          );
+          ));
           const bulkVariantsJSON = bulkMapped.map((v: any) => ({
             vid: v.vid || v.sku,
             name: v.name,

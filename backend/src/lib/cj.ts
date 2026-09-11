@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { translateWithAI, translateWithMyMemory } from './translator';
 
 const CJ_API_BASE = 'https://developers.cjdropshipping.com/api2.0/v1';
 const CJ_EMAIL = process.env.CJ_EMAIL;
@@ -361,75 +362,89 @@ export function calculatePrice(cjPrice: number): { price: number; comparePrice: 
   return { price, comparePrice };
 }
 
-export function translateToChileanSpanish(title: string): string {
-  const dictionary: Record<string, string> = {
-    'Wireless': 'Inalámbrico',
-    'Bluetooth': 'Bluetooth',
-    'Gaming': 'Gamer',
-    'Mouse': 'Mouse',
-    'Keyboard': 'Teclado',
-    'LED': 'LED',
-    'Humidifier': 'Humidificador',
-    'Aroma': 'Aroma',
-    'Essential Oil': 'Aceite Esencial',
-    'Massager': 'Masajeador',
-    'Fitness': 'Fitness',
-    'Smart': 'Smart',
-    'Home': 'Hogar',
-    'Beauty': 'Belleza',
-    'Hair': 'Pelo',
-    'Makeup': 'Maquillaje',
-    'Gym': 'Gimnasio',
-    'Sport': 'Deporte',
-    'Running': 'Running',
-    'USB': 'USB',
-    'Charging': 'Carga',
-    'Power Bank': 'Power Bank',
-    'Lamp': 'Lámpara',
-    'Light': 'Luz',
-    'Desk': 'Escritorio',
-    'Monitor': 'Monitor',
-    'Headset': 'Auriculares',
-    'Earphone': 'Audífono',
-    'Speaker': ' Parlante',
-    'Camera': 'Cámara',
-    'Watch': 'Reloj',
-    'Band': 'Band',
-    'Drone': 'Drone',
-    'Toy': 'Juguete',
-    'Kids': 'Niños',
-    'Men': 'Hombres',
-    'Women': 'Mujeres',
-    'Unisex': 'Unisex',
-    'Summer': 'Verano',
-    'Winter': 'Invierno',
-    'Waterproof': 'Impermeable',
-    'Portable': 'Portátil',
-    'Rechargeable': 'Recargable',
-    'Automatic': 'Automático',
-    'Electric': 'Eléctrico',
-    'Digital': 'Digital',
-    'Mini': 'Mini',
-    'Pro': 'Pro',
-    'Max': 'Max',
-    'Plus': 'Plus',
-    'New': 'Nuevo',
-    'Hot': 'Popular',
-    'Best Seller': 'Más Vendido',
-  };
+export const TRANSLATION_DICTIONARY: Record<string, string> = {
+  'Wireless': 'Inalámbrico',
+  'Bluetooth': 'Bluetooth',
+  'Gaming': 'Gamer',
+  'Mouse': 'Mouse',
+  'Keyboard': 'Teclado',
+  'LED': 'LED',
+  'Humidifier': 'Humidificador',
+  'Aroma': 'Aroma',
+  'Essential Oil': 'Aceite Esencial',
+  'Massager': 'Masajeador',
+  'Fitness': 'Fitness',
+  'Smart': 'Smart',
+  'Home': 'Hogar',
+  'Beauty': 'Belleza',
+  'Hair': 'Pelo',
+  'Makeup': 'Maquillaje',
+  'Gym': 'Gimnasio',
+  'Sport': 'Deporte',
+  'Running': 'Running',
+  'USB': 'USB',
+  'Charging': 'Carga',
+  'Power Bank': 'Power Bank',
+  'Lamp': 'Lámpara',
+  'Light': 'Luz',
+  'Desk': 'Escritorio',
+  'Monitor': 'Monitor',
+  'Headset': 'Auriculares',
+  'Earphone': 'Audífono',
+  'Speaker': ' Parlante',
+  'Camera': 'Cámara',
+  'Watch': 'Reloj',
+  'Band': 'Band',
+  'Drone': 'Drone',
+  'Toy': 'Juguete',
+  'Kids': 'Niños',
+  'Men': 'Hombres',
+  'Women': 'Mujeres',
+  'Unisex': 'Unisex',
+  'Summer': 'Verano',
+  'Winter': 'Invierno',
+  'Waterproof': 'Impermeable',
+  'Portable': 'Portátil',
+  'Rechargeable': 'Recargable',
+  'Automatic': 'Automático',
+  'Electric': 'Eléctrico',
+  'Digital': 'Digital',
+  'Mini': 'Mini',
+  'Pro': 'Pro',
+  'Max': 'Max',
+  'Plus': 'Plus',
+  'New': 'Nuevo',
+  'Hot': 'Popular',
+  'Best Seller': 'Más Vendido',
+};
 
-  let result = title;
-  for (const [en, es] of Object.entries(dictionary)) {
+function translateWithDictionary(text: string): string {
+  let result = text;
+  for (const [en, es] of Object.entries(TRANSLATION_DICTIONARY)) {
     const regex = new RegExp(`\\b${en}\\b`, 'gi');
     result = result.replace(regex, es);
   }
-
-  // Normalizar espacios extra por reemplazos tipo 'Speaker' -> ' Parlante'
   return result.replace(/\s+/g, ' ').trim();
 }
 
-/** Traducción básica de descripción al español (reutiliza diccionario de título). */
-export function translateDescriptionToSpanish(description: string): string {
+export async function translateToChileanSpanish(text: string): Promise<string> {
+  if (!text) return '';
+
+  const hasApiKey = !!(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY);
+  if (hasApiKey) {
+    const ai = await translateWithAI(text);
+    if (ai) return ai;
+  }
+
+  const mem = await translateWithMyMemory(text);
+  if (mem && mem !== text) return mem;
+
+  return translateWithDictionary(text);
+}
+
+export async function translateDescriptionToSpanish(description: string): Promise<string> {
   if (!description) return '';
-  return translateToChileanSpanish(description);
+  const ai = await translateWithAI(description);
+  if (ai) return ai;
+  return translateWithDictionary(description);
 }

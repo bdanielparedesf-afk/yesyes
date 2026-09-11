@@ -6,9 +6,9 @@ import {
   extractSlugKeywords,
   searchCJProductByKeyword,
   detectCollection,
-  translateToChileanSpanish,
   scrapeCJProductPage,
 } from '../lib/cj';
+import { translateEnToEs } from '../lib/translate';
 import { prisma } from '../lib/prisma';
 
 // Margen 100% = x2 (si cuesta 1, vendemos a 2)
@@ -355,7 +355,7 @@ export function parseCJImages(cjData: any): string[] {
   return images;
 }
 
-export function mapCJVariant(
+export async function mapCJVariant(
   v: any,
   _cjPrice: number,
   _shippingUSD = 0,
@@ -367,7 +367,7 @@ export function mapCJVariant(
   const sku = String(v.variantSku || v.sku || `cj-${v.pid || 'x'}-${v.vid || Math.random().toString(36).slice(2, 8)}`);
   const variantNameEn = v.variantNameEn || v.variantName || '';
   const name = variantNameEn;
-  const nameEs = translateToChileanSpanish(variantNameEn);
+  const nameEs = await translateEnToEs(variantNameEn);
   let color: string | null = null;
   let size: string | null = null;
   const lower = String(name || '').toLowerCase();
@@ -592,8 +592,10 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
       : extractCJStock(cjData);
     const cjWeight = parseFloat(cjData.packingWeight || cjData.productWeight || '0') || undefined;
 
-    const finalTitle = (titleEs && String(titleEs).trim()) || translateToChileanSpanish(productNameEn);
-    const finalDescription = (editedDescription !== undefined && String(editedDescription).trim()) || description;
+    const rawTitle = productNameEn;
+    const title = await translateEnToEs(rawTitle);
+    const finalTitle = (titleEs && String(titleEs).trim()) || title;
+    const finalDescription = (editedDescription !== undefined && String(editedDescription).trim()) || await translateEnToEs(description);
 
     const shouldApplyMargin = applyMargin !== false;
     const marginMultiplier = Number(incomingMargin) > 0 ? Number(incomingMargin) : MARGIN_MULTIPLIER;
@@ -645,9 +647,9 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
 
     // Mapeo de variantes con precio final (se reutiliza en preview y en import).
     // effectiveMargin respeta el margen elegido en el admin (x1.5 / x2 / x2.5...).
-    const mappedVariants = filteredVariants.map((v: any) =>
+    const mappedVariants = await Promise.all(filteredVariants.map((v: any) =>
       mapCJVariant(v, cjPrice, shippingUSD, effectiveMargin, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
-    );
+    ));
 
     // images = fotos del producto + fotos de variantes (sin duplicados, máximo 10).
     // cjImages ya viene slice(0,5); allImages guarda imagen real principal en [0].
@@ -792,8 +794,11 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
     const shippingCost = extractShippingCost(cjData, cjPrice);
     const totalCost = cjPrice + (Number.isFinite(shippingCost) ? shippingCost : 0);
     const stock = extractCJStock(cjData);
-    const titleEs = translateToChileanSpanish(productNameEn);
-    const collectionSlug = detectCollection(titleEs, description);
+    const rawTitle = productNameEn;
+    const title = await translateEnToEs(rawTitle);
+    const titleEs = title;
+    const descriptionEs = await translateEnToEs(description);
+    const collectionSlug = detectCollection(titleEs, descriptionEs);
 
     // Obtener dólar del día desde mindicador.cl
     const dollarRate = await getDollarRate();
@@ -809,14 +814,14 @@ export const previewCJProduct = async (req: Request, res: Response): Promise<voi
     res.json({
       pid,
       titleEs,
-      description,
+      description: descriptionEs,
       productImage,
       productImages,
-      variants: (() => {
+      variants: await (async () => {
         const shippingUSD = Number.isFinite(shippingCost) ? shippingCost : 0;
-        const mappedVariants = variants.map((v: any) =>
+        const mappedVariants = await Promise.all(variants.map((v: any) =>
           mapCJVariant(v, cjPrice, shippingUSD, MARGIN_MULTIPLIER, dollarRate, undefined, Number(stock) > 0 ? Number(stock) : 100)
-        );
+        ));
         return mappedVariants.map((v: any) => ({
           sku: v.sku,
           name: v.name,
