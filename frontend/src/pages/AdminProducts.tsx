@@ -39,6 +39,32 @@ export default function AdminProducts() {
   const [categoryForm, setCategoryForm] = useState({ name: '', slug: '', description: '', active: true });
   const [categorySaving, setCategorySaving] = useState(false);
 
+  // FEATURE A: bulk delete — selección múltiple de productos
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const toggleSelectAll = () => {
+    setSelectedIds(selectedIds.length === products.length ? [] : products.map((p) => p.id));
+  };
+  const toggleSelectRow = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`¿Eliminar ${selectedIds.length} producto(s)? Esta acción no se puede deshacer.`)) return;
+    setBulkDeleting(true);
+    try {
+      const r = await api.delete('/admin/products/bulk', { data: { ids: selectedIds } });
+      toast.success(`${r.data.deleted ?? selectedIds.length} producto(s) eliminado(s)`);
+      setSelectedIds([]);
+      loadProducts();
+    } catch {
+      toast.error('Error al eliminar los productos');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const loadProducts = async (filter?: 'all' | 'alerts') => {
     setProductsLoading(true);
     try {
@@ -114,9 +140,28 @@ export default function AdminProducts() {
         </div>
         {productsLoading ? (<div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-gray-900" /></div>) : (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>
+            {/* FEATURE A: seleccionar todo */}
+            <th className="text-left px-4 py-3">
+              <input
+                type="checkbox"
+                checked={products.length > 0 && selectedIds.length === products.length}
+                onChange={toggleSelectAll}
+                className="rounded border-gray-300 text-gray-900 focus:ring-gray-500"
+                title="Seleccionar todo"
+              />
+            </th>
             <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Imagen</th><th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Nombre</th><th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Precio</th><th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Stock</th><th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Colección</th><th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Original</th><th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Acciones</th>
           </tr></thead><tbody className="divide-y divide-gray-100">
-            {products.map((p) => (<tr key={p.id} className="hover:bg-gray-50 transition-colors">
+            {products.map((p) => (<tr key={p.id} className={`hover:bg-gray-50 transition-colors ${selectedIds.includes(p.id) ? 'bg-gray-50' : ''}`}>
+              {/* FEATURE A: checkbox por fila */}
+              <td className="px-4 py-4">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(p.id)}
+                  onChange={() => toggleSelectRow(p.id)}
+                  className="rounded border-gray-300 text-gray-900 focus:ring-gray-500"
+                />
+              </td>
               <td className="px-6 py-4"><img src={p.productImages?.[0]?.url || 'https://via.placeholder.com/60'} alt={p.name} className="w-12 h-12 rounded-xl object-cover" /></td>
               <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">{p.name}</td>
               <td className="px-6 py-4 text-sm font-medium text-gray-900">${Number(p.salePrice).toLocaleString('es-CL')}</td>
@@ -139,7 +184,7 @@ export default function AdminProducts() {
               </td>
               <td className="px-6 py-4"><div className="flex items-center gap-2"><button onClick={() => openProductModal(p)} className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button><button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button></div></td>
             </tr>))}
-            {products.length === 0 && (<tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">No hay productos aún</td></tr>)}
+            {products.length === 0 && (<tr><td colSpan={8} className="px-6 py-12 text-center text-gray-500">No hay productos aún</td></tr>)}
           </tbody></table></div></div>
         )}
       </div>
@@ -212,6 +257,29 @@ export default function AdminProducts() {
                 {productSaving ? 'Guardando...' : 'Guardar producto'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* FEATURE A: barra flotante de bulk delete */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-black text-white px-6 py-3 rounded-full flex items-center gap-4 shadow-2xl">
+          <span className="text-sm font-medium">{selectedIds.length} seleccionado{selectedIds.length === 1 ? '' : 's'}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedIds([])}
+              className="px-4 py-1 text-sm rounded-full bg-gray-700 hover:bg-gray-600 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              className="px-4 py-1 text-sm rounded-full bg-red-500 hover:bg-red-600 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+            >
+              {bulkDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              {bulkDeleting ? 'Eliminando...' : 'Eliminar'}
+            </button>
           </div>
         </div>
       )}

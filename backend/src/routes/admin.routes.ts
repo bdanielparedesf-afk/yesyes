@@ -8,6 +8,7 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
+  bulkDeleteProducts,
   hideProduct,
 } from '../controllers/product.controller';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '../controllers/category.controller';
@@ -42,6 +43,8 @@ router.post('/products/bulk-create', bulkCreateProducts);
 router.get('/products', getAllProducts);
 router.get('/products/recent', getRecentProducts);
 router.post('/products', createProduct);
+// FEATURE A: bulk delete (debe ir ANTES de /products/:id para no chocar con el segmento dinámico)
+router.delete('/products/bulk', bulkDeleteProducts);
 router.put('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 // FASE 5: oculta un producto (link caído o alerta resuelta)

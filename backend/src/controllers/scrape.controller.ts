@@ -7,7 +7,8 @@ import {
   autoCategory,
   mapCJVariant,
   getDollarRate,
-  resolveCategory,
+  detectCategory,
+  resolveMainSubCategory,
   MARGIN_MULTIPLIER,
   calculateFinalPrice,
 } from './cj.controller';
@@ -206,10 +207,11 @@ export const bulkImportCJ = async (req: Request, res: Response): Promise<void> =
           new Set([...cjImages, ...bulkMapped.map((v: any) => v.image).filter(Boolean)])
         ).slice(0, 10);
 
-        const categorySlug = autoCategory(cjData);
         const finalCollectionSlug: string =
           (collectionSlug && String(collectionSlug).trim()) || detectCollection(finalTitle, finalDescription);
-        const category = await resolveCategory(categorySlug);
+        // FEATURE B: categoría main > sub automática (crea las que no existan)
+        const { main: bulkCatMain, sub: bulkCatSub } = detectCategory(finalTitle, autoCategory(cjData));
+        const category = await resolveMainSubCategory(bulkCatMain, bulkCatSub);
         const collection = await prisma.collection.findUnique({ where: { slug: finalCollectionSlug } });
         const collectionId =
           collection?.id ??

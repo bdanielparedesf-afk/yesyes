@@ -321,6 +321,62 @@ export async function resolveCategory(slug?: string): Promise<{ id: string; name
   });
 }
 
+/** FEATURE B: detecta categoría main + sub desde el nombre del producto (EN/ES). */
+export function detectCategory(name: string, cjCategory?: string): { main: string; sub: string } {
+  const n = (name || '').toLowerCase();
+  if (n.includes('phone case') || n.includes('carcasa') || n.includes('iphone') || n.includes('samsung'))
+    return { main: 'Tecnología', sub: 'Accesorios Celular' };
+  if (n.includes('charger') || n.includes('cargador') || n.includes('cable') || n.includes('wireless'))
+    return { main: 'Tecnología', sub: 'Cargadores' };
+  if (n.includes('watch') || n.includes('reloj'))
+    return { main: 'Tecnología', sub: 'Smartwatch' };
+  if (n.includes('earphone') || n.includes('audifono') || n.includes('headphone'))
+    return { main: 'Tecnología', sub: 'Audio' };
+  if (n.includes('kitchen') || n.includes('cocina'))
+    return { main: 'Hogar', sub: 'Cocina' };
+  if (n.includes('toy') || n.includes('juguete'))
+    return { main: 'Juguetes', sub: 'General' };
+  // fallback: usa categoría de CJ traducida (slug → Título)
+  const cjTitle = cjCategory
+    ? cjCategory.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    : '';
+  return { main: 'General', sub: cjTitle || 'General' };
+}
+
+function slugifyCategory(name: string): string {
+  return (name || 'general')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '') || 'general';
+}
+
+/**
+ * FEATURE B: garantiza main > sub (crea las que no existan) y devuelve la sub.
+ * Si sub === 'General' se reutiliza la main para no duplicar productos en 2 categorías.
+ */
+export async function resolveMainSubCategory(main: string, sub: string): Promise<{ id: string; name: string }> {
+  let mainCat = await prisma.category.findFirst({
+    where: { name: { equals: main, mode: 'insensitive' } },
+  });
+  if (!mainCat) {
+    mainCat = await prisma.category.create({
+      data: { name: main, slug: slugifyCategory(main) },
+    });
+  }
+  if (!sub || sub.toLowerCase() === 'general' || sub.toLowerCase() === main.toLowerCase()) {
+    return mainCat;
+  }
+  const existingSub = await prisma.category.findFirst({
+    where: { name: { equals: sub, mode: 'insensitive' }, parentId: mainCat.id },
+  });
+  if (existingSub) return existingSub;
+  return prisma.category.create({
+    data: { name: sub, slug: slugifyCategory(sub), parentId: mainCat.id },
+  });
+}
+
 export const importCJProduct = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -386,7 +442,9 @@ export const importCJProduct = async (req: Request, res: Response): Promise<void
     const autoSlug = autoCategory(cjData);
     const finalCollectionSlug = collectionSlug?.trim() || detectCollection(finalTitle, finalDescription);
 
-    const category = await resolveCategory(autoSlug);
+    // FEATURE B: categoría main > sub automática (crea las que no existan)
+    const { main: catMain, sub: catSub } = detectCategory(finalTitle, autoSlug);
+    const category = await resolveMainSubCategory(catMain, catSub);
     const collection = await prisma.collection.findUnique({ where: { slug: finalCollectionSlug } });
     const collectionId = collection?.id ?? (await prisma.collection.create({
       data: {

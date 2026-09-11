@@ -267,3 +267,25 @@ export const deleteProduct = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ message: 'Error deleting product', error: error.message });
   }
 };
+
+/**
+ * FEATURE A — Bulk delete. DELETE /api/admin/products/bulk
+ * Body: { ids: string[] }. Elimina todos los productos cuyo id esté en `ids`.
+ */
+export const bulkDeleteProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { ids } = req.body || {};
+    const list: string[] = Array.isArray(ids)
+      ? ids.map((i: any) => String(i ?? '').trim()).filter(Boolean)
+      : [];
+    if (!list.length) {
+      res.status(400).json({ message: 'Envía al menos un id en "ids".' });
+      return;
+    }
+    const result = await prisma.product.deleteMany({ where: { id: { in: list } } });
+    res.json({ deleted: result.count });
+  } catch (error: any) {
+    console.error('Error bulk deleting products:', error);
+    res.status(500).json({ message: 'Error bulk deleting products', error: error.message });
+  }
+};
