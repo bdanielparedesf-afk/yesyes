@@ -151,6 +151,11 @@ model Product {
   hidden            Boolean            @default(false)
   collectionId      String?
   collection        Collection?      @relation(fields: [collectionId], references: [id])
+  aliexpressMarginPercent    Int?
+  aliexpressShippingUsdCents Int?
+  aliexpressShippingUnknown  Boolean   @default(false)
+  aliexpressSyncedAt         DateTime?
+  aliexpressSnapshot         Json?
   productInventory  Inventory[]      @relation("ProductInventory")
   productImages     ProductImage[]   @relation("ProductImages")
   productReviews    ProductReview[]  @relation("ProductReviews")
@@ -271,8 +276,18 @@ model ProductVariant {
   color     String?
   price     Decimal
   stock     Int      @default(0)
+  supplierVariantId   String?
+  supplierAttributes  Json?
+  supplierImage       String?
+  supplierCostUsd     Float?
+  supplierShippingUsd Float?
+  /// null means the provider did not report stock; never coerced to 0.
+  supplierStock       Int?
+  supplierStockKnown  Boolean @default(false)
   createdAt DateTime @default(now())
   product   Product  @relation("ProductVariants", fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, supplierVariantId])
 }
 
 model ProductImage {
@@ -488,7 +503,94 @@ model SeoMeta {
   title       String?
   description String?
   ogImage     String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime
+}
+
+model AliexpressToken {
+  id               String @id @default(uuid())
+  account          String @unique
+  sellerId         String? @map("seller_id")
+  accessToken      String @map("access_token")
+  refreshToken     String @map("refresh_token")
+  expiresAt        DateTime @map("expires_at")
+  refreshExpiresAt DateTime @map("refresh_expires_at")
+  isActive         Boolean @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("aliexpress_tokens")
+}
+
+/// Bulk import queue. One row per requested AliExpress URL; items are processed
+/// sequentially so a single failure never blocks the rest of the queue.
+model AliExpressImportJob {
+  id            String   @id @default(uuid())
+  status        String   @default("PENDING")
+  total         Int      @default(0)
+  processed     Int      @default(0)
+  succeeded     Int      @default(0)
+  failed        Int      @default(0)
+  marginPercent Int      @default(100)
+  shippingMode  String   @default("PROVIDER")
+  categoryId    String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  items         AliExpressImportJobItem[]
+
+  @@map("aliexpress_import_jobs")
+}
+
+model AliExpressImportJobItem {
+  id               String   @id @default(uuid())
+  jobId            String
+  sourceUrl        String
+  aliexpressId     String?
+  status           String   @default("PENDING")
+  attempts         Int      @default(0)
+  error            String?
+  createdProductId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  job              AliExpressImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, status])
+  @@map("aliexpress_import_job_items")
+}
+
+/// Price/stock synchronisation history. `changes` keeps the previous and current
+/// supplier values; the sale price is only rewritten when explicitly enabled.
+model AliExpressSyncLog {
+  id                 String   @id @default(uuid())
+  productId          String?
+  aliexpressId       String
+  status             String
+  costBeforeUsd      Float?
+  costAfterUsd       Float?
+  stockBefore        Int?
+  stockAfter         Int?
+  changes            Json?
+  error              String?
+  createdAt          DateTime @default(now())
+
+  @@index([productId, createdAt])
+  @@map("aliexpress_sync_logs")
+}
+
+/// Immutable snapshot of the supplier order data needed to preserve the original
+/// purchase information (provider request, response and tracking).
+model AliExpressOrderSnapshot {
+  id                String   @id @default(uuid())
+  orderId           String   @unique
+  aliexpressOrderId String?
+  status            String   @default("PREPARED")
+  request           Json
+  response          Json?
+  tracking          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("aliexpress_order_snapshots")
 }
 
 model BackupLog {

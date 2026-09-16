@@ -22,6 +22,7 @@ import AdminOrders from '@/pages/AdminOrders';
 import AdminUsers from '@/pages/AdminUsers';
 import AdminImport from '@/pages/AdminImport';
 import AdminBulk from '@/pages/AdminBulk';
+import AdminAliExpress from '@/pages/AdminAliExpress';
 import AdminLayout from '@/components/admin/AdminLayout';
 import NotFound from '@/pages/NotFound';
 import PaymentResult from '@/pages/PaymentResult';
@@ -79,7 +80,8 @@ function App() {
       {/* Compatibilidad: rutas antiguas de importación */}
       <Route path="/admin/import" element={<Navigate to="/admin/import-cj" replace />} />
       <Route path="/admin/bulk-import" element={<Navigate to="/admin/bulk" replace />} />
-      <Route path="/admin/import-aliexpress" element={<Navigate to="/admin/import-cj" replace />} />
+      <Route path="/admin/aliexpress" element={<AdminLayout><AdminAliExpress /></AdminLayout>} />
+      <Route path="/admin/import-aliexpress" element={<Navigate to="/admin/aliexpress" replace />} />
     </Routes>
   );
 }

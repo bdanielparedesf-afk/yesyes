@@ -1,10 +1,11 @@
-# Keys y secretos
+# Keys y secretos (en cualquier directorio)
 .env
-.env.local
-.env.vercel
-.env.vercel-prod
-backend/.env
+.env.*
 *.env
+# Solo estas plantillas pueden versionarse; deben contener valores vacíos.
+!/.env.example
+!/backend/.env.example
+!/frontend/.env.example
 
 # Dependencias
 node_modules/
@@ -18,4 +19,3 @@ dist/
 logs/
 
 .vercel
-.env*

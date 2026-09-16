@@ -16,6 +16,8 @@ import adminRoutes from './admin.routes';
 import cjRoutes from './cj.routes';
 import scrapeRoutes from './scrape.routes';
 import { runPriceSync } from '../jobs/priceSync';
+import { refreshAliexpressToken } from '../jobs/aliexpress-token-refresh';
+import aliexpressRoutes from './aliexpress.routes';
 
 const router = Router();
 
@@ -32,6 +34,7 @@ router.use('/appeals', appealRoutes);
 router.use('/coupons', couponRoutes);
 router.use('/wishlist', wishlistRoutes);
 router.use('/support', supportRoutes);
+router.use('/admin/aliexpress', aliexpressRoutes);
 router.use('/admin', adminRoutes);
 router.use('/admin', cjRoutes);
 router.use('/scrape', scrapeRoutes);
@@ -53,6 +56,23 @@ router.get('/cron/check-prices', async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (error: any) {
     res.status(500).json({ ok: false, message: 'Error en price sync', error: error.message });
+  }
+});
+
+// Refresh is explicitly disabled until its contract is verified.
+// Only a private header is accepted; credentials must never appear in URLs.
+router.get('/cron/refresh-aliexpress', async (req, res) => {
+  const expected = process.env.CRON_SECRET || '';
+  const provided = String(req.headers['x-cron-secret'] || '');
+  if (!expected || provided !== expected) {
+    res.status(401).json({ message: 'No autorizado: header x-cron-secret inválido.' });
+    return;
+  }
+  try {
+    const ok = await refreshAliexpressToken();
+    res.json({ ok });
+  } catch {
+    res.status(503).json({ ok: false, message: 'Renovación AliExpress no disponible: contrato pendiente de verificar.' });
   }
 });
 
