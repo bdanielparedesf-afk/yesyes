@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { RefreshCw, Unplug, ShieldAlert, Search, Upload, PackageCheck } from 'lucide-react';
+import { RefreshCw, Unplug, PlugZap, ShieldAlert, Search, Upload, PackageCheck } from 'lucide-react';
 import api from '@/lib/axios';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -23,12 +23,18 @@ interface ImportPreview {
   stockKnown: boolean; totalStock: number | null;
   costUsdCents: number | null; shippingUsdCents: number | null; shippingUnknown: boolean;
   fx: number; salePriceClp: number | null; duplicateOfProductId: string | null;
+  quantity: number; selectedSkuId?: string;
+  shippingStatus: 'AVAILABLE' | 'FREE' | 'PROVIDER_UNAVAILABLE' | 'UNKNOWN';
+  shippingSource: 'ALIEXPRESS' | 'MANUAL' | 'NONE'; shippingMessage: string;
+  fxRate: number; fxSource: string;
+  taxUsdCents: number | null; otherUsdCents: number | null; totalUsdCents: number | null;
+  acquisition: { productCostUsdCents: number | null };
   wholesaleTiers: { minQuantity: string; price: string }[];
 }
 interface ImportJob {
   id: string; status: string; total: number; processed: number; succeeded: number; failed: number;
   items: { id: string; sourceUrl: string; aliexpressId: string | null; status: string;
-    attempts: number; createdProductId: string | null }[];
+    attempts: number; createdProductId: string | null; error: string | null }[];
 }
 
 const MARGINS = [50, 100, 150, 200, 250, 300, 350, 400];
@@ -39,18 +45,29 @@ function PreviewCard({ preview }: { preview: ImportPreview }) {
       {preview.images[0] && <img src={preview.images[0]} alt="" className="w-24 h-24 object-cover rounded-lg" />}
       <div className="min-w-0">
         <p className="font-semibold break-words">{preview.name}</p>
-        <p className="text-sm text-gray-500">ID {preview.aliexpressId} · FX {preview.fx}</p>
+        <p className="text-sm text-gray-500">ID {preview.aliexpressId} · SKU {preview.selectedSkuId} · Cantidad {preview.quantity}</p>
+        <p className="text-sm text-gray-500">FX USD → CLP: {preview.fxRate} · {preview.fxSource}</p>
         {preview.duplicateOfProductId && <p className="text-sm text-amber-700">Ya importado (producto {preview.duplicateOfProductId}).</p>}
       </div>
     </div>
     <div className="grid sm:grid-cols-3 gap-2 text-sm">
-      <div className="bg-gray-50 rounded-lg p-3"><p className="text-gray-500">Costo producto</p>
-        <p className="font-semibold">{preview.costUsdCents === null ? 'Desconocido' : `$${(preview.costUsdCents / 100).toFixed(2)} USD`}</p></div>
-      <div className="bg-gray-50 rounded-lg p-3"><p className="text-gray-500">Envío</p>
-        <p className="font-semibold">{preview.shippingUnknown ? 'No informado' : `$${((preview.shippingUsdCents ?? 0) / 100).toFixed(2)} USD`}</p></div>
+      {[
+        ['Producto (cantidad cotizada)', preview.acquisition.productCostUsdCents],
+        ['Envío AliExpress a Chile', preview.shippingUsdCents],
+        ['Impuestos informados', preview.taxUsdCents],
+        ['Otros cargos informados', preview.otherUsdCents],
+        ['Costo total de adquisición estimado', preview.totalUsdCents],
+      ].map(([label, cents]) => <div key={String(label)} className="bg-gray-50 rounded-lg p-3">
+        <p className="text-gray-500">{label}</p>
+        <p className="font-semibold">{typeof cents === 'number' ? `$${(cents / 100).toFixed(2)} USD` : 'No informado'}</p>
+      </div>)}
       <div className="bg-gray-50 rounded-lg p-3"><p className="text-gray-500">Precio venta (CLP)</p>
         <p className="font-semibold">{preview.salePriceClp === null ? '—' : `$${preview.salePriceClp.toLocaleString('es-CL')}`}</p></div>
     </div>
+    <p className="text-sm">Fuente envío: <strong>{preview.shippingSource}</strong> · Estado: {preview.shippingStatus}</p>
+    {preview.shippingUnknown && <p className="text-sm text-amber-700">AliExpress no proporcionó costo de envío para esta variante/destino.</p>}
+    {preview.shippingSource === 'MANUAL' && <p className="text-sm text-amber-700">Envío ingresado manualmente; no confirmado por AliExpress.</p>}
+    <p className="text-xs text-gray-500">Los cargos no informados no se presumen cero ni se añaden al estimado. No es una cotización de checkout.</p>
     <div>
       <p className="text-sm font-medium mb-1">Variantes ({preview.variants.length})</p>
       <div className="max-h-48 overflow-auto text-sm space-y-1">
@@ -74,6 +91,13 @@ export default function AdminAliExpress() {
   const [searchKeywords, setSearchKeywords] = useState('');
   const [searchResults, setSearchResults] = useState<{ productId: string; subject: string; image_url?: string; price?: string }[]>([]);
   const [importUrl, setImportUrl] = useState('');
+  const [selectedSkuId, setSelectedSkuId] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const [provinceCode, setProvinceCode] = useState('');
+  const [cityCode, setCityCode] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [manualShippingUsd, setManualShippingUsd] = useState('');
+  const [quotedKey, setQuotedKey] = useState('');
   const [margin, setMargin] = useState(100);
   const [customMargin, setCustomMargin] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -82,6 +106,9 @@ export default function AdminAliExpress() {
   const [job, setJob] = useState<ImportJob | null>(null);
   const isAdmin = status === 'authenticated' && user?.role === 'ADMIN';
   const effectiveMargin = customMargin !== '' ? Number(customMargin) : margin;
+  const quoteKey = (url: string) => JSON.stringify([url.trim(), selectedSkuId.trim(), quantity,
+    provinceCode.trim(), cityCode.trim(), postalCode.trim(), manualShippingUsd, effectiveMargin]);
+  const quoteStale = quotedKey !== quoteKey(importUrl);
 
   async function reload() {
     setBusy(true); setError('');
@@ -90,6 +117,22 @@ export default function AdminAliExpress() {
     finally { setBusy(false); }
   }
   useEffect(() => { if (isAdmin) void reload(); }, [isAdmin]);
+
+  // Reads the OAuth landing result once. The callback never places a token or authorization
+  // code in the URL, so nothing sensitive is parsed, stored, or rendered here.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('aliexpress');
+    if (!result) return;
+    const reason = params.get('code') || '';
+    window.history.replaceState({}, '', window.location.pathname);
+    if (result === 'connected') {
+      setMessage('AliExpress conectado. Autorizacion OAuth verificada y tokens guardados cifrados.');
+    } else {
+      setError(`No fue posible completar la reconexion OAuth. La cuenta permanece desconectada.`
+        + (/^[A-Z_]{3,40}$/.test(reason) ? ` Motivo: ${reason}.` : ''));
+    }
+  }, []);
 
   async function search() {
     setBusy(true); setError('');
@@ -103,18 +146,31 @@ export default function AdminAliExpress() {
   }
 
   async function doPreview(url: string) {
+    if (!Number.isInteger(Number(quantity)) || Number(quantity) < 1 || Number(quantity) > 10000
+      || !Number.isInteger(effectiveMargin) || effectiveMargin < 0 || effectiveMargin > 10000
+      || (manualShippingUsd !== '' && (!Number.isFinite(Number(manualShippingUsd)) || Number(manualShippingUsd) < 0))) {
+      setError('Revisa cantidad, margen y costo de envío.'); return;
+    }
+    const key = quoteKey(url);
     setBusy(true); setError(''); setPreview(null);
     try {
-      const data = await api.post<ImportPreview>('/admin/aliexpress/dropship/import/preview',
-        { url, marginPercent: effectiveMargin });
+      const data = await api.post<ImportPreview>('/admin/aliexpress/dropship/import/preview', {
+        url, marginPercent: effectiveMargin, quantity: Number(quantity), countryCode: 'CL',
+        ...(selectedSkuId.trim() ? { selectedSkuId: selectedSkuId.trim() } : {}),
+        ...(provinceCode.trim() ? { provinceCode: provinceCode.trim() } : {}),
+        ...(cityCode.trim() ? { cityCode: cityCode.trim() } : {}),
+        ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
+        ...(manualShippingUsd !== '' ? { manualShippingUsd: Number(manualShippingUsd) } : {}),
+      });
       setPreview(data.data);
+      setQuotedKey(key);
       setImportUrl(url);
     } catch { setError('No fue posible obtener la vista previa del producto.'); }
     finally { setBusy(false); }
   }
 
   async function publish(publishFlag: boolean) {
-    if (!preview) return;
+    if (!preview || quoteStale || preview.shippingUnknown || preview.salePriceClp === null) return;
     setBusy(true); setError('');
     try {
       await api.post('/admin/aliexpress/dropship/import/publish',
@@ -161,6 +217,19 @@ export default function AdminAliExpress() {
       await reload();
     } catch { setError('No fue posible desconectar la cuenta.'); }
     finally { setBusy(false); }
+  }
+
+  /** Redeems the official authorization code server-side; only the OAuth URL reaches the browser. */
+  async function reconnect(account: string) {
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const data = await api.post<{ authorizationUrl: string }>('/admin/aliexpress/oauth/connect',
+        { account }, { headers: { 'x-yesyes-admin': '1' } });
+      window.location.assign(data.authorizationUrl);
+    } catch {
+      setError('No fue posible iniciar la conexion OAuth con AliExpress. Revisa la configuracion del backend.');
+      setBusy(false);
+    }
   }
 
   if (status === 'loading') return <p role="status">Comprobando sesion...</p>;
@@ -214,6 +283,33 @@ export default function AdminAliExpress() {
         <button disabled={busy || !importUrl.trim()} onClick={() => void doPreview(importUrl)}
           className="bg-gray-900 text-white rounded-lg px-4 py-2 disabled:opacity-50">Vista previa</button>
       </div>
+      <fieldset disabled={busy} className="grid sm:grid-cols-2 gap-3 text-sm">
+        <label>SKU (vacío: SKU de la URL o primera variante)
+          <input value={selectedSkuId} onChange={e => setSelectedSkuId(e.target.value)} list="aliexpress-skus"
+            className="border rounded-lg px-3 py-2 w-full" />
+          <datalist id="aliexpress-skus">{preview?.variants.map(v => <option key={v.supplierVariantId}
+            value={v.supplierVariantId}>{v.attributes.map(a => a.value).join(' / ')}</option>)}</datalist>
+        </label>
+        <label>Cantidad
+          <input type="number" min="1" max="10000" step="1" value={quantity} onChange={e => setQuantity(e.target.value)}
+            className="border rounded-lg px-3 py-2 w-full" />
+        </label>
+        <label>Destino<input value="Chile (CL)" readOnly className="border rounded-lg px-3 py-2 w-full" /></label>
+        <label>Código de provincia / región (opcional)
+          <input value={provinceCode} onChange={e => setProvinceCode(e.target.value)} className="border rounded-lg px-3 py-2 w-full" />
+        </label>
+        <label>Código de ciudad (opcional)
+          <input value={cityCode} onChange={e => setCityCode(e.target.value)} className="border rounded-lg px-3 py-2 w-full" />
+        </label>
+        <label>Código postal (conservado; estos métodos no lo admiten)
+          <input value={postalCode} onChange={e => setPostalCode(e.target.value)} className="border rounded-lg px-3 py-2 w-full" />
+        </label>
+        <label>Envío manual total en USD (fallback opcional)
+          <input type="number" min="0" max="1000000" step="0.01" value={manualShippingUsd}
+            onChange={e => setManualShippingUsd(e.target.value)} className="border rounded-lg px-3 py-2 w-full" />
+        </label>
+        <p className="text-gray-500">Sólo se aplica si AliExpress no entrega freight. Se marca MANUAL y corresponde a toda la cantidad cotizada, no a cada unidad.</p>
+      </fieldset>
       <div className="flex flex-wrap gap-2 items-center">
         <span className="text-sm text-gray-500">Margen:</span>
         {MARGINS.map(m => <button key={m} onClick={() => { setMargin(m); setCustomMargin(''); }}
@@ -242,9 +338,10 @@ export default function AdminAliExpress() {
         <p>Progreso: {job.processed}/{job.total} · OK {job.succeeded} · Fallos {job.failed} · Estado {job.status}</p>
         <div className="space-y-1 max-h-40 overflow-auto">
           {job.items.map(item => <div key={item.id} className="flex justify-between gap-2 border-b py-1">
-            <span className="truncate">{item.sourceUrl}</span>
+            <span className="truncate" title={item.error ?? undefined}>{item.sourceUrl}</span>
             <span className={item.status === 'DONE' ? 'text-green-700' : item.status === 'FAILED' ? 'text-red-700' : 'text-gray-500'}>
-              {item.status}{item.status === 'FAILED' && <button onClick={() => void retryItem(item.id)} className="underline ml-2">Reintentar</button>}
+              {item.status}{item.error && ` · ${item.error}`}
+              {item.status === 'FAILED' && <button onClick={() => void retryItem(item.id)} className="underline ml-2">Reintentar</button>}
             </span>
           </div>)}
         </div>
@@ -256,15 +353,26 @@ export default function AdminAliExpress() {
       {!connection.accounts.length && <p className="text-gray-500">No hay autorizaciones guardadas.</p>}
       <div className="space-y-4">{connection.accounts.map(account => <div key={account.account} className="border rounded-lg p-4">
         <p className="font-medium break-all">{account.account}</p>
-        <p className="text-sm text-gray-600">{!account.isActive ? 'Desconectada localmente' : account.tokenUnexpired ? 'Token no vencido; acceso remoto no verificado' : 'Token vencido'}</p>
-        <p className="text-sm text-gray-600">Vencimiento: {new Date(account.expiresAt).toLocaleString('es-CL')}</p>
-        {account.isActive && (confirmAccount === account.account ? <div className="mt-3 flex gap-3 items-center">
+        <p className={account.isActive ? 'text-sm font-medium text-green-700' : 'text-sm font-medium text-gray-600'}>
+          {account.isActive ? 'AliExpress conectado' : 'AliExpress desconectado'}
+        </p>
+        {account.sellerId && <p className="text-sm text-gray-600">Seller ID: {account.sellerId}</p>}
+        {account.isActive
+          ? <>
+            <p className="text-sm text-gray-600">Token válido hasta: {new Date(account.expiresAt).toLocaleString('es-CL')}</p>
+            {!account.tokenUnexpired && <p className="text-sm text-amber-700">Access Token vencido; la renovación automática lo reemplazará en la próxima llamada.</p>}
+          </>
+          : <p className="text-sm text-gray-600">Sin autorización OAuth válida. Vuelve a autorizar en AliExpress para reactivar la cuenta.</p>}
+        {account.isActive ? (confirmAccount === account.account ? <div className="mt-3 flex gap-3 items-center">
           <span className="text-sm">¿Desconectar en YesYes?</span>
           <button disabled={busy} onClick={() => void disconnect(account.account)} className="text-red-700 underline">Confirmar</button>
           <button disabled={busy} onClick={() => setConfirmAccount(null)} className="underline">Cancelar</button>
-        </div> : <button disabled={busy} onClick={() => setConfirmAccount(account.account)} className="flex gap-2 items-center text-red-700 mt-3"><Unplug size={16} /> Desconectar</button>)}
+        </div> : <button disabled={busy} onClick={() => setConfirmAccount(account.account)} className="flex gap-2 items-center text-red-700 mt-3"><Unplug size={16} /> Desconectar AliExpress</button>)
+          : <button disabled={busy} onClick={() => void reconnect(account.account)} className="flex gap-2 items-center bg-gray-900 text-white rounded-lg px-4 py-2 mt-3 disabled:opacity-50">
+            <PlugZap size={16} /> Reconectar AliExpress
+          </button>}
       </div>)}</div>
-      <p className="text-xs text-gray-500 mt-4">La desconexion local no revoca la autorizacion en AliExpress. Los tokens nunca se envian a esta pagina.</p>
+      <p className="text-xs text-gray-500 mt-4">La reconexion usa el OAuth oficial server-side: el App Secret y los tokens permanecen en el backend y solo se guardan cifrados. La desconexion local no revoca la autorizacion en AliExpress.</p>
     </section>}
   </div>;
 }

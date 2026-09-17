@@ -2,13 +2,22 @@ import axios from 'axios';
 import { z } from 'zod';
 import { buildTokenCreateRequest } from './oauth-request';
 
+export type OAuthReason = 'CONFIGURATION' | 'REJECTED' | 'TIMEOUT' | 'TRANSPORT' | 'CONTRACT' | 'STORAGE'
+  | 'TOKEN_REFRESH_FAILED' | 'REFRESH_TOKEN_EXPIRED' | 'OAUTH_CONFIGURATION_ERROR'
+  | 'OAUTH_CONTRACT_ERROR' | 'OAUTH_NETWORK_ERROR' | 'OAUTH_STORAGE_ERROR';
 export class AliExpressOAuthError extends Error {
-  constructor(public readonly reason: 'CONFIGURATION' | 'REJECTED' | 'TIMEOUT' | 'TRANSPORT' | 'CONTRACT' | 'STORAGE') {
+  constructor(public readonly reason: OAuthReason) {
     super({ CONFIGURATION: 'Falta configuración OAuth en backend.', REJECTED: 'AliExpress rechazó la autorización.',
       TIMEOUT: 'El canje agotó el tiempo de espera; no se reintentó el código.',
       TRANSPORT: 'No fue posible completar el canje; no se reintentó el código.',
       CONTRACT: 'La respuesta OAuth no cumple el contrato documentado.',
-      STORAGE: 'No fue posible guardar la autorización de forma segura.' }[reason]);
+      STORAGE: 'No fue posible guardar la autorización de forma segura.',
+      TOKEN_REFRESH_FAILED: 'AliExpress rechazó la renovación OAuth.',
+      REFRESH_TOKEN_EXPIRED: 'Refresh Token no utilizable. Se requiere nueva autorización OAuth.',
+      OAUTH_CONFIGURATION_ERROR: 'Configuración OAuth inválida o cuenta no activa.',
+      OAUTH_CONTRACT_ERROR: 'Respuesta de renovación OAuth inválida.',
+      OAUTH_NETWORK_ERROR: 'No se confirmó la renovación OAuth por un error de red. No se reintentó.',
+      OAUTH_STORAGE_ERROR: 'No se confirmó el almacenamiento OAuth seguro.' }[reason]);
     this.name = 'AliExpressOAuthError';
   }
 }
@@ -66,7 +75,8 @@ export async function exchangeAuthorizationCode(
   send: OAuthTransport = transport,
   now: () => Date = () => new Date(),
 ): Promise<TokenGrant> {
-  if (config.appKey !== '547536' || !config.appSecret?.trim() || !code?.trim() || code.length > 4096) {
+  if (config.appKey !== '547536' || !config.appSecret?.trim() || !code?.trim() || code.length > 4096
+    || /[\u0000-\u0020\u007f]/.test(code)) {
     throw new AliExpressOAuthError('CONFIGURATION');
   }
   const requestedAt = now();

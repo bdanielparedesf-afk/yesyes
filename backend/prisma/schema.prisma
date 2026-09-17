@@ -506,6 +506,19 @@ model SeoMeta {
   createdAt   DateTime
 }
 
+/// Short-lived, single-use server-side AliExpress OAuth attempt. No credentials.
+model AliExpressOAuthAttempt {
+  stateHash   String   @id @map("state_hash")
+  browserHash String   @map("browser_hash")
+  userId      String   @map("user_id")
+  account     String?
+  expiresAt   DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("aliexpress_oauth_attempts")
+}
+
+
 model AliexpressToken {
   id               String @id @default(uuid())
   account          String @unique

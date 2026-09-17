@@ -21,7 +21,11 @@ app.set('trust proxy', 1);
 app.use(helmet());
 const corsOrigins = env.corsOrigins;
 app.use(cors({ origin: corsOrigins, credentials: true }));
-app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
+app.use(morgan('combined', {
+  // OAuth callback URLs contain a one-use code. Never log these requests or their referrers.
+  skip: req => req.path.startsWith('/api/admin/aliexpress/oauth/'),
+  stream: { write: message => logger.info(message.trim()) },
+}));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(rateLimiter);

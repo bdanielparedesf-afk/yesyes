@@ -1,8 +1,12 @@
 ﻿import { Router, RequestHandler, ErrorRequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { authenticate, requireAdmin } from '../middlewares/auth';
+import { authenticate, requireAdmin, AuthRequest } from '../middlewares/auth';
 import { disconnectAliExpress, getAliExpressAccounts } from '../services/aliexpress-token.service';
+import {
+  BROWSER_COOKIE, COOKIE_PATH, browserCookieOptions, createAliExpressBrowserOAuth, oauthBrowserConfig,
+  readBrowserCookie,
+} from '../services/aliexpress-browser-oauth';
 import { AliExpressOAuthError } from '../aliexpress/oauth-client';
 import {
   AliExpressDropshipError, createImportJob, getImportJobStatus, processImportJob, retryImportJobItem,
@@ -13,6 +17,22 @@ import {
 import service from '../services/aliexpress-dropship.service';
 
 const productIdSchema = z.string().regex(/^\d{5,32}$/);
+
+/** True only when the browser really is on an HTTPS origin: drives cookie attributes. */
+function isSecureBrowserContext(): boolean {
+  try { return oauthBrowserConfig().secure; } catch { return process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'; }
+}
+
+/** Redirect target for the panel. Falls back to the callback origin; never a raw user value. */
+function oauthRedirectOrigin(): string {
+  try {
+    const frontend = new URL(process.env.FRONTEND_URL || '');
+    if (frontend.protocol === 'https:' || (frontend.protocol === 'http:' && frontend.hostname === 'localhost')) {
+      return frontend.origin;
+    }
+  } catch { /* Falls back to the registered callback origin below. */ }
+  try { return new URL(oauthBrowserConfig().redirectUri).origin; } catch { return ''; }
+}
 
 const catalogueRoutes = (router: Router) => {
   router.post('/dropship/search', async (req, res, next) => {
@@ -97,12 +117,20 @@ const catalogueRoutes = (router: Router) => {
 
 export const dropshipRouteSections = { catalogueRoutes };
 
-const importRoutes = (router: Router) => {
+const importRoutes = (router: Router, preview = previewAliExpressProduct) => {
   router.post('/dropship/import/preview', async (req, res, next) => {
     const input = z.object({ url: z.string().trim().min(1).max(2048),
-      marginPercent: z.number().int().min(0).max(10000).optional() }).strict().safeParse(req.body);
-    if (!input.success) { res.status(400).json({ message: 'URL invalida.' }); return; }
-    try { res.json(await previewAliExpressProduct(input.data.url, { marginPercent: input.data.marginPercent })); }
+      marginPercent: z.number().int().min(0).max(10000).optional(),
+      selectedSkuId: z.string().regex(/^[1-9]\d{0,31}$/).optional(),
+      quantity: z.number().int().min(1).max(10000).optional(),
+      countryCode: z.literal('CL').optional(),
+      provinceCode: z.string().trim().min(1).max(32).optional(),
+      cityCode: z.string().trim().min(1).max(32).optional(),
+      postalCode: z.string().trim().min(1).max(32).optional(),
+      manualShippingUsd: z.number().finite().min(0).max(1000000).optional(),
+    }).strict().safeParse(req.body);
+    if (!input.success) { res.status(400).json({ message: 'Parametros de cotizacion invalidos.' }); return; }
+    try { res.json(await preview(input.data.url, input.data)); }
     catch (error) { next(error); }
   });
   router.post('/dropship/import/publish', async (req, res, next) => {
@@ -177,13 +205,16 @@ const dropshipErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (error instanceof AliExpressDropshipError) {
     const statusMap: Record<string, number> = {
       CONFIGURATION: 503, NOT_CONFIRMED: 400, BLOCKED: 403, INPUT: 400,
+      DUPLICATE: 409, SHIPPING_UNKNOWN: 422,
     };
     const status = statusMap[error.reason] ?? 502;
     // Error code only: never the raw provider message (may leak internals).
     res.status(status).json({ message: error.message, code: error.reason });
     return;
   }
-  res.status(503).json({ message: error instanceof AliExpressOAuthError ? error.message : 'Servicio AliExpress no disponible.' });
+  res.status(503).json(error instanceof AliExpressOAuthError
+    ? { message: error.message, code: error.reason }
+    : { message: 'Servicio AliExpress no disponible.' });
 };
 
 /** Dependencies injectable for route tests; the mounted router always uses existing auth. */
@@ -192,17 +223,64 @@ export function createAliExpressRouter(dependencies: {
   requireAdmin: RequestHandler;
   accounts: typeof getAliExpressAccounts;
   disconnect: typeof disconnectAliExpress;
+  preview?: typeof previewAliExpressProduct;
+  oauth?: ReturnType<typeof createAliExpressBrowserOAuth>;
 } = { authenticate, requireAdmin, accounts: getAliExpressAccounts, disconnect: disconnectAliExpress }) {
   const router = Router();
-  router.use(dependencies.authenticate, dependencies.requireAdmin);
+  const oauth = dependencies.oauth ?? createAliExpressBrowserOAuth();
   router.use(rateLimit({ windowMs: 60000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }));
   router.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+
+  /**
+   * Official OAuth callback. Deliberately NOT behind the Bearer/requireAdmin middleware:
+   * AliExpress returns with a top-level browser navigation. The one-time `state` plus the
+   * HttpOnly browser nonce cookie bind the callback to the administrator who started it
+   * (the attempt row is re-validated inside the service). No token or code is ever echoed.
+   */
+  router.get('/oauth/callback', async (req, res) => {
+    const state = typeof req.query.state === 'string' ? req.query.state : '';
+    const code = typeof req.query.code === 'string' ? req.query.code : '';
+    const browser = readBrowserCookie(req.headers.cookie);
+    res.clearCookie(BROWSER_COOKIE, { httpOnly: true, secure: isSecureBrowserContext(),
+      sameSite: 'lax', path: COOKIE_PATH });
+    // The provider error is reduced to a fixed identifier; its raw description is never forwarded.
+    const errorCode = typeof req.query.error === 'string' && req.query.error ? 'OAUTH_PROVIDER_ERROR' : '';
+    try {
+      await oauth.callback(state, browser, code || undefined);
+      res.redirect(303, `${oauthRedirectOrigin()}/admin/aliexpress?aliexpress=connected`);
+    } catch (error) {
+      const reason = error instanceof AliExpressOAuthError ? error.reason : 'OAUTH_STORAGE_ERROR';
+      res.redirect(303, `${oauthRedirectOrigin()}/admin/aliexpress?aliexpress=error&code=${encodeURIComponent(errorCode || reason)}`);
+    }
+  });
+
+  router.use(dependencies.authenticate, dependencies.requireAdmin);
+  /** Starts the official server-side OAuth: enables a reconnect without touching isActive. */
+  router.post('/oauth/connect', async (req: AuthRequest, res, next) => {
+    if (req.get('x-yesyes-admin') !== '1' || (req.get('sec-fetch-site') && req.get('sec-fetch-site') !== 'same-origin')) {
+      res.status(403).json({ message: 'Solicitud administrativa invalida.' }); return;
+    }
+    const input = z.object({ account: z.string().trim().min(1).max(320).optional() }).strict().safeParse(req.body ?? {});
+    if (!input.success || !req.user) { res.status(400).json({ message: 'Cuenta invalida.' }); return; }
+    try {
+      const started = await oauth.start(req.user.id, input.data.account);
+      res.cookie(BROWSER_COOKIE, started.browser, browserCookieOptions(started.secure));
+      // Only the authorization URL is returned: it carries no secret and no token.
+      res.json({ authorizationUrl: started.authorizationUrl });
+    } catch (error) {
+      if (error instanceof AliExpressOAuthError) {
+        const status = error.reason === 'OAUTH_CONFIGURATION_ERROR' ? 503 : error.reason === 'REJECTED' ? 403 : 502;
+        res.status(status).json({ message: error.message, code: error.reason }); return;
+      }
+      next(error);
+    }
+  });
   router.get('/status', async (_req, res, next) => {
     try {
       const accounts = await dependencies.accounts();
       // Configuration is only reported as a boolean; no key/secret literals here.
       res.json({ configured: Boolean(process.env.ALIEXPRESS_APP_KEY && process.env.ALIEXPRESS_APP_SECRET),
-        authenticationVerified: false, refreshAvailable: false, dropshipAvailable: true,
+        authenticationVerified: false, refreshAvailable: true, dropshipAvailable: true,
         orderExecutionEnabled: process.env.ALIEXPRESS_ORDER_EXECUTION === 'true',
         accounts: accounts.map(a => ({ account: a.account, sellerId: a.sellerId, expiresAt: a.expiresAt,
           refreshExpiresAt: a.refreshExpiresAt, isActive: a.isActive, tokenUnexpired: a.tokenUnexpired })),
@@ -220,7 +298,7 @@ export function createAliExpressRouter(dependencies: {
     catch (error) { next(error); }
   });
   catalogueRoutes(router);
-  importRoutes(router);
+  importRoutes(router, dependencies.preview);
   orderRoutes(router);
   router.use(dropshipErrorHandler);
   return router;

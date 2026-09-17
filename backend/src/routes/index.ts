@@ -16,6 +16,7 @@ import adminRoutes from './admin.routes';
 import cjRoutes from './cj.routes';
 import scrapeRoutes from './scrape.routes';
 import { runPriceSync } from '../jobs/priceSync';
+import { AliExpressOAuthError } from '../aliexpress/oauth-client';
 import { refreshAliexpressToken } from '../jobs/aliexpress-token-refresh';
 import aliexpressRoutes from './aliexpress.routes';
 
@@ -59,7 +60,7 @@ router.get('/cron/check-prices', async (req, res) => {
   }
 });
 
-// Refresh is explicitly disabled until its contract is verified.
+// Optional authenticated trigger; no scheduler is installed.
 // Only a private header is accepted; credentials must never appear in URLs.
 router.get('/cron/refresh-aliexpress', async (req, res) => {
   const expected = process.env.CRON_SECRET || '';
@@ -69,10 +70,13 @@ router.get('/cron/refresh-aliexpress', async (req, res) => {
     return;
   }
   try {
-    const ok = await refreshAliexpressToken();
-    res.json({ ok });
-  } catch {
-    res.status(503).json({ ok: false, message: 'Renovación AliExpress no disponible: contrato pendiente de verificar.' });
+    await refreshAliexpressToken(); // Never serialize the returned access token.
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(503).json({ ok: false,
+      code: error instanceof AliExpressOAuthError ? error.reason : 'OAUTH_STORAGE_ERROR',
+      message: 'Renovación AliExpress no disponible; revisar estado OAuth de la cuenta.' });
   }
 });
 
