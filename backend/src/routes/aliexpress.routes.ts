@@ -8,6 +8,7 @@ import {
   readBrowserCookie,
 } from '../services/aliexpress-browser-oauth';
 import { AliExpressOAuthError } from '../aliexpress/oauth-client';
+import * as syncEngine from '../services/aliexpress-sync-engine.service';
 import {
   AliExpressDropshipError, createImportJob, getImportJobStatus, processImportJob, retryImportJobItem,
   previewAliExpressProduct, publishAliExpressProduct, syncAliExpressProduct, syncHistory,
@@ -174,6 +175,31 @@ const importRoutes = (router: Router, preview = previewAliExpressProduct) => {
   });
   router.get('/dropship/sync/:productId/history', async (req, res, next) => {
     try { res.json(await syncHistory(req.params.productId)); } catch (error) { next(error); }
+  });
+  // ── Sync Engine: settings, manual run, stats, global history ──
+  router.get('/dropship/sync-settings', async (_req, res, next) => {
+    try { res.json(await syncEngine.getSyncSettings()); } catch (error) { next(error); }
+  });
+  router.put('/dropship/sync-settings', async (req, res, next) => {
+    try { res.json(await syncEngine.updateSyncSettings(req.body)); } catch (error) { next(error); }
+  });
+  router.post('/dropship/sync-run', async (req, res, next) => {
+    const input = z.object({ limit: z.number().int().min(1).max(200).optional() }).strict().safeParse(req.body ?? {});
+    if (!input.success) { res.status(400).json({ message: 'Parametros de sync invalidos.' }); return; }
+    try { res.json(await syncEngine.runAliExpressSync(input.data)); } catch (error) { next(error); }
+  });
+  router.get('/dropship/sync-stats', async (_req, res, next) => {
+    try { res.json(await syncEngine.syncStats()); } catch (error) { next(error); }
+  });
+  router.get('/dropship/sync-logs', async (req, res, next) => {
+    const take = z.coerce.number().int().min(1).max(100).catch(50).parse(req.query.take);
+    try { res.json(await syncEngine.recentSyncLogs(undefined, take)); } catch (error) { next(error); }
+  });
+  router.post('/dropship/validate-order-price', async (req, res, next) => {
+    const input = z.object({ productId: z.string().min(1).max(64),
+      quantity: z.number().int().min(1).max(10000).optional() }).strict().safeParse(req.body);
+    if (!input.success) { res.status(400).json({ message: 'Parametros de validacion invalidos.' }); return; }
+    try { res.json(await syncEngine.validateAliExpressProductForOrder(input.data)); } catch (error) { next(error); }
   });
 };
 

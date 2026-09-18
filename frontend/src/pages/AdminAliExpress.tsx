@@ -24,7 +24,7 @@ interface ImportPreview {
   costUsdCents: number | null; shippingUsdCents: number | null; shippingUnknown: boolean;
   fx: number; salePriceClp: number | null; duplicateOfProductId: string | null;
   quantity: number; selectedSkuId?: string;
-  shippingStatus: 'AVAILABLE' | 'FREE' | 'PROVIDER_UNAVAILABLE' | 'UNKNOWN';
+  shippingStatus: 'AVAILABLE' | 'FREE' | 'PROVIDER_UNAVAILABLE' | 'PROVIDER_ERROR' | 'UNKNOWN';
   shippingSource: 'ALIEXPRESS' | 'MANUAL' | 'NONE'; shippingMessage: string;
   fxRate: number; fxSource: string;
   taxUsdCents: number | null; otherUsdCents: number | null; totalUsdCents: number | null;
@@ -35,6 +35,24 @@ interface ImportJob {
   id: string; status: string; total: number; processed: number; succeeded: number; failed: number;
   items: { id: string; sourceUrl: string; aliexpressId: string | null; status: string;
     attempts: number; createdProductId: string | null; error: string | null }[];
+}
+interface SyncSettingsData {
+  id: string; enabled: boolean; intervalMinutes: number;
+  stalePricePolicy: 'AUTO_UPDATE' | 'REQUIRE_REVIEW' | 'BLOCK_ORDER';
+  noQuotePolicy: string; batchSize: number;
+  lastRunAt: string | null; lastCursor: string | null;
+}
+interface SyncStatsData {
+  settings: SyncSettingsData; lastRunAt: string | null; nextRunAt: string | null;
+  affectedProducts: number; errors: number; noShippingQuote: number;
+  totalImported: number; priceChanges: number; stockChanges: number;
+}
+interface SyncLogData {
+  id: string; productId: string | null; aliexpressId: string; skuId: string | null;
+  status: string; costBeforeUsd: number | null; costAfterUsd: number | null;
+  stockBefore: number | null; stockAfter: number | null;
+  shippingBeforeUsdCents: number | null; shippingAfterUsdCents: number | null;
+  shippingStatus: string | null; error: string | null; createdAt: string;
 }
 
 const MARGINS = [50, 100, 150, 200, 250, 300, 350, 400];
@@ -104,6 +122,9 @@ export default function AdminAliExpress() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [bulkUrls, setBulkUrls] = useState('');
   const [job, setJob] = useState<ImportJob | null>(null);
+  const [syncStats, setSyncStats] = useState<SyncStatsData | null>(null);
+  const [syncLogs, setSyncLogs] = useState<SyncLogData[] | null>(null);
+  const [syncInterval, setSyncInterval] = useState('60');
   const isAdmin = status === 'authenticated' && user?.role === 'ADMIN';
   const effectiveMargin = customMargin !== '' ? Number(customMargin) : margin;
   const quoteKey = (url: string) => JSON.stringify([url.trim(), selectedSkuId.trim(), quantity,
@@ -117,6 +138,43 @@ export default function AdminAliExpress() {
     finally { setBusy(false); }
   }
   useEffect(() => { if (isAdmin) void reload(); }, [isAdmin]);
+  useEffect(() => { if (isAdmin) void loadSync(); }, [isAdmin]);
+
+  async function loadSync() {
+    setBusy(true); setError('');
+    try {
+      const stats = (await api.get<SyncStatsData>('/admin/aliexpress/dropship/sync-stats')).data;
+      setSyncStats(stats);
+      setSyncInterval(String(stats.settings.intervalMinutes));
+    } catch { setError('No fue posible leer la configuración de sincronización.'); }
+    finally { setBusy(false); }
+  }
+  async function runSyncNow() {
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const result = await api.post<{ processed: number; changed: number; errors: number }>(
+        '/admin/aliexpress/dropship/sync-run', {});
+      setMessage(`Sincronización completada: ${result.data.processed} productos, ${result.data.changed} con cambios, ${result.data.errors} errores.`);
+      await loadSync();
+    } catch { setError('La sincronización falló; revisa los logs del backend.'); }
+    finally { setBusy(false); }
+  }
+  async function saveSyncInterval() {
+    setBusy(true); setError('');
+    try {
+      await api.put('/admin/aliexpress/dropship/sync-settings', { intervalMinutes: Number(syncInterval) });
+      setMessage('Intervalo de sincronización guardado.');
+      await loadSync();
+    } catch { setError('Intervalo inválido. Permitidos: 30 min, 1 h, 6 h, 12 h, diario.'); }
+    finally { setBusy(false); }
+  }
+  async function loadSyncHistory() {
+    setBusy(true); setError('');
+    try { setSyncLogs((await api.get<SyncLogData[]>('/admin/aliexpress/dropship/sync-logs', { params: { take: 50 } })).data); }
+    catch { setError('No fue posible leer el historial de sincronización.'); }
+    finally { setBusy(false); }
+  }
+
 
   // Reads the OAuth landing result once. The callback never places a token or authorization
   // code in the URL, so nothing sensitive is parsed, stored, or rendered here.
@@ -352,6 +410,52 @@ export default function AdminAliExpress() {
             </span>
           </div>)}
         </div>
+      </div>}
+    </section>
+
+    <section className="bg-white border rounded-xl p-5 space-y-3">
+      <h2 className="text-lg font-semibold flex items-center gap-2"><RefreshCw size={18} /> Sincronización</h2>
+      {syncStats && <div className="grid sm:grid-cols-3 gap-3 text-sm">
+        {[
+          ['Última sincronización', syncStats.lastRunAt ? new Date(syncStats.lastRunAt).toLocaleString('es-CL') : 'Nunca'],
+          ['Próxima sincronización', syncStats.nextRunAt ? new Date(syncStats.nextRunAt).toLocaleString('es-CL') : 'No programada'],
+          ['Productos sincronizados', String(syncStats.totalImported)],
+          ['Cambios de precio', String(syncStats.priceChanges)],
+          ['Cambios de stock', String(syncStats.stockChanges)],
+          ['Errores', String(syncStats.errors)],
+          ['Productos sin cotización de envío', String(syncStats.noShippingQuote)],
+          ['Productos afectados', String(syncStats.affectedProducts)],
+        ].map(([label, value]) => <div key={label} className="bg-gray-50 rounded-lg p-3">
+          <p className="text-gray-500">{label}</p><p className="font-semibold mt-1">{value}</p></div>)}
+      </div>}
+      <div className="flex flex-wrap gap-2 items-center">
+        <button disabled={busy} onClick={() => void runSyncNow()}
+          className="bg-gray-900 text-white rounded-lg px-4 py-2 disabled:opacity-50">Sincronizar ahora</button>
+        <span className="text-sm text-gray-500">Intervalo:</span>
+        <select value={syncInterval} onChange={e => setSyncInterval(e.target.value)}
+          className="border rounded-lg px-3 py-2 text-sm">
+          {[30, 60, 360, 720, 1440].map(m => <option key={m} value={m}>
+            {m === 30 ? 'Cada 30 minutos' : m === 60 ? 'Cada 1 hora' : m === 360 ? 'Cada 6 horas'
+              : m === 720 ? 'Cada 12 horas' : 'Diario'}</option>)}
+        </select>
+        <button disabled={busy} onClick={() => void saveSyncInterval()}
+          className="border rounded-lg px-4 py-2 disabled:opacity-50">Configurar intervalo</button>
+        <button disabled={busy} onClick={() => void loadSyncHistory()}
+          className="border rounded-lg px-4 py-2 disabled:opacity-50">Ver historial</button>
+      </div>
+      {syncLogs && <div className="border rounded-lg p-3 text-sm space-y-1 max-h-72 overflow-auto">
+        {!syncLogs.length && <p className="text-gray-500">Sin registros todavía.</p>}
+        {syncLogs.map(log => <div key={log.id} className="border-b py-1">
+          <span className="text-gray-500">{new Date(log.createdAt).toLocaleString('es-CL')} · </span>
+          <span className="font-mono">{log.aliexpressId}{log.skuId ? ` / ${log.skuId}` : ''}</span>
+          <span className={`ml-2 ${log.status === 'ERROR' ? 'text-red-700' : log.status === 'CHANGED' ? 'text-amber-700' : 'text-gray-500'}`}>{log.status}</span>
+          {log.costBeforeUsd !== log.costAfterUsd && (log.costAfterUsd !== null || log.costBeforeUsd !== null) &&
+            <span className="ml-2">precio ${log.costBeforeUsd ?? '—'} → ${log.costAfterUsd ?? '—'} USD</span>}
+          {log.stockBefore !== log.stockAfter && (log.stockAfter !== null || log.stockBefore !== null) &&
+            <span className="ml-2">stock {log.stockBefore ?? '—'} → {log.stockAfter ?? '—'}</span>}
+          {log.shippingBeforeUsdCents !== log.shippingAfterUsdCents &&
+            <span className="ml-2">envío {log.shippingBeforeUsdCents ?? '—'} → {log.shippingAfterUsdCents ?? '—'} cUSD{log.shippingStatus ? ` (${log.shippingStatus})` : ''}</span>}
+        </div>)}
       </div>}
     </section>
 

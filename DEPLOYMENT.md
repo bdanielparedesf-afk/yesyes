@@ -71,10 +71,43 @@ El build se sirve desde cualquier CDN o servidor estático.
 > npm run db:migrate:deploy   # prisma migrate deploy (usa DIRECT_URL)
 > ```
 >
-> Estado 18/9/2026: `20260917180000_aliexpress_oauth_attempts` aplicada y registrada en
-> `_prisma_migrations`. `20260917000000_aliexpress_dropship_catalog` sigue pendiente de
-> aplicar en producción (su SQL ya tolera el drift de nombres `product_variants` vs
-> `ProductVariant` heredado).
+> Estado 18/9/2026 (RESUELTO): `20260917000000_aliexpress_dropship_catalog` y
+> `20260918000000_aliexpress_sync_engine` están EJECUTADAS y REGISTRADAS en
+> `_prisma_migrations`. Durante la recuperación se encontró y corrigió un bug real
+> en la primera (el `format('%I', 'public."ProductVariant"')` malformaba el
+> identificador; ahora usa branches con identificadores explícitos). Ambos SQL son
+> 100% aditivos e idempotentes (sólo `CREATE TABLE IF NOT EXISTS` /
+> `ADD COLUMN IF NOT EXISTS`), por lo que no destruyen ni modifican datos.
+> Verificación: `cd backend && node scripts/db-inspect.cjs`.
+>
+> ### Historial de migration drift (cómo se recuperó)
+>
+> 1. `_prisma_migrations` tenía filas fallidas antiguas (`init`, `add_collection...`)
+>    que bloqueaban `prisma migrate deploy` con errores tipo `type "OrderStatus"
+>    already exists` (la BD ya tenía esos objetos aplicados a mano).
+> 2. Se marcaron esas migraciones como aplicadas con
+>    `npx prisma migrate resolve --applied <nombre>` (sólo bookkeeping, sin SQL).
+> 3. La migración del catálogo dropship figuraba como "aplicada" pero su SQL nunca
+>    se había ejecutado (las tablas no existían). Se ejecutó su SQL directamente
+>    con `node scripts/db-apply-migrations.cjs` (idempotente, sin riesgo de datos)
+>    y se dejó el registro consistente.
+> 4. `npx prisma migrate deploy` ahora responde `No pending migrations to apply.`
+>
+> ### Regla para el futuro
+>
+> - Toda migración nueva debe ser **aditiva** (nunca `DROP`/`ALTER ... TYPE` destructivo).
+> - Aplicarla con `npm run db:migrate:deploy` ANTES del deploy del código que la usa.
+> - Si `migrate deploy` falla por drift histórico, resolver con `migrate resolve`
+>   y scripts idempotentes — nunca inventar tablas en el código ni saltarse la BD.
+
+### Cron de sincronización AliExpress (Vercel)
+
+`vercel.json` programa `GET /api/cron/sync-aliexpress` cada hora. El endpoint:
+- está protegido por `CRON_SECRET` (header `x-cron-secret`);
+- respeta `enabled` + `intervalMinutes` de `aliexpress_sync_settings`
+  (si aún no toca, responde `skipped: true`), así el intervalo se cambia desde
+  `/admin/aliexpress` sin tocar Vercel;
+- procesa por batches con checkpoint, retry con backoff y delay entre productos.
 
 ### Backup
 ```bash

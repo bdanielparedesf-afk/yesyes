@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron/sync-aliexpress",
+      "schedule": "0 * * * *"
+    }
+  ],
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "frontend/dist",
   "functions": {

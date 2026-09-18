@@ -17,6 +17,7 @@ import cjRoutes from './cj.routes';
 import scrapeRoutes from './scrape.routes';
 import { runPriceSync } from '../jobs/priceSync';
 import { AliExpressOAuthError } from '../aliexpress/oauth-client';
+import * as syncEngine from '../services/aliexpress-sync-engine.service';
 import { refreshAliexpressToken } from '../jobs/aliexpress-token-refresh';
 import aliexpressRoutes from './aliexpress.routes';
 
@@ -77,6 +78,31 @@ router.get('/cron/refresh-aliexpress', async (req, res) => {
     res.status(503).json({ ok: false,
       code: error instanceof AliExpressOAuthError ? error.reason : 'OAUTH_STORAGE_ERROR',
       message: 'Renovación AliExpress no disponible; revisar estado OAuth de la cuenta.' });
+  }
+});
+
+// FASE 6 — CRON del Sync Engine AliExpress (precio/stock/envío → YesYes).
+// Respeta la configuración en aliexpress_sync_settings (enabled + intervalo);
+// si aún no toca correr responde ok:true skipped. Protegido por CRON_SECRET.
+router.get('/cron/sync-aliexpress', async (req, res) => {
+  const expected = process.env.CRON_SECRET || '';
+  const provided = String(req.headers['x-cron-secret'] || '') || String((req.query as any).secret || '');
+  if (!expected || provided !== expected) {
+    res.status(401).json({ message: 'No autorizado: header x-cron-secret inválido.' });
+    return;
+  }
+  try {
+    const settings = await syncEngine.getSyncSettings();
+    const nextRun = syncEngine.nextRunFrom(settings);
+    if (nextRun && nextRun.getTime() > Date.now()) {
+      res.json({ ok: true, skipped: true, nextRunAt: nextRun.toISOString() });
+      return;
+    }
+    const result = await syncEngine.runAliExpressSync();
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, message: 'Error en sync engine AliExpress', error: error?.message });
   }
 });
 

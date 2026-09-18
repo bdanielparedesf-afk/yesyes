@@ -574,20 +574,46 @@ model AliExpressImportJobItem {
 /// Price/stock synchronisation history. `changes` keeps the previous and current
 /// supplier values; the sale price is only rewritten when explicitly enabled.
 model AliExpressSyncLog {
-  id                 String   @id @default(uuid())
-  productId          String?
-  aliexpressId       String
-  status             String
-  costBeforeUsd      Float?
-  costAfterUsd       Float?
-  stockBefore        Int?
-  stockAfter         Int?
-  changes            Json?
-  error              String?
-  createdAt          DateTime @default(now())
+  id                     String   @id @default(uuid())
+  productId              String?
+  aliexpressId           String
+  status                 String
+  costBeforeUsd          Float?
+  costAfterUsd           Float?
+  stockBefore            Int?
+  stockAfter             Int?
+  skuId                  String?
+  shippingBeforeUsdCents Int?
+  shippingAfterUsdCents  Int?
+  shippingStatus         String?
+  changes                Json?
+  error                  String?
+  createdAt              DateTime @default(now())
 
   @@index([productId, createdAt])
+  @@index([createdAt])
   @@map("aliexpress_sync_logs")
+}
+
+/// Singleton configuration of the AliExpress Sync Engine. Additive-only; a
+/// missing row means defaults (enabled, hourly, AUTO_UPDATE, block on unknown cost).
+model AliExpressSyncSettings {
+  id               String   @id @default("singleton")
+  enabled          Boolean  @default(true)
+  /// Minutes between automatic runs. Allowed: 30, 60, 360, 720, 1440.
+  intervalMinutes  Int      @default(60) @map("interval_minutes")
+  /// What to do when the provider price changed since the last sync at order time.
+  stalePricePolicy String   @default("AUTO_UPDATE")
+  /// What to do when the total cost cannot be calculated with certainty.
+  noQuotePolicy    String   @default("BLOCK")
+  /// Products processed per batch; batches run sequentially (rate-limit friendly).
+  batchSize        Int      @default(10)
+  lastRunAt        DateTime? @map("last_run_at")
+  lastCursor       String?  @map("last_cursor")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("aliexpress_sync_settings")
 }
 
 /// Immutable snapshot of the supplier order data needed to preserve the original
