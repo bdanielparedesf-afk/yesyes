@@ -57,6 +57,25 @@ El build se sirve desde cualquier CDN o servidor estático.
 
 ## Base de datos
 
+> **Importante (lección del 18/9/2026):** el build de Vercel NO ejecuta migraciones
+> (`vercel-build` solo hace `npm install` + `prisma generate` + `tsc`). Toda migración
+> nueva debe aplicarse a la base de producción ANTES de desplegar el código que la usa,
+> o los endpoints que dependan de las tablas nuevas devolverán errores (p. ej. el 502
+> `STORAGE` en `POST /api/admin/aliexpress/oauth/connect` porque faltaba la tabla
+> `aliexpress_oauth_attempts`).
+>
+> Para producción usar (conexión directa, no pooler en modo transacción):
+>
+> ```bash
+> cd backend
+> npm run db:migrate:deploy   # prisma migrate deploy (usa DIRECT_URL)
+> ```
+>
+> Estado 18/9/2026: `20260917180000_aliexpress_oauth_attempts` aplicada y registrada en
+> `_prisma_migrations`. `20260917000000_aliexpress_dropship_catalog` sigue pendiente de
+> aplicar en producción (su SQL ya tolera el drift de nombres `product_variants` vs
+> `ProductVariant` heredado).
+
 ### Backup
 ```bash
 pg_dump -U yesyes yesyes > backup.sql

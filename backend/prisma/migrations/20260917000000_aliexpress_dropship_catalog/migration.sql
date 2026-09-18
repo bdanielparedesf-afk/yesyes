@@ -6,16 +6,35 @@ ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "aliexpressMarginPercent" INTEGE
   ADD COLUMN IF NOT EXISTS "aliexpressSyncedAt" TIMESTAMP(3),
   ADD COLUMN IF NOT EXISTS "aliexpressSnapshot" JSONB;
 
-ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "supplierVariantId" TEXT,
-  ADD COLUMN IF NOT EXISTS "supplierAttributes" JSONB,
-  ADD COLUMN IF NOT EXISTS "supplierImage" TEXT,
-  ADD COLUMN IF NOT EXISTS "supplierCostUsd" DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS "supplierShippingUsd" DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS "supplierStock" INTEGER,
-  ADD COLUMN IF NOT EXISTS "supplierStockKnown" BOOLEAN NOT NULL DEFAULT false;
+-- The variants table is named "product_variants" in current migrations but exists as
+-- legacy PascalCase "ProductVariant" in some environments. Resolve the real name at
+-- runtime so this stays additive-only everywhere instead of failing the whole migration.
+DO $$
+DECLARE
+  variants_table text := CASE
+    WHEN to_regclass('public.product_variants') IS NOT NULL THEN 'public.product_variants'
+    WHEN to_regclass('public."ProductVariant"') IS NOT NULL THEN 'public."ProductVariant"'
+    ELSE NULL
+  END;
+BEGIN
+  IF variants_table IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS "supplierVariantId" TEXT,
+      ADD COLUMN IF NOT EXISTS "supplierAttributes" JSONB,
+      ADD COLUMN IF NOT EXISTS "supplierImage" TEXT,
+      ADD COLUMN IF NOT EXISTS "supplierCostUsd" DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS "supplierShippingUsd" DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS "supplierStock" INTEGER,
+      ADD COLUMN IF NOT EXISTS "supplierStockKnown" BOOLEAN NOT NULL DEFAULT false', variants_table);
+  END IF;
+END $$;
 
-CREATE INDEX IF NOT EXISTS "product_variants_productId_supplierVariantId_idx"
-  ON "product_variants"("productId", "supplierVariantId");
+-- Index only for the canonical table; the legacy PascalCase table is deprecated and empty.
+DO $$ BEGIN
+  IF to_regclass('public.product_variants') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS "product_variants_productId_supplierVariantId_idx"
+      ON "product_variants"("productId", "supplierVariantId");
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.aliexpress_import_jobs (
   id TEXT PRIMARY KEY,
