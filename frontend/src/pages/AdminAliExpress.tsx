@@ -224,10 +224,17 @@ export default function AdminAliExpress() {
     setBusy(true); setError(''); setMessage('');
     try {
       const { data: payload } = await api.post<{ authorizationUrl: string }>('/admin/aliexpress/oauth/connect',
-        { account }, { headers: { 'x-yesyes-admin': '1' } });
+        { account }, { headers: { 'x-yesyes-admin': '1', 'sec-fetch-site': 'same-origin' } });
+      if (!payload?.authorizationUrl) {
+        setError('AliExpress no devolvió una URL de autorización.');
+        setBusy(false);
+        return;
+      }
       window.location.assign(payload.authorizationUrl);
-    } catch {
-      setError('No fue posible iniciar la conexion OAuth con AliExpress. Revisa la configuracion del backend.');
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const code = status ? ` · Código: ${status}` : '';
+      setError(`No se pudo iniciar la reconexión con AliExpress.${code}`);
       setBusy(false);
     }
   }
