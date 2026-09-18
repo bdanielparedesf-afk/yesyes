@@ -415,6 +415,13 @@ export default function AdminAliExpress() {
 
     <section className="bg-white border rounded-xl p-5 space-y-3">
       <h2 className="text-lg font-semibold flex items-center gap-2"><RefreshCw size={18} /> Sincronización</h2>
+      <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        Plan Vercel Hobby: la sincronización automática externa se ejecuta como máximo una vez al día
+        (cron diario de Vercel). Si configuras un intervalo menor (30 min / 1 h / 6 h / 12 h), el Sync Engine
+        lo respeta igualmente: el cron diario despierta el endpoint y, si aún no corresponde sincronizar
+        según `intervalMinutes`/`nextRunAt`, responde `skipped: true`. Usa «Sincronizar ahora» para ejecutar una sincronización
+        manual en cualquier momento.
+      </p>
       {syncStats && <div className="grid sm:grid-cols-3 gap-3 text-sm">
         {[
           ['Última sincronización', syncStats.lastRunAt ? new Date(syncStats.lastRunAt).toLocaleString('es-CL') : 'Nunca'],

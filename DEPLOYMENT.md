@@ -100,9 +100,13 @@ El build se sirve desde cualquier CDN o servidor estático.
 > - Si `migrate deploy` falla por drift histórico, resolver con `migrate resolve`
 >   y scripts idempotentes — nunca inventar tablas en el código ni saltarse la BD.
 
-### Cron de sincronización AliExpress (Vercel)
+### Cron de sincronización AliExpress (Vercel Hobby)
 
-`vercel.json` programa `GET /api/cron/sync-aliexpress` cada hora. El endpoint:
+`vercel.json` programa `GET /api/cron/sync-aliexpress` con `0 9 * * *`
+(una vez al día ~09:00 UTC; en Hobby la ejecución real puede caer en
+cualquier momento dentro de esa hora, precisión ±59 min). El plan Hobby
+sólo admite crons diarios, por lo que `0 * * * *` (cada hora) rechaza el
+deploy. El endpoint:
 - está protegido por `CRON_SECRET` (header `x-cron-secret`);
 - respeta `enabled` + `intervalMinutes` de `aliexpress_sync_settings`
   (si aún no toca, responde `skipped: true`), así el intervalo se cambia desde
