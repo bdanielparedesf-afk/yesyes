@@ -152,53 +152,6 @@ function oauthService(f, exchange, events = []) {
   return createAliExpressBrowserOAuth({ db: f.db, config: browserConfig,
     now: () => new Date(AT), log: event => events.push(event),
     connect: createAliExpressConnector({ db: f.db, exchange, config: () => CONFIG }) });
-}alue.id }; }
-        }
-        return { id: q.where.id };
-      } },
-  };
-  const db = {
-    ...tx,
-    $transaction: work => work(tx),
-    user: { findUnique: async () => ({ role: 'ADMIN', isActive: true }) },
-    aliexpressToken: { ...tx.aliexpressToken,
-      count: async () => rows.size,
-      // Mirrors the production order: most recent active expiration first.
-      findFirst: async q => {
-        assert.equal(q.where.isActive, true);
-        const active = [...rows.values()].filter(value => value.isActive)
-          .sort((a, b) => b.expiresAt - a.expiresAt || a.account.localeCompare(b.account));
-        return active[0] ? { ...active[0] } : null;
-      },
-      updateMany: async q => {
-        let count = 0;
-        for (const value of rows.values()) {
-          if (value.account === q.where.account) { Object.assign(value, q.data); count++; }
-        }
-        return { count };
-      } },
-    aliExpressOAuthAttempt: {
-      create: async q => { attempts.set(q.data.stateHash, { ...q.data }); return q.data; },
-      findUnique: async q => (attempts.has(q.where.stateHash) ? { ...attempts.get(q.where.stateHash) } : null),
-      deleteMany: async q => {
-        if (q.where.stateHash !== undefined) {
-          const attempt = attempts.get(q.where.stateHash);
-          if (!attempt) return { count: 0 };
-          const fresh = !q.where.expiresAt || attempt.expiresAt.getTime() > q.where.expiresAt.gt.getTime();
-          const owner = !q.where.browserHash || attempt.browserHash === q.where.browserHash;
-          if (!fresh || !owner) return { count: 0 };
-          attempts.delete(q.where.stateHash);
-          return { count: 1 };
-        }
-        let count = 0;
-        for (const [stateHash, attempt] of attempts) {
-          if (attempt.expiresAt.getTime() <= q.where.expiresAt.lte.getTime()) { attempts.delete(stateHash); count++; }
-        }
-        return { count };
-      },
-    },
-  };
-  return { db, rows, attempts };
 }
 
 /** Real signed code exchange + real contract parsing; the transport is inert. */

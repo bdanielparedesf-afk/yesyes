@@ -224,7 +224,7 @@ export default function AdminAliExpress() {
     setBusy(true); setError(''); setMessage('');
     try {
       const { data: payload } = await api.post<{ authorizationUrl: string }>('/admin/aliexpress/oauth/connect',
-        { account }, { headers: { 'x-yesyes-admin': '1', 'sec-fetch-site': 'same-origin' } });
+        { account }, { headers: { 'x-yesyes-admin': '1' } });
       if (!payload?.authorizationUrl) {
         setError('AliExpress no devolvió una URL de autorización.');
         setBusy(false);

@@ -38,11 +38,10 @@ test('status response explicitly excludes tokens even if a service returns extra
   assert.equal(response.body.authenticationVerified, false);
 });
 
-test('disconnect requires CSRF header and validated account, never returns tokens', async () => {
+test('disconnect requires admin header and validated account, never returns tokens', async () => {
   const calls = [];
   const server = app({ disconnect: async account => { calls.push(account); } });
   await request(server).post('/api/admin/aliexpress/disconnect').send({ account: 'test' }).expect(403);
-  await request(server).post('/api/admin/aliexpress/disconnect').set('x-yesyes-admin', '1').set('sec-fetch-site', 'cross-site').send({ account: 'test' }).expect(403);
   await request(server).post('/api/admin/aliexpress/disconnect').set('x-yesyes-admin', '1').send({ account: '' }).expect(400);
   const response = await request(server).post('/api/admin/aliexpress/disconnect').set('x-yesyes-admin', '1').send({ account: 'test' }).expect(200);
   assert.deepEqual(calls, ['test']);

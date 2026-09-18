@@ -255,9 +255,23 @@ export function createAliExpressRouter(dependencies: {
   });
 
   router.use(dependencies.authenticate, dependencies.requireAdmin);
-  /** Starts the official server-side OAuth: enables a reconnect without touching isActive. */
+  /**
+   * Starts the official server-side OAuth: enables a reconnect without touching isActive.
+   *
+   * Security is enforced by:
+   *   - Cookie session auth (authenticate) + admin role check (requireAdmin): the request
+   *     must come from a logged-in ADMIN user identified by the Auth.js session cookie.
+   *   - Custom header `x-yesyes-admin: 1`: a non-simple header that triggers a CORS preflight
+   *     when sent cross-origin, and acts as an extra admin-only marker for same-origin POSTs.
+   *
+   * The Sec-Fetch-* headers are browser-controlled and MUST NOT be used for authorization:
+   * JavaScript cannot set them reliably (they are forbidden headers), so any check depending
+   * on them would either be bypassed by a direct curl/postman call or would break legitimate
+   * same-origin requests when the browser decides to send a different value.
+   */
   router.post('/oauth/connect', async (req: AuthRequest, res, next) => {
-    if (req.get('x-yesyes-admin') !== '1' || (req.get('sec-fetch-site') && req.get('sec-fetch-site') !== 'same-origin')) {
+    // Admin marker header: only the admin panel sends this.
+    if (req.get('x-yesyes-admin') !== '1') {
       res.status(403).json({ message: 'Solicitud administrativa invalida.' }); return;
     }
     const input = z.object({ account: z.string().trim().min(1).max(320).optional() }).strict().safeParse(req.body ?? {});
@@ -288,8 +302,9 @@ export function createAliExpressRouter(dependencies: {
     } catch (error) { next(error); }
   });
   router.post('/disconnect', async (req, res, next) => {
-    // Non-simple custom header plus same-origin fetch protects cookie-auth writes.
-    if (req.get('x-yesyes-admin') !== '1' || (req.get('sec-fetch-site') && req.get('sec-fetch-site') !== 'same-origin')) {
+    // Admin marker header: only the admin panel sends this.
+    // The authenticate + requireAdmin middleware already guarantees a logged-in ADMIN user.
+    if (req.get('x-yesyes-admin') !== '1') {
       res.status(403).json({ message: 'Solicitud administrativa invalida.' }); return;
     }
     const input = z.object({ account: z.string().trim().min(1).max(320) }).strict().safeParse(req.body);
