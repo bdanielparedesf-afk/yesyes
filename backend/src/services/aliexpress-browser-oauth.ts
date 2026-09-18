@@ -43,7 +43,6 @@ export function oauthBrowserConfig() {
 }
 
 type SafeOAuthEvent = { account: string; sellerId: string | null; resultado: string; errorCode?: string; timestamp?: string };
-type SafeOAuthEvent = { account: string; sellerId: string | null; resultado: string; errorCode?: string };
 
 /** Only hashes of opaque random state/browser nonce are stored. No tokens or code. */
 export function createAliExpressBrowserOAuth(overrides: Partial<{
