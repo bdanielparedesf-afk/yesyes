@@ -223,9 +223,9 @@ export default function AdminAliExpress() {
   async function reconnect(account: string) {
     setBusy(true); setError(''); setMessage('');
     try {
-      const data = await api.post<{ authorizationUrl: string }>('/admin/aliexpress/oauth/connect',
+      const { data: payload } = await api.post<{ authorizationUrl: string }>('/admin/aliexpress/oauth/connect',
         { account }, { headers: { 'x-yesyes-admin': '1' } });
-      window.location.assign(data.authorizationUrl);
+      window.location.assign(payload.authorizationUrl);
     } catch {
       setError('No fue posible iniciar la conexion OAuth con AliExpress. Revisa la configuracion del backend.');
       setBusy(false);

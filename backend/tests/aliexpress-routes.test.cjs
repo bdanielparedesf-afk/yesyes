@@ -61,9 +61,7 @@ test('rate limit blocks excessive calls', async () => {
   await request(server).get('/api/admin/aliexpress/status').expect(429);
 });
 
-test('unverified refresh is disabled without network calls', async t => {
-  let calls = 0;
-  t.mock.method(global, 'fetch', async () => { calls++; throw new Error('Unexpected network'); });
-  await assert.rejects(refreshAliexpressToken(), /ALIEXPRESS_REFRESH_CONTRACT_NOT_VERIFIED/);
-  assert.equal(calls, 0);
+test('refresh job exports the same backend-only implementation as token service', () => {
+  const service = require('../src/services/aliexpress-token.service.ts');
+  assert.equal(refreshAliexpressToken, service.refreshAliexpressToken);
 });

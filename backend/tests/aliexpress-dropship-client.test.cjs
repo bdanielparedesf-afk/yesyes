@@ -100,3 +100,24 @@ test('configuration and invalid clock fail without exposing credentials', async 
   const client = new AliExpressDropshipClient(config, async () => assert.fail('unexpected call'), () => NaN);
   await assert.rejects(client.textSearch({ keyWord: 'test' }), safe('CONFIGURATION'));
 });
+
+test('freight sends the documented nested request and reads shipping cents (synthetic)', async () => {
+  const client = new AliExpressDropshipClient(config, async request => {
+    assert.equal(request.method, 'POST');
+    assert.equal(request.headers['Content-Type'], 'application/x-www-form-urlencoded');
+    const params = new URLSearchParams(request.body);
+    assert.equal(params.get('method'), 'aliexpress.ds.freight.query');
+    assert.deepEqual(JSON.parse(params.get('queryDeliveryReq')), {
+      productId: '1005013076133876', selectedSkuId: '12000060188919386', quantity: 1,
+      shipToCountry: 'CL', language: 'es_ES', locale: 'es_ES', currency: 'USD',
+    });
+    assert.equal(params.has('product_id'), false);
+    return { aliexpress_ds_freight_query_response: { result: {
+      success: true, code: 200, delivery_options: [{ shipping_fee_cent: '400', shipping_fee_currency: 'USD' }],
+    } } };
+  });
+  const result = await client.freightQuery({ productId: '1005013076133876',
+    selectedSkuId: '12000060188919386', quantity: 1 });
+  assert.equal(result.delivery_options[0].shipping_fee_cent, '400');
+});
+

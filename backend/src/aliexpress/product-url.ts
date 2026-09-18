@@ -1,14 +1,20 @@
+const HOST_PATTERN = /^(www|m|[a-z]{2})\.aliexpress\.com$/;
+
 /** Parse only; never fetch supplied URLs, follow redirects or resolve short links. */
-export function parseAliExpressUrl(raw: string): { productId: string; sourceUrl: string } {
+export function parseAliExpressUrl(raw: string): { productId: string; skuId?: string; sourceUrl: string } {
   const fail = () => new Error('URL AliExpress inválida. Usa https://www.aliexpress.com/item/ID.html.');
   if (typeof raw !== 'string' || raw.length > 2048 || /[\\\u0000-\u0020\u007f]/.test(raw)) throw fail();
   let url: URL;
   try { url = new URL(raw); } catch { throw fail(); }
-  const hostAllowed = url.hostname === 'aliexpress.com' || /^(www|es|m)\.aliexpress\.com$/.test(url.hostname);
+  const hostAllowed = url.hostname === 'aliexpress.com' || HOST_PATTERN.test(url.hostname);
   if (!hostAllowed || url.protocol !== 'https:' || url.username || url.password || url.port) throw fail();
   const match = /^\/item\/([1-9]\d{5,24})\.html$/.exec(url.pathname);
   if (!match?.[1]) throw fail();
-  return { productId: match[1], sourceUrl: `https://www.aliexpress.com/item/${match[1]}.html` };
+  // sku_id is detected when present but never replaces the path product_id.
+  const rawSku = url.searchParams.get('sku_id') ?? url.searchParams.get('skuId');
+  const skuId = rawSku && /^[1-9]\d{1,31}$/.test(rawSku) ? rawSku : undefined;
+  const sourceUrl = `https://www.aliexpress.com/item/${match[1]}.html`;
+  return skuId ? { productId: match[1], skuId, sourceUrl } : { productId: match[1], sourceUrl };
 }
 
 export interface ProductIdentity {

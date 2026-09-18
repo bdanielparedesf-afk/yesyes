@@ -96,7 +96,7 @@ export interface DropshipRequest {
 }
 export interface DropshipConfig { appKey: string; appSecret: string; accessToken: string }
 export type DropshipFailure = 'CONFIGURATION' | 'INPUT' | 'TIMEOUT' | 'TRANSPORT' | 'REJECTED'
-  | 'CONTRACT' | 'BLOCKED' | 'NOT_CONFIRMED';
+  | 'CONTRACT' | 'BLOCKED' | 'NOT_CONFIRMED' | 'DUPLICATE' | 'SHIPPING_UNKNOWN';
 export class AliExpressDropshipError extends Error {
   readonly providerCode?: string;
   constructor(public readonly reason: DropshipFailure, providerCode?: unknown) {
@@ -104,7 +104,9 @@ export class AliExpressDropshipError extends Error {
       TIMEOUT: 'La consulta Dropship agotó el tiempo de espera.', TRANSPORT: 'No fue posible consultar AliExpress.',
       REJECTED: 'AliExpress rechazó la consulta Dropship.', CONTRACT: 'Respuesta Dropship no reconocida.',
       BLOCKED: 'Método Dropship bloqueado: falta autorización explícita.',
-      NOT_CONFIRMED: 'Operación Dropship no confirmada por el administrador.' }[reason]);
+      NOT_CONFIRMED: 'Operación Dropship no confirmada por el administrador.',
+      DUPLICATE: 'El producto ya está importado en YesYes.',
+      SHIPPING_UNKNOWN: 'AliExpress no reportó envío para Chile.' }[reason]);
     this.name = 'AliExpressDropshipError';
     // Never forward arbitrary provider text (it can echo a token or request).
     const code = typeof providerCode === 'string' || typeof providerCode === 'number' ? String(providerCode) : '';

@@ -17,9 +17,10 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import {
   AliExpressDropshipClient, AliExpressDropshipError,
-  BuyerFreightCalculateInput, FreightQueryInput,
+  BuyerFreightCalculateInput, BuyerFreightResult, FreightQueryInput,
   ImageSearchV2Input, ProductGetResult, TextSearchInput,
 } from '../lib/aliexpress/dropship-client';
+import { AliExpressOAuthError } from '../aliexpress/oauth-client';
 import { getAliExpressAccessToken } from './aliexpress-token.service';
 import { getUsdClpRate } from './fx.service';
 import { calculateSupplierQuote, MARGIN_PRESETS } from '../aliexpress/pricing';
@@ -58,8 +59,9 @@ const defaultDeps: ServiceDeps = {
 
 /** "8.99" | 8.99 → minor-unit cents. Returns null when absent/non-numeric. */
 export function parseAmountToCents(value: unknown): number | null {
-  const n = typeof value === 'number' ? value : Number(String(value ?? '').trim());
-  if (!Number.isFinite(n) || n < 0) return null;
+  if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+(\.\d+)?$/.test(value.trim()))) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || !Number.isSafeInteger(Math.round(n * 100))) return null;
   return Math.round(n * 100);
 }
 
@@ -84,14 +86,18 @@ export function detailToText(detail: string | undefined): string {
 
 /** Cheapest freight option in cents; null when the provider reported nothing. */
 export function cheapestFreightCents(
-  options: { free_shipping?: boolean | string; shipping_fee_cent?: string }[] | undefined,
+  options: { free_shipping?: boolean | string; shipping_fee_cent?: string; shipping_fee_currency?: string }[] | undefined,
 ): number | null {
   if (!options?.length) return null;
   const values = options.map(option => {
+    // The request targets USD. Never reinterpret an explicitly different currency as USD.
+    if (option.shipping_fee_currency !== undefined && option.shipping_fee_currency !== 'USD') return null;
     const isFree = option.free_shipping === true || option.free_shipping === 'true';
     if (isFree) return 0;
-    const cents = Number(String(option.shipping_fee_cent ?? '').trim());
-    return Number.isFinite(cents) && cents >= 0 ? Math.round(cents) : null;
+    const raw = option.shipping_fee_cent;
+    if (typeof raw !== 'string' || !/^\d+$/.test(raw.trim())) return null;
+    const cents = Number(raw);
+    return Number.isSafeInteger(cents) ? cents : null;
   }).filter((value): value is number => value !== null);
   if (!values.length) return null;
   return Math.min(...values);
@@ -103,8 +109,23 @@ export interface PreviewVariant {
   attributes: { name: string; value: string; image?: string }[];
   image?: string;
   costUsd: number | null;
+  costUsdCents: number | null;
   stock: number | null;
   stockKnown: boolean;
+}
+
+/** Explicit shipping resolution — never collapse unknown into 0. */
+export type ShippingStatus = 'AVAILABLE' | 'FREE' | 'PROVIDER_UNAVAILABLE' | 'UNKNOWN';
+export type ShippingSource = 'ALIEXPRESS' | 'MANUAL' | 'NONE';
+
+export interface AcquisitionCost {
+  quantity: number;
+  selectedSkuId?: string;
+  productCostUsdCents: number | null;
+  shippingCostUsdCents: number | null;
+  taxCostUsdCents: number | null;
+  otherCostUsdCents: number | null;
+  totalCostUsdCents: number | null;
 }
 
 export interface ImportPreview {
@@ -122,9 +143,24 @@ export interface ImportPreview {
   costUsdCents: number | null;
   shippingUsdCents: number | null;
   shippingUnknown: boolean;
+  shippingStatus: ShippingStatus;
+  shippingSource: ShippingSource;
+  shippingMessage: string;
+  shipFrom?: string | null;
+  quantity: number;
+  selectedSkuId?: string;
+  destination: { countryCode: 'CL'; provinceCode?: string; cityCode?: string; postalCode?: string };
+  acquisition: AcquisitionCost;
+  taxUsdCents: number | null;
+  otherUsdCents: number | null;
+  totalUsdCents: number | null;
   fx: number;
+  fxRate: number;
+  fxSource: string;
   salePriceClp: number | null;
   duplicateOfProductId: string | null;
+  /** SKU from the source URL when present (never a replacement for the product ID). */
+  skuId?: string;
   wholesaleTiers: { minQuantity: string; price: string; discount?: string }[];
   raw: unknown;
 }
@@ -137,7 +173,13 @@ export function buildImportPreview(payload: {
   aliexpressId: string;
   marginPercent: number;
   fxValue: number;
+  fxSource?: string;
+  quantity?: number;
+  manualShippingUsd?: number;
+  shipFrom?: string | null;
+  destination?: ImportPreview['destination'];
   duplicateOfProductId?: string | null;
+  skuId?: string;
 }): ImportPreview {
   const { product, sourceUrl, aliexpressId, marginPercent, fxValue } = payload;
   const base = product.ae_item_base_info_dto;
@@ -162,25 +204,52 @@ export function buildImportPreview(payload: {
       attributes: props,
       image: props.find(p => p.image)?.image || undefined,
       costUsd: costCents === null ? null : costCents / 100,
+      costUsdCents: costCents,
       stock, stockKnown: stock !== null,
     };
   });
 
-  const costCents = variants.reduce<number | null>((min, variant) => {
-    const cents = variant.costUsd === null ? null : Math.round(variant.costUsd * 100);
-    return cents === null ? min : min === null ? cents : Math.min(min, cents);
-  }, null);
+  const selectedVariant = payload.skuId
+    ? variants.find(variant => variant.supplierVariantId === payload.skuId)
+    : variants[0];
+  if (payload.skuId && !selectedVariant) throw new AliExpressDropshipError('INPUT');
+  const costCents = selectedVariant?.costUsd === null || !selectedVariant
+    ? null : Math.round(selectedVariant.costUsd * 100);
   const stocks = variants.map(v => v.stock).filter((s): s is number => s !== null);
-  const shippingCents = cheapestFreightCents(payload.freight?.delivery_options);
-
-  // PRODUCTO + SHIPPING = COSTO TOTAL → margin over total cost. No shipping
-  // reported by AliExpress ⇒ no invented shipping ⇒ no computed sale price.
+  const quantity = z.number().int().min(1).max(10000).parse(payload.quantity ?? 1);
+  const providerShipping = cheapestFreightCents(payload.freight?.delivery_options);
+  const manualShipping = payload.manualShippingUsd === undefined ? null
+    : parseAmountToCents(z.number().finite().nonnegative().parse(payload.manualShippingUsd));
+  const shippingCents = providerShipping ?? manualShipping;
+  const shippingSource: ShippingSource = providerShipping !== null ? 'ALIEXPRESS'
+    : manualShipping !== null ? 'MANUAL' : 'NONE';
+  const shippingStatus: ShippingStatus = shippingCents === null ? 'PROVIDER_UNAVAILABLE'
+    : shippingCents === 0 ? 'FREE' : 'AVAILABLE';
+  const shippingMessage = shippingCents === null
+    ? 'AliExpress no proporcionó costo de envío para esta variante/destino.'
+    : shippingSource === 'MANUAL' ? 'Costo de envío manual del administrador; no confirmado por AliExpress.'
+      : 'Costo de envío proporcionado por AliExpress.';
+  const sku = product.ae_item_sku_info_dtos.find(s => s.sku_id === selectedVariant?.supplierVariantId);
+  // Missing charges are not reported as zero. Only explicit, interpretable USD amounts are added.
+  const taxUnit = sku?.tax_currency_code === 'USD' ? parseAmountToCents(sku.tax_amount) : null;
+  const taxUsdCents = taxUnit === null ? null : taxUnit * quantity;
+  const otherUsdCents = null; // estimated_import_charges has no documented currency/inclusion semantics.
+  const taxIncluded = sku?.price_include_tax === true;
+  const ambiguousCharges = Boolean(sku?.estimated_import_charges?.trim())
+    || (Boolean(sku?.tax_amount?.trim()) && (taxUnit === null || sku?.price_include_tax === undefined));
+  const productCostUsdCents = costCents === null ? null : costCents * quantity;
+  const totalUsdCents = productCostUsdCents === null || shippingCents === null || ambiguousCharges ? null
+    : productCostUsdCents + shippingCents + (taxIncluded ? 0 : taxUsdCents ?? 0);
+  const acquisition: AcquisitionCost = {
+    quantity, selectedSkuId: selectedVariant?.supplierVariantId, productCostUsdCents,
+    shippingCostUsdCents: shippingCents, taxCostUsdCents: taxUsdCents,
+    otherCostUsdCents: otherUsdCents, totalCostUsdCents: totalUsdCents,
+  };
   let salePriceClp: number | null = null;
-  if (costCents !== null && shippingCents !== null) {
+  if (totalUsdCents !== null) {
     try {
       salePriceClp = calculateSupplierQuote({
-        productUsdCents: costCents, shippingUsdCents: shippingCents,
-        marginPercent, quantity: 1,
+        productUsdCents: totalUsdCents, shippingUsdCents: 0, marginPercent, quantity: 1,
       }, { base: 'USD', quote: 'CLP', value: fxValue, source: 'manual', observedAt: '', fetchedAt: '' }).saleClp;
     } catch { salePriceClp = null; }
   }
@@ -199,9 +268,14 @@ export function buildImportPreview(payload: {
     costUsdCents: costCents,
     shippingUsdCents: shippingCents,
     shippingUnknown: shippingCents === null,
-    fx: fxValue,
+    shippingStatus, shippingSource, shippingMessage, quantity,
+    shipFrom: payload.shipFrom ?? null, selectedSkuId: selectedVariant?.supplierVariantId,
+    destination: payload.destination ?? { countryCode: 'CL' }, acquisition,
+    taxUsdCents, otherUsdCents, totalUsdCents,
+    fx: fxValue, fxRate: fxValue, fxSource: payload.fxSource ?? 'UNKNOWN',
     salePriceClp,
     duplicateOfProductId: payload.duplicateOfProductId ?? null,
+    skuId: payload.skuId,
     wholesaleTiers: (product.ae_item_sku_info_dtos[0]?.wholesale_price_tiers || []).map(t => ({
       minQuantity: t.min_quantity || '', price: t.wholesale_price || '', discount: t.discount,
     })),
@@ -261,26 +335,123 @@ export async function findDuplicateProduct(aliexpressId: string, db: typeof pris
   return hit?.id ?? null;
 }
 
-export interface PreviewOptions { marginPercent?: number; quantity?: number }
+export interface PreviewOptions {
+  marginPercent?: number;
+  quantity?: number;
+  /** Variante elegida (SKU AliExpress). Si se omite, se usa el sku_id de la URL o el primer SKU. */
+  selectedSkuId?: string;
+  /** Destino logístico. Hoy siempre CL; preparado para provincia/ciudad/postal. */
+  countryCode?: 'CL';
+  provinceCode?: string;
+  cityCode?: string;
+  postalCode?: string;
+  /** Override manual SOLO como fallback cuando AliExpress no entrega freight. */
+  manualShippingUsd?: number;
+}
+
+/** Injectable deps for tests; defaults use the real dropship service. */
+export interface PreviewDeps {
+  fx?: () => Promise<{ value: number; source?: string }>;
+  productGet?: (productId: string) => Promise<ProductGetResult>;
+  freightQuery?: (input: FreightQueryInput) => Promise<{ delivery_options?: { free_shipping?: boolean | string; shipping_fee_cent?: string }[] }>;
+  buyerFreightCalculate?: (input: BuyerFreightCalculateInput) => Promise<BuyerFreightResult>;
+  findDuplicate?: (aliexpressId: string) => Promise<string | null>;
+}
+
+/** Structured import logs: stages and IDs only — never tokens, secrets or raw provider payloads. */
+function logImport(stage: string, data: Record<string, unknown>): void {
+  try { console.info(`[aliexpress-import] ${stage}`, JSON.stringify(data)); } catch { /* logging must never break an import */ }
+}
+
+/** Safe, secret-free error label persisted to job items and returned to the UI. */
+export function sanitizeImportError(error: unknown): string {
+  if (error instanceof AliExpressOAuthError) return error.reason;
+  if (error instanceof AliExpressDropshipError) {
+    return error.providerCode ? `${error.reason}:${error.providerCode}` : error.reason;
+  }
+  return 'UNKNOWN';
+}
 
 export async function previewAliExpressProduct(
-  rawUrl: string, options: PreviewOptions = {}, deps: Pick<ServiceDeps, 'fx'> = { fx: getUsdClpRate },
+  rawUrl: string, options: PreviewOptions = {}, deps: PreviewDeps = {},
 ): Promise<ImportPreview> {
-  const { productId, sourceUrl } = parseAliExpressUrl(rawUrl);
+  const parsed = parseAliExpressUrl(rawUrl);
+  const { productId, skuId: urlSkuId, sourceUrl } = parsed;
+  logImport('URL recibida', { productId, skuId: urlSkuId ?? null });
   const marginPercent = marginSchema.catch(100).parse(options.marginPercent ?? 100);
   const quantity = z.number().int().min(1).max(10000).catch(1).parse(options.quantity ?? 1);
-  const [product, fxValue] = await Promise.all([
-    service.productGet(productId).catch(error => {
+  const productGet = deps.productGet ?? ((id: string) => service.productGet(id));
+  const fx = deps.fx ?? getUsdClpRate;
+  const [product, fxRate] = await Promise.all([
+    productGet(productId).catch(error => {
+      logImport('fallo en aliexpress.ds.product.get', { productId, error: sanitizeImportError(error) });
       if (error instanceof AliExpressDropshipError) throw error;
       throw new AliExpressDropshipError('TRANSPORT');
     }),
-    deps.fx().then(rate => rate.value),
+    fx(),
   ]);
+  logImport('respuesta de aliexpress.ds.product.get', {
+    productId, variants: product.ae_item_sku_info_dtos.length,
+    images: (product.ae_multimedia_info_dto?.image_urls || '').split(';').filter(Boolean).length,
+  });
+  // Freight for Chile via the official aliexpress.ds.freight.query. The provider
+  // contract requires the SKU: use the URL sku_id when present, otherwise the
+  // product's first SKU. ship_from=CL never implies free shipping — the real
+  // freight response decides.
+  const freightSkuId = options.selectedSkuId ?? urlSkuId
+    ?? (String(product.ae_item_sku_info_dtos[0]?.sku_id ?? '') || undefined);
+  if (!freightSkuId || !product.ae_item_sku_info_dtos.some(sku => sku.sku_id === freightSkuId)) {
+    throw new AliExpressDropshipError('INPUT');
+  }
+  logImport('método AliExpress utilizado', { method: 'aliexpress.ds.freight.query', productId, skuId: freightSkuId ?? null });
+  const freightQuery = deps.freightQuery ?? ((input: FreightQueryInput) => service.freightQuery(input));
   const [freight, duplicateOfProductId] = await Promise.all([
-    service.freightQuery({ productId, quantity }).catch(() => undefined),
-    findDuplicateProduct(productId),
+    freightQuery({ productId, quantity, shipToCountry: options.countryCode ?? 'CL',
+      ...(freightSkuId ? { selectedSkuId: freightSkuId } : {}),
+      ...(options.provinceCode ? { provinceCode: options.provinceCode } : {}),
+      ...(options.cityCode ? { cityCode: options.cityCode } : {}),
+    })
+      .catch(error => {
+        logImport('fallo en aliexpress.ds.freight.query', { productId, skuId: freightSkuId ?? null, error: sanitizeImportError(error) });
+        return undefined;
+      }),
+    (deps.findDuplicate ?? findDuplicateProduct)(productId),
   ]);
-  return buildImportPreview({ product, freight, sourceUrl, aliexpressId: productId, marginPercent, fxValue, duplicateOfProductId });
+  const freightOptions = freight?.delivery_options?.length ?? 0;
+  logImport('respuesta de aliexpress.ds.freight.query', { productId, deliveryOptions: freightOptions });
+  // Official fallback for products where aliexpress.ds.freight.query is rejected:
+  // aliexpress.logistics.buyer.freight.calculate (already-validated contract).
+  let effectiveFreight = freight;
+  if (!freightOptions) {
+    const buyerFreightCalc = deps.buyerFreightCalculate
+      ?? ((input: BuyerFreightCalculateInput) => service.buyerFreightCalculate(input));
+    logImport('método AliExpress utilizado', { method: 'aliexpress.logistics.buyer.freight.calculate', productId, skuId: freightSkuId ?? null });
+    effectiveFreight = await buyerFreightCalc({
+      product_id: productId, product_num: quantity, ...(freightSkuId ? { sku_id: freightSkuId } : {}),
+    }).then(result => {
+      const options = (result.aeop_freight_calculate_result_for_buyer_d_t_o_list || [])
+        .map(option => {
+          const cent = typeof option.freight?.cent === 'number'
+            ? option.freight.cent : parseAmountToCents(option.freight?.amount);
+          return cent === null ? null : {
+            free_shipping: cent === 0 ? 'true' : 'false', shipping_fee_cent: String(cent),
+          };
+        }).filter((o): o is { free_shipping: string; shipping_fee_cent: string } => o !== null);
+      logImport('respuesta de aliexpress.logistics.buyer.freight.calculate', { productId, deliveryOptions: options.length });
+      return options.length ? { delivery_options: options } : undefined;
+    }).catch(error => {
+      logImport('fallo en aliexpress.logistics.buyer.freight.calculate', {
+        productId, skuId: freightSkuId ?? null, error: sanitizeImportError(error),
+      });
+      return undefined;
+    });
+  }
+  return buildImportPreview({
+    product, freight: effectiveFreight, sourceUrl, aliexpressId: productId, marginPercent,
+    fxValue: fxRate.value, fxSource: fxRate.source,
+    manualShippingUsd: options.manualShippingUsd,
+    duplicateOfProductId, skuId: freightSkuId, quantity,
+  });
 }
 
 
@@ -296,6 +467,10 @@ export async function publishAliExpressProduct(options: PublishOptions, db: type
   const { preview, categoryId } = options;
   const marginPercent = marginSchema.parse(options.marginPercent ?? 100);
   if (preview.costUsdCents === null) throw new AliExpressDropshipError('INPUT');
+  if (preview.shippingUnknown || preview.shippingUsdCents === null) {
+    throw new AliExpressDropshipError('SHIPPING_UNKNOWN');
+  }
+  if (preview.salePriceClp === null) throw new AliExpressDropshipError('INPUT');
   const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true } });
   if (!category) throw new AliExpressDropshipError('INPUT');
   const duplicate = preview.duplicateOfProductId ?? await findDuplicateProduct(preview.aliexpressId, db);
@@ -320,7 +495,15 @@ export async function publishAliExpressProduct(options: PublishOptions, db: type
       aliexpressMarginPercent: marginPercent,
       aliexpressShippingUsdCents: preview.shippingUsdCents,
       aliexpressShippingUnknown: preview.shippingUnknown,
-      aliexpressSnapshot: preview.raw as object,
+      aliexpressSnapshot: {
+        ...(preview.raw as object),
+        acquisition: preview.acquisition,
+        shippingSource: preview.shippingSource,
+        shippingStatus: preview.shippingStatus,
+        destination: preview.destination,
+        fxRate: preview.fxRate,
+        fxSource: preview.fxSource,
+      } as object,
       status: options.publish ? 'PUBLISHED' : 'DRAFT',
       variants: { type: preview.variants } as object,
       productVariants: {
@@ -382,9 +565,10 @@ export async function processImportJob(jobId: string, db: typeof prisma = prisma
     if (!item) break;
     try {
       const preview = await previewAliExpressProduct(item.sourceUrl, { marginPercent: job.marginPercent });
-      if (preview.duplicateOfProductId || preview.shippingUnknown || !job.categoryId) {
-        throw new AliExpressDropshipError('INPUT');
-      }
+      logImport('item de cola', { jobId, itemId: item.id, productId: preview.aliexpressId });
+      if (preview.duplicateOfProductId) throw new AliExpressDropshipError('DUPLICATE');
+      if (preview.shippingUnknown) throw new AliExpressDropshipError('SHIPPING_UNKNOWN');
+      if (!job.categoryId) throw new AliExpressDropshipError('INPUT');
       const product = await publishAliExpressProduct({
         preview, categoryId: job.categoryId, marginPercent: job.marginPercent, publish: false,
       }, db);
@@ -393,12 +577,14 @@ export async function processImportJob(jobId: string, db: typeof prisma = prisma
         data: { status: 'DONE', aliexpressId: preview.aliexpressId, createdProductId: product.id, error: null },
       });
       succeeded += 1;
-    } catch {
+    } catch (error) {
+      const failureReason = sanitizeImportError(error);
+      logImport('item de cola falló', { jobId, itemId: item.id, error: failureReason });
       const attempts = item.attempts + 1;
       const done = attempts >= MAX_ATTEMPTS;
       await db.aliExpressImportJobItem.update({
         where: { id: item.id },
-        data: { status: done ? 'FAILED' : 'PENDING', attempts, error: null },
+        data: { status: done ? 'FAILED' : 'PENDING', attempts, error: failureReason },
       });
       if (done) failed += 1;
     }
@@ -426,7 +612,7 @@ export async function getImportJobStatus(jobId: string, db: typeof prisma = pris
       items: {
         orderBy: { createdAt: 'asc' },
         select: { id: true, sourceUrl: true, aliexpressId: true, status: true, attempts: true,
-          createdProductId: true, createdAt: true },
+          createdProductId: true, error: true, createdAt: true },
       },
     },
   });
@@ -546,11 +732,13 @@ export async function prepareAliExpressOrder(rawInput: unknown, db: typeof prism
 /**
  * EXECUTION (real `aliexpress.ds.order.create`). Requires, at the same time:
  *  1. the explicit confirm flag (admin action), and
- *  2. ALIEXPRESS_ORDER_EXECUTION=true in the backend environment.
- * Without both, nothing reaches AliExpress.
+ *  2. ALIEXPRESS_ORDER_EXECUTION=true in the backend environment, and
+ *  3. a Production runtime (NODE_ENV=production). Never enabled elsewhere.
+ * Without all three, nothing reaches AliExpress.
  */
 export async function executeAliExpressOrder(orderId: string, options: { confirm: boolean }, db: typeof prisma = prisma) {
   if (options.confirm !== true) throw new AliExpressDropshipError('NOT_CONFIRMED');
+  if (process.env.NODE_ENV !== 'production') throw new AliExpressDropshipError('BLOCKED');
   if (process.env.ALIEXPRESS_ORDER_EXECUTION !== 'true') throw new AliExpressDropshipError('BLOCKED');
   const snapshot = await db.aliExpressOrderSnapshot.findUnique({ where: { orderId } });
   if (!snapshot) throw new AliExpressDropshipError('INPUT');

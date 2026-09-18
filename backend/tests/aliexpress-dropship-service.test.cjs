@@ -75,8 +75,14 @@ test('buildImportPreview without freight keeps shipping unknown and no invented 
 test('order execution guards', async () => {
   const db = { aliExpressOrderSnapshot: { findUnique: async () => null } };
   await assert.rejects(() => service.executeAliExpressOrder('o1', { confirm: false }, db), { reason: 'NOT_CONFIRMED' });
+  delete process.env.NODE_ENV; // test runtime is NOT production
+
   process.env.ALIEXPRESS_ORDER_EXECUTION = 'false';
   await assert.rejects(() => service.executeAliExpressOrder('o1', { confirm: true }, db), { reason: 'BLOCKED' });
+  process.env.ALIEXPRESS_ORDER_EXECUTION = 'true';
+  // Execution flag alone is NOT enough: outside Production it stays blocked.
+  await assert.rejects(() => service.executeAliExpressOrder('o1', { confirm: true }, db), { reason: 'BLOCKED' });
+
   await assert.rejects(() => service.prepareAliExpressOrder({ orderId: 'nope' }, { order: { findUnique: async () => null } }), { reason: 'INPUT' });
   delete process.env.ALIEXPRESS_ORDER_EXECUTION;
 });
