@@ -30,7 +30,7 @@ import {
 } from '../aliexpress/yesyes-pricing';
 import { matchesAliExpressProduct, parseAliExpressUrl } from '../aliexpress/product-url';
 
-export { AliExpressDropshipError, MARGIN_PRESETS };
+export { AliExpressDropshipError, MARGIN_PRESETS, resolveCategory };
 
 /** Resolved client bound to one authorised AliExpress account. */
 export interface DropshipClientFactory {
@@ -752,10 +752,74 @@ export async function previewAliExpressProduct(
     shippingError: freightQueryFailed,
   });
 }
+// ─── Category resolution (auto, no frontend input) ────────────────────────────
+// Sources in order: AliExpress category_id → controlled keywords → General.
+// AliExpress category_id → slug `ae-{category_id}` (stable, reutilizable).
+// Keywords → predefined/allowed slugs only. No arbitrary slugs from titles.
+
+type AEKeywordCategory = { slug: string; name: string; keywords: string[] };
+
+const AE_KEYWORD_CATEGORIES: AEKeywordCategory[] = [
+  { slug: 'electronics', name: 'Electrónica', keywords: ['electronic', 'phone', 'smartphone', 'mobile', 'charger', 'cable', 'headphone', 'earphone', 'speaker', 'tablet', 'laptop', 'computer', 'camera', 'camara', 'telephone', 'teléfono', 'battery', 'power bank', 'usb', 'adapter', 'screen', 'monitor', 'mouse', 'keyboard'] },
+  { slug: 'fashion', name: 'Moda', keywords: ['shirt', 'pants', 'jeans', 'dress', 'robe', 'camiseta', 'polo', 'zapatos', 'zapato', 'zapatilla', 'shoes', 'shoe', 'sneaker', 'sandals', 'remeras', 'sudaderas', 'hoodie', 'chaqueta', 'jacket', 'calcetines', 'socks', 'skirt', 'falda', 'blouse', 'blusa', 'bermudas', 'short', 'shorts', 'vest', 'sueter', 'sweatshirt', 'mochila', 'bolso', 'gorra', 'cap'] },
+  { slug: 'home', name: 'Hogar', keywords: ['casa', 'home', 'mesa', 'chair', 'silla', 'lamp', 'lámpara', 'bed', 'cama', 'sofa', 'sofá', 'decor', 'decoración', 'kitchen', 'cocina', 'bathroom', 'baño', 'curtain', 'cortina', 'rug', 'alfombra', 'pillow', 'almohada', 'frame', 'marco', 'organizer', 'organizador', 'shelf', 'estante'] },
+  { slug: 'beauty', name: 'Belleza', keywords: ['beauty', 'makeup', 'maquillaje', 'skincare', 'crema', 'perfume', 'perfumería', 'cosmetic', 'cosmética', 'hair', 'cabello', 'shampoo', 'acondicionador', 'lipstick', 'labial', 'blush', 'bronceador', 'serum', 'mascarilla'] },
+  { slug: 'toys', name: 'Juguetes', keywords: ['toy', 'juguete', 'juguetes', 'game', 'juego', 'juegos', 'puzzle', 'peluche', 'stuffed', 'doll', 'muñeca', 'action figure', 'figura', 'board game', 'rompecabezas'] },
+  { slug: 'sports', name: 'Deportes', keywords: ['sports', 'sport', 'deporte', 'deportes', 'fitness', 'gym', 'yoga', 'exercise', 'ejercicio', 'bicycle', 'bicicleta', 'treadmill', 'elíptica', 'dumbbell', 'pesas', 'ball', 'balón', 'raqueta', 'chute', 'fútbol'] },
+  { slug: 'office', name: 'Oficina', keywords: ['office', 'oficina', 'paper', 'papel', 'pen', 'bolígrafo', 'notebook', 'cuaderno', 'binder', 'carpeta', 'folder', 'desk', 'escritorio', 'stapler', 'clip', 'corrector', 'calculadora'] },
+];
+
+async function resolveCategory(
+  preview: ImportPreview,
+  db: typeof prisma = prisma,
+): Promise<string> {
+  // 1) AliExpress category_id → ae-{category_id} (upsert atómico, slug único)
+  if (preview.categoryId) {
+    const slug = `ae-${preview.categoryId}`;
+    const category = await db.category.upsert({
+      where: { slug },
+      create: { name: `AliExpress #${preview.categoryId}`, slug },
+      update: {},
+      select: { id: true },
+    });
+    return category.id;
+  }
+
+  // 2) Keyword detection (solo categorías predefinidas/permitidas)
+  // Normalización: minúsculas + sin diacríticos ("Cámara" → "camara").
+  // Matching por palabra completa (\b) para evitar falsos positivos
+  // (ej: "phone" dentro de "xylophone").
+  const title = preview.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const matchesKeyword = (kw: string) => {
+    const norm = kw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return new RegExp(`\\b${norm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(title);
+  };
+  for (const cat of AE_KEYWORD_CATEGORIES) {
+    if (cat.keywords.some(matchesKeyword)) {
+      const category = await db.category.upsert({
+        where: { slug: cat.slug },
+        create: { name: cat.name, slug: cat.slug },
+        update: {},
+        select: { id: true },
+      });
+      return category.id;
+    }
+  }
+
+  // 3) Fallback → General
+  const general = await db.category.upsert({
+    where: { slug: 'general' },
+    create: { name: 'General', slug: 'general' },
+    update: {},
+    select: { id: true },
+  });
+  return general.id;
+}
+
 
 
 export interface PublishOptions {
-  categoryId: string;
+  categoryId?: string;
   marginPercent?: number;
   publish?: boolean;
   preview: ImportPreview;
@@ -772,10 +836,13 @@ export async function publishAliExpressProduct(options: PublishOptions, db: type
     throw new AliExpressDropshipError('SHIPPING_UNKNOWN');
   }
   if (preview.salePriceClp === null) throw new AliExpressDropshipError('INPUT');
-  const category = await db.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+  // Resolver categoría automáticamente si no se proporcionó (frontend ya no lo envía)
+  const resolvedCategoryId = categoryId ?? await resolveCategory(preview, db);
+  const category = await db.category.findUnique({ where: { id: resolvedCategoryId }, select: { id: true } });
   if (!category) throw new AliExpressDropshipError('INPUT');
   const duplicate = preview.duplicateOfProductId ?? await findDuplicateProduct(preview.aliexpressId, db);
   if (duplicate) throw new AliExpressDropshipError('INPUT');
+  // salePrice SIEMPRE del motor de precios YesYes (preview ya lo calcula con margen).
   const salePrice = preview.salePriceClp ?? 0;
   const costUsd = preview.costUsdCents / 100;
   // Persistencia: shippingCost/totalCost guardan COSTO PROVEEDOR (sin US$10).
@@ -785,7 +852,7 @@ export async function publishAliExpressProduct(options: PublishOptions, db: type
     data: {
       name: preview.name, slug: slugify(preview.name, preview.aliexpressId),
       description: preview.description || preview.name,
-      images: preview.images, video: preview.video ?? null, categoryId,
+      images: preview.images, video: preview.video ?? null, categoryId: resolvedCategoryId,
       tags: ['aliexpress'], supplier: 'ALIEXPRESS',
       supplierProductId: preview.aliexpressId, supplierUrl: preview.sourceUrl,
       aliexpressId: preview.aliexpressId, aliexpressUrl: preview.sourceUrl,
@@ -878,9 +945,11 @@ export async function processImportJob(jobId: string, db: typeof prisma = prisma
       logImport('item de cola', { jobId, itemId: item.id, productId: preview.aliexpressId });
       if (preview.duplicateOfProductId) throw new AliExpressDropshipError('DUPLICATE');
       if (preview.shippingUnknown) throw new AliExpressDropshipError('SHIPPING_UNKNOWN');
-      if (!job.categoryId) throw new AliExpressDropshipError('INPUT');
+      // Si el job no tiene categoryId, resolver por producto (reutiliza misma categoría
+      // para productos con mismo category_id; keywords/general para el resto)
+      const itemCategoryId = job.categoryId ?? await resolveCategory(preview, db);
       const product = await publishAliExpressProduct({
-        preview, categoryId: job.categoryId, marginPercent: job.marginPercent, publish: false,
+        preview, categoryId: itemCategoryId, marginPercent: job.marginPercent, publish: false,
       }, db);
       await db.aliExpressImportJobItem.update({
         where: { id: item.id },

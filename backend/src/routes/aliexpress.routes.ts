@@ -139,7 +139,7 @@ const importRoutes = (router: Router, preview = previewAliExpressProduct) => {
     catch (error) { next(error); }
   });
   router.post('/dropship/import/publish', async (req, res, next) => {
-    const input = z.object({ categoryId: z.string().trim().min(1).max(64),
+    const input = z.object({ categoryId: z.string().trim().max(64).optional(),
       marginPercent: z.number().int().min(0).max(10000).optional(),
       publish: z.boolean().optional(), preview: z.record(z.unknown()) }).strict().safeParse(req.body);
     if (!input.success) { res.status(400).json({ message: 'Datos de publicacion invalidos.' }); return; }

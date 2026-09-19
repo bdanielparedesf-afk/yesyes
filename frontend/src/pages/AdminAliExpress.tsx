@@ -154,7 +154,6 @@ export default function AdminAliExpress() {
   const [quotedKey, setQuotedKey] = useState('');
   const [margin, setMargin] = useState(100);
   const [customMargin, setCustomMargin] = useState('');
-  const [categoryId, setCategoryId] = useState('');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [bulkUrls, setBulkUrls] = useState('');
   const [job, setJob] = useState<ImportJob | null>(null);
@@ -262,7 +261,7 @@ export default function AdminAliExpress() {
     setBusy(true); setError('');
     try {
       await api.post('/admin/aliexpress/dropship/import/publish',
-        { categoryId, marginPercent: effectiveMargin, publish: publishFlag, preview });
+        { marginPercent: effectiveMargin, publish: publishFlag, preview });
       setMessage(publishFlag ? 'Producto publicado.' : 'Producto guardado como borrador.');
       setPreview(null);
     } catch { setError('No fue posible publicar el producto.'); }
@@ -275,7 +274,7 @@ export default function AdminAliExpress() {
     setBusy(true); setError('');
     try {
       const data = await api.post<{ id: string }>('/admin/aliexpress/dropship/import/jobs',
-        { urls, marginPercent: effectiveMargin, categoryId: categoryId || null });
+        { urls, marginPercent: effectiveMargin });
       const jobId = data.data.id;
       setMessage(`Cola creada (${jobId}). Procesando...`);
       setBulkUrls('');
@@ -388,13 +387,14 @@ export default function AdminAliExpress() {
         <input value={customMargin} onChange={e => setCustomMargin(e.target.value.replace(/[^0-9]/g, ''))}
           placeholder="Personalizado" className="w-28 border rounded-lg px-3 py-1 text-sm" />
       </div>
-      <input value={categoryId} onChange={e => setCategoryId(e.target.value)}
-        placeholder="ID de categoria YesYes" className="border rounded-lg px-3 py-2 w-full" />
       {preview && <PreviewCard preview={preview} />}
+      {preview && (preview.categoryId
+        ? <p className="text-sm text-gray-600"><span className="font-medium">Categoría asignada:</span> {preview.categoryId}</p>
+        : <p className="text-sm text-gray-400">Categoría: se asignará automáticamente al publicar.</p>)}
       {preview && <div className="flex gap-3">
-        <button disabled={busy || !categoryId.trim() || Boolean(preview.duplicateOfProductId)} onClick={() => void publish(false)}
+        <button disabled={busy || Boolean(preview.duplicateOfProductId)} onClick={() => void publish(false)}
           className="border rounded-lg px-4 py-2 disabled:opacity-50">Guardar borrador</button>
-        <button disabled={busy || !categoryId.trim() || Boolean(preview.duplicateOfProductId)} onClick={() => void publish(true)}
+        <button disabled={busy || Boolean(preview.duplicateOfProductId)} onClick={() => void publish(true)}
           className="bg-gray-900 text-white rounded-lg px-4 py-2 disabled:opacity-50">Publicar</button>
       </div>}
     </section>
@@ -403,7 +403,7 @@ export default function AdminAliExpress() {
       <h2 className="text-lg font-semibold flex items-center gap-2"><PackageCheck size={18} /> Importacion masiva</h2>
       <textarea value={bulkUrls} onChange={e => setBulkUrls(e.target.value)} rows={4}
         placeholder="Una URL por linea (maximo 50)" className="w-full border rounded-lg px-3 py-2" />
-      <button disabled={busy || !bulkUrls.trim() || !categoryId.trim()} onClick={() => void startBulkImport()}
+      <button disabled={busy || !bulkUrls.trim()} onClick={() => void startBulkImport()}
         className="bg-gray-900 text-white rounded-lg px-4 py-2 disabled:opacity-50">Encolar importacion</button>
       {job && <div className="border rounded-lg p-3 text-sm space-y-2">
         <p>Progreso: {job.processed}/{job.total} · OK {job.succeeded} · Fallos {job.failed} · Estado {job.status}</p>
