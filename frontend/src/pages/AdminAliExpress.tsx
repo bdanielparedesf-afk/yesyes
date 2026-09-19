@@ -156,12 +156,79 @@ export default function AdminAliExpress() {
   const [customMargin, setCustomMargin] = useState('');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [bulkUrls, setBulkUrls] = useState('');
+  const [bulkMargin, setBulkMargin] = useState(50);
+  const [bulkCustomMargin, setBulkCustomMargin] = useState('');
+  const [bulkPreviews, setBulkPreviews] = useState<{ url: string; preview: ImportPreview | null }[]>([]);
   const [job, setJob] = useState<ImportJob | null>(null);
   const [syncStats, setSyncStats] = useState<SyncStatsData | null>(null);
   const [syncLogs, setSyncLogs] = useState<SyncLogData[] | null>(null);
   const [syncInterval, setSyncInterval] = useState('60');
   const isAdmin = status === 'authenticated' && user?.role === 'ADMIN';
   const effectiveMargin = customMargin !== '' ? Number(customMargin) : margin;
+  // Margen del importador masivo: independiente del importador individual,
+  // con límites 50–400% y valor predeterminado 50%.
+  const bulkEffectiveMargin = bulkCustomMargin !== '' ? Number(bulkCustomMargin) : bulkMargin;
+  const bulkMarginValid = Number.isInteger(bulkEffectiveMargin)
+    && bulkEffectiveMargin >= 50 && bulkEffectiveMargin <= 400;
+
+  /**
+   * Recalcula la fila de un producto de la carga usando el MISMO motor que el
+   * backend (base = producto + envío confirmado; venta = base × (1 + m/100),
+   * convertida por FX y redondeada). Solo cambia el porcentaje: NO vuelve a
+   * consultar AliExpress, usa los datos ya obtenidos en la vista previa.
+   */
+  function bulkRow(entry: { url: string; preview: ImportPreview | null }, marginPercent: number) {
+    const preview = entry.preview;
+    if (!preview || preview.supplierProductCostUsdCents === null || !preview.fxRate) return null;
+    const shippingKnown = preview.supplierShippingCostUsdCents !== null && !preview.shippingUnknown;
+    // Sin envío confirmado, el fallback comercial US$10 nunca entra en la base del margen
+    // (misma regla del motor YesYes): la base es solo el costo del producto.
+    const baseCents = preview.supplierProductCostUsdCents
+      + (shippingKnown ? preview.supplierShippingCostUsdCents! : 0);
+    const fx = preview.fxRate;
+    const costClp = Math.round(baseCents / 100 * fx);
+    const saleClp = Math.round(baseCents * (1 + marginPercent / 100) / 100 * fx);
+    return {
+      url: entry.url, name: preview.name,
+      aliexpressId: preview.aliexpressId,
+      productCostUsd: preview.supplierProductCostUsdCents / 100,
+      shippingUsd: shippingKnown ? preview.supplierShippingCostUsdCents! / 100 : null,
+      shippingKnown,
+      totalCostUsd: baseCents / 100,
+      fx, costClp, saleClp,
+      profitClp: saleClp - costClp,
+      duplicateOfProductId: preview.duplicateOfProductId,
+    };
+  }
+  const bulkRows = bulkPreviews.map(entry => bulkRow(entry, bulkEffectiveMargin));
+  const okBulkRows = bulkRows.filter((r): r is NonNullable<typeof r> => r !== null);
+  const bulkSummary = {
+    products: bulkPreviews.length,
+    cost: okBulkRows.reduce((a, r) => a + r.costClp, 0),
+    sale: okBulkRows.reduce((a, r) => a + r.saleClp, 0),
+    profit: okBulkRows.reduce((a, r) => a + r.profitClp, 0),
+  };
+
+  async function loadBulkPreviews() {
+    const urls = bulkUrls.split(/\s+/).map(u => u.trim()).filter(Boolean);
+    if (!urls.length) { setError('Ingresa al menos una URL.'); return; }
+    if (!bulkMarginValid) { setError('El margen debe estar entre 50% y 400%.'); return; }
+    setBusy(true); setError('');
+    try {
+      const results: { url: string; preview: ImportPreview | null }[] = [];
+      // Una sola consulta a AliExpress por URL: el porcentaje se aplica/recalcula
+      // en el cliente sin volver a pedir la cotización.
+      for (const url of urls.slice(0, 50)) {
+        try {
+          const data = await api.post<ImportPreview>('/admin/aliexpress/dropship/import/preview',
+            { url, marginPercent: bulkEffectiveMargin });
+          results.push({ url, preview: data.data });
+        } catch { results.push({ url, preview: null }); }
+      }
+      setBulkPreviews(results);
+    } finally { setBusy(false); }
+  }
+
   // UI simplificada: la cotización depende solo de URL + margen.
   // SKU, cantidad (1), destino (CL) y freight los genera el backend.
   const quoteKey = (url: string) => JSON.stringify([url.trim(), effectiveMargin]);
@@ -268,13 +335,21 @@ export default function AdminAliExpress() {
     finally { setBusy(false); }
   }
 
+const ITEM_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Pendiente', PROCESSING: 'Procesando', DONE: 'Publicado', FAILED: 'Error',
+};
+const JOB_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Pendiente', RUNNING: 'Procesando', DONE: 'Completado',
+};
+
   async function startBulkImport() {
+    if (!bulkMarginValid) { setError('El margen debe estar entre 50% y 400%.'); return; }
     const urls = bulkUrls.split(/\s+/).map(u => u.trim()).filter(Boolean);
     if (!urls.length) { setError('Ingresa al menos una URL.'); return; }
     setBusy(true); setError('');
     try {
       const data = await api.post<{ id: string }>('/admin/aliexpress/dropship/import/jobs',
-        { urls, marginPercent: effectiveMargin });
+        { urls, marginPercent: bulkEffectiveMargin });
       const jobId = data.data.id;
       setMessage(`Cola creada (${jobId}). Procesando...`);
       setBulkUrls('');
@@ -403,15 +478,51 @@ export default function AdminAliExpress() {
       <h2 className="text-lg font-semibold flex items-center gap-2"><PackageCheck size={18} /> Importacion masiva</h2>
       <textarea value={bulkUrls} onChange={e => setBulkUrls(e.target.value)} rows={4}
         placeholder="Una URL por linea (maximo 50)" className="w-full border rounded-lg px-3 py-2" />
-      <button disabled={busy || !bulkUrls.trim()} onClick={() => void startBulkImport()}
-        className="bg-gray-900 text-white rounded-lg px-4 py-2 disabled:opacity-50">Encolar importacion</button>
+      <div className="flex flex-wrap gap-2 items-center text-sm">
+        <span className="text-gray-500">Margen de ganancia:</span>
+        {MARGINS.map(m => <button key={m} onClick={() => { setBulkMargin(m); setBulkCustomMargin(''); }}
+          className={`px-3 py-1 rounded-full border ${!bulkCustomMargin && bulkMargin === m ? 'bg-gray-900 text-white' : ''}`}>{m}%</button>)}
+        <input value={bulkCustomMargin} onChange={e => setBulkCustomMargin(e.target.value.replace(/[^0-9]/g, ''))}
+          placeholder="Personalizado" className="w-28 border rounded-lg px-3 py-1" />
+        <span className="font-medium">Margen aplicado: {Number.isInteger(bulkEffectiveMargin) ? bulkEffectiveMargin : '—'}%</span>
+        {!bulkMarginValid && <span className="text-red-700">El margen debe estar entre 50% y 400%.</span>}
+      </div>
+      <div className="flex gap-3">
+        <button disabled={busy || !bulkUrls.trim() || !bulkMarginValid} onClick={() => void loadBulkPreviews()}
+          className="border rounded-lg px-4 py-2 disabled:opacity-50">Previsualizar carga</button>
+        <button disabled={busy || !bulkUrls.trim() || !bulkMarginValid} onClick={() => void startBulkImport()}
+          className="bg-gray-900 text-white rounded-lg px-4 py-2 disabled:opacity-50">Encolar importacion</button>
+      </div>
+      {bulkPreviews.length > 0 && <div className="border rounded-lg p-3 text-sm space-y-2">
+        <div className="grid grid-cols-6 gap-2 font-medium border-b pb-1">
+          <span className="col-span-2">Producto</span>
+          <span>Precio AE</span><span>Envío</span><span>Costo total</span><span>Precio venta (CLP)</span>
+        </div>
+        {bulkRows.map((row, i) => row === null
+          ? <div key={bulkPreviews[i].url} className="text-red-700 border-b py-1">No fue posible previsualizar {bulkPreviews[i].url}</div>
+          : <div key={row.url} className="grid grid-cols-6 gap-2 border-b py-1">
+            <span className="col-span-2 truncate" title={row.url}>{row.name}{row.duplicateOfProductId && ' · ya importado'}</span>
+            <span>${row.productCostUsd.toFixed(2)}</span>
+            <span>{row.shippingKnown ? `$${row.shippingUsd!.toFixed(2)}` : 'n/d'}</span>
+            <span>${row.totalCostUsd.toFixed(2)}{!row.shippingKnown && '*'}</span>
+            <span>${row.saleClp.toLocaleString('es-CL')}</span>
+          </div>)}
+        <p className="text-xs text-gray-500">* Sin cotización de envío confirmada: el respaldo comercial US$10 no entra en la base del margen (regla YesYes). Ganancia estimada = venta − costo.</p>
+        <div className="flex flex-wrap gap-4 pt-1 font-medium">
+          <span>Productos: {bulkSummary.products}</span>
+          <span>Costo total: ${bulkSummary.cost.toLocaleString('es-CL')}</span>
+          <span>Venta estimada: ${bulkSummary.sale.toLocaleString('es-CL')}</span>
+          <span>Ganancia estimada: ${bulkSummary.profit.toLocaleString('es-CL')}</span>
+        </div>
+      </div>}
+
       {job && <div className="border rounded-lg p-3 text-sm space-y-2">
-        <p>Progreso: {job.processed}/{job.total} · OK {job.succeeded} · Fallos {job.failed} · Estado {job.status}</p>
+        <p>Progreso: {job.processed}/{job.total} · OK {job.succeeded} · Fallos {job.failed} · Estado {JOB_STATUS_LABELS[job.status] ?? job.status}</p>
         <div className="space-y-1 max-h-40 overflow-auto">
           {job.items.map(item => <div key={item.id} className="flex justify-between gap-2 border-b py-1">
             <span className="truncate" title={item.error ?? undefined}>{item.sourceUrl}</span>
             <span className={item.status === 'DONE' ? 'text-green-700' : item.status === 'FAILED' ? 'text-red-700' : 'text-gray-500'}>
-              {item.status}{item.error && ` · ${item.error}`}
+              {ITEM_STATUS_LABELS[item.status] ?? item.status}{item.error && ` · ${item.error}`}
               {item.status === 'FAILED' && <button onClick={() => void retryItem(item.id)} className="underline ml-2">Reintentar</button>}
             </span>
           </div>)}

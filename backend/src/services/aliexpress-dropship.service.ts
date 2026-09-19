@@ -769,16 +769,52 @@ const AE_KEYWORD_CATEGORIES: AEKeywordCategory[] = [
   { slug: 'office', name: 'Oficina', keywords: ['office', 'oficina', 'paper', 'papel', 'pen', 'bolígrafo', 'notebook', 'cuaderno', 'binder', 'carpeta', 'folder', 'desk', 'escritorio', 'stapler', 'clip', 'corrector', 'calculadora'] },
 ];
 
+// Normalización: minúsculas + sin diacríticos ("Cámara" → "camara").
+// Matching por palabra completa (\b) para evitar falsos positivos
+// (ej: "phone" dentro de "xylophone").
+function detectFriendlyCategory(title: string): AEKeywordCategory | null {
+  const normalized = title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const matchesKeyword = (kw: string) => {
+    const norm = kw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return new RegExp(`\\b${norm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(normalized);
+  };
+  for (const cat of AE_KEYWORD_CATEGORIES) {
+    if (cat.keywords.some(matchesKeyword)) return cat;
+  }
+  return null;
+}
+
+/** Nombre visible amigable para una categoría creada a partir de AliExpress
+ * (categorías controladas/predefinidas existentes). `null` → usar `General`. */
+export function detectFriendlyCategoryName(title: string): string | null {
+  return detectFriendlyCategory(title)?.name ?? null;
+}
+
 async function resolveCategory(
   preview: ImportPreview,
   db: typeof prisma = prisma,
 ): Promise<string> {
-  // 1) AliExpress category_id → ae-{category_id} (upsert atómico, slug único)
+  // 1) AliExpress category_id → slug `ae-{category_id}` (asociación estable,
+  // reutilizable) PERO nombre visible amigable: nunca "AliExpress #ID".
+  // Resolución del nombre: categorías controladas/predefinidas existentes
+  // (keywords del título del producto) y, si no hay coincidencia, `General`.
   if (preview.categoryId) {
     const slug = `ae-${preview.categoryId}`;
+    const existing = await db.category.findUnique({
+      where: { slug },
+      select: { id: true, name: true },
+    }).catch(() => null);
+    const friendlyName = detectFriendlyCategoryName(preview.name) ?? 'General';
+    if (existing) {
+      // Autocuración: categorías heredadas creadas como "AliExpress #...".
+      if (/^AliExpress #/i.test(existing.name)) {
+        await db.category.update({ where: { slug }, data: { name: friendlyName } });
+      }
+      return existing.id;
+    }
     const category = await db.category.upsert({
       where: { slug },
-      create: { name: `AliExpress #${preview.categoryId}`, slug },
+      create: { name: friendlyName, slug },
       update: {},
       select: { id: true },
     });
@@ -786,24 +822,15 @@ async function resolveCategory(
   }
 
   // 2) Keyword detection (solo categorías predefinidas/permitidas)
-  // Normalización: minúsculas + sin diacríticos ("Cámara" → "camara").
-  // Matching por palabra completa (\b) para evitar falsos positivos
-  // (ej: "phone" dentro de "xylophone").
-  const title = preview.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const matchesKeyword = (kw: string) => {
-    const norm = kw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    return new RegExp(`\\b${norm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(title);
-  };
-  for (const cat of AE_KEYWORD_CATEGORIES) {
-    if (cat.keywords.some(matchesKeyword)) {
-      const category = await db.category.upsert({
-        where: { slug: cat.slug },
-        create: { name: cat.name, slug: cat.slug },
-        update: {},
-        select: { id: true },
-      });
-      return category.id;
-    }
+  const matched = detectFriendlyCategory(preview.name);
+  if (matched) {
+    const category = await db.category.upsert({
+      where: { slug: matched.slug },
+      create: { name: matched.name, slug: matched.slug },
+      update: {},
+      select: { id: true },
+    });
+    return category.id;
   }
 
   // 3) Fallback → General
@@ -917,10 +944,13 @@ export async function createImportJob(input: {
   urls: string[]; marginPercent?: number; categoryId?: string | null; createdBy?: string;
 }, db: typeof prisma = prisma) {
   const urls = urlsSchema.parse(input.urls);
-  const marginPercent = marginSchema.catch(100).parse(input.marginPercent ?? 100);
+  // Margen del importador masivo: estricto 50–400% (predeterminado 50%). El resto
+  // del sistema (import individual, sync) sigue usando marginSchema sin cambio.
+  const marginPercent = z.number().int().min(50).max(400).safeParse(input.marginPercent ?? 50);
+  if (!marginPercent.success) throw new AliExpressDropshipError('INPUT');
   return db.aliExpressImportJob.create({
     data: {
-      marginPercent, categoryId: input.categoryId ?? null, createdBy: input.createdBy ?? null,
+      marginPercent: marginPercent.data, categoryId: input.categoryId ?? null, createdBy: input.createdBy ?? null,
       total: urls.length, items: { create: urls.map(sourceUrl => ({ sourceUrl })) },
     },
     select: { id: true, total: true },
@@ -930,11 +960,23 @@ export async function createImportJob(input: {
 const RATE_LIMIT_DELAY_MS = 700;
 const MAX_ATTEMPTS = 3;
 
+export interface ImportJobDeps {
+  preview?: typeof previewAliExpressProduct;
+  publish?: typeof publishAliExpressProduct;
+  rateLimitMs?: number;
+}
+
 /**
  * Processes queue items one by one. A failed item never stops the queue;
  * failures are retried up to MAX_ATTEMPTS via retryImportJobItem.
+ * Concurrency-safe: each item is claimed atomically (PENDING → PROCESSING) so
+ * two workers on the same job can never process the same item twice.
  */
-export async function processImportJob(jobId: string, db: typeof prisma = prisma): Promise<void> {
+export async function processImportJob(jobId: string, db: typeof prisma = prisma,
+  deps: ImportJobDeps = {}): Promise<void> {
+  const previewFor = deps.preview ?? previewAliExpressProduct;
+  const publishFor = deps.publish ?? publishAliExpressProduct;
+  const rateLimitMs = deps.rateLimitMs ?? RATE_LIMIT_DELAY_MS;
   const job = await db.aliExpressImportJob.findUnique({ where: { id: jobId } });
   if (!job) throw new AliExpressDropshipError('INPUT');
   await db.aliExpressImportJob.update({ where: { id: jobId }, data: { status: 'RUNNING' } });
@@ -945,16 +987,21 @@ export async function processImportJob(jobId: string, db: typeof prisma = prisma
       orderBy: { createdAt: 'asc' },
     });
     if (!item) break;
+    // Claim atómico: solo un worker puede llevar PENDING → PROCESSING.
+    const claimed = await db.aliExpressImportJobItem.updateMany({
+      where: { id: item.id, status: 'PENDING' }, data: { status: 'PROCESSING' },
+    });
+    if (claimed.count === 0) continue; // otro worker lo tomó primero
     try {
-      const preview = await previewAliExpressProduct(item.sourceUrl, { marginPercent: job.marginPercent });
+      const preview = await previewFor(item.sourceUrl, { marginPercent: job.marginPercent });
       logImport('item de cola', { jobId, itemId: item.id, productId: preview.aliexpressId });
       if (preview.duplicateOfProductId) throw new AliExpressDropshipError('DUPLICATE');
       if (preview.shippingUnknown) throw new AliExpressDropshipError('SHIPPING_UNKNOWN');
       // Si el job no tiene categoryId, resolver por producto (reutiliza misma categoría
       // para productos con mismo category_id; keywords/general para el resto)
       const itemCategoryId = job.categoryId ?? await resolveCategory(preview, db);
-      const product = await publishAliExpressProduct({
-        preview, categoryId: itemCategoryId, marginPercent: job.marginPercent, publish: false,
+      const product = await publishFor({
+        preview, categoryId: itemCategoryId, marginPercent: job.marginPercent, publish: true,
       }, db);
       await db.aliExpressImportJobItem.update({
         where: { id: item.id },
@@ -964,28 +1011,43 @@ export async function processImportJob(jobId: string, db: typeof prisma = prisma
     } catch (error) {
       const failureReason = sanitizeImportError(error);
       logImport('item de cola falló', { jobId, itemId: item.id, error: failureReason });
-      const attempts = item.attempts + 1;
-      const done = attempts >= MAX_ATTEMPTS;
-      await db.aliExpressImportJobItem.update({
-        where: { id: item.id },
-        data: { status: done ? 'FAILED' : 'PENDING', attempts, error: failureReason },
-      });
-      if (done) failed += 1;
+      if (failureReason === 'DUPLICATE') {
+        // Determinista: reintentar no cambia el resultado; fallar de inmediato
+        // sin crear duplicados ni gastar llamadas al proveedor.
+        await db.aliExpressImportJobItem.update({
+          where: { id: item.id },
+          data: { status: 'FAILED', attempts: MAX_ATTEMPTS, error: failureReason },
+        });
+        failed += 1;
+      } else {
+        const attempts = item.attempts + 1;
+        const done = attempts >= MAX_ATTEMPTS;
+        await db.aliExpressImportJobItem.updateMany({
+          where: { id: item.id, status: 'PROCESSING' },
+          data: { status: done ? 'FAILED' : 'PENDING', attempts, error: failureReason },
+        });
+        if (done) failed += 1;
+      }
     }
     processed += 1;
     await db.aliExpressImportJob.update({ where: { id: jobId }, data: { processed, succeeded, failed } });
-    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
+    await new Promise(resolve => setTimeout(resolve, rateLimitMs));
   }
   await db.aliExpressImportJob.update({ where: { id: jobId }, data: { status: 'DONE' } });
 }
 
-export async function retryImportJobItem(itemId: string, db: typeof prisma = prisma) {
+export async function retryImportJobItem(itemId: string, db: typeof prisma = prisma,
+  deps: ImportJobDeps = {}) {
   const item = await db.aliExpressImportJobItem.findUnique({ where: { id: itemId } });
   if (!item) throw new AliExpressDropshipError('INPUT');
-  return db.aliExpressImportJobItem.update({
+  const updated = await db.aliExpressImportJobItem.update({
     where: { id: itemId }, data: { status: 'PENDING', attempts: 0, error: null },
     select: { id: true, status: true },
   });
+  // Si el job ya estaba DONE no hay worker vivo: relanzar el procesamiento
+  // para que el ítem reencolado se procese (los CLAIM atómicos evitan duplicar).
+  if (item.jobId) void processImportJob(item.jobId, db, deps).catch(() => undefined);
+  return updated;
 }
 
 /** Progress snapshot for the admin UI: job counters + per-item rows. */

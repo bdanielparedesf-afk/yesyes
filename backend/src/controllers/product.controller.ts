@@ -178,7 +178,8 @@ async function fetchPublishedProducts(db: typeof prisma, whereExtra: any, take: 
   return db.product.findMany({
     where: { status: 'PUBLISHED', hidden: false, ...whereExtra },
     take,
-    orderBy,
+    // Prisma exige orderBy como array de objetos de un solo campo.
+    orderBy: Array.isArray(orderBy) ? orderBy : [orderBy],
     include: HOME_PRODUCT_INCLUDE,
   });
 }
@@ -197,13 +198,13 @@ export async function buildHomeData(db: typeof prisma) {
   const [categories, featured, latest, offers, uncategorized] = await Promise.all([
     db.category.findMany({
       where: { active: true },
-      orderBy: { order: 'asc', name: 'asc' },
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
       include: { _count: { select: { products: true } } },
     }),
     fetchPublishedProducts(db, { isFeatured: true }, 8, { createdAt: 'desc' }),
     fetchPublishedProducts(db, {}, 12, { createdAt: 'desc' }),
     fetchPublishedProducts(db, { isOffer: true }, 8, { createdAt: 'desc' }),
-    fetchPublishedProducts(db, { collectionId: null }, 8, { createdAt: 'desc', id: 'desc' }),
+    fetchPublishedProducts(db, { collectionId: null }, 8, [{ createdAt: 'desc' }, { id: 'desc' }]),
   ]);
 
   const categoriesWithProduct = categories.filter((c: any) => c._count.products > 0);

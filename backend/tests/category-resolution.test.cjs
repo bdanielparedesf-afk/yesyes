@@ -99,16 +99,40 @@ function freshDb(upsertOverride) {
   };
 }
 
-// ── 1. category_id AliExpress existente → reutilizar ────────────────────────
-test('category_id AliExpress existente → reutilizar', async () => {
-  const db = freshDb(async (categories, { where, create, select }) => {
-    const existing = { id: 'cat-0001', name: 'AliExpress #1501', slug: 'ae-1501' };
-    categories.set(where.slug, existing);
-    return { id: existing.id };
-  });
+// ── 1. category_id AliExpress existente → reutilizar + autocura de nombre ───
+test('category_id AliExpress existente → reutilizar y autocurar nombre "AliExpress #..."', async () => {
+  const db = freshDb();
+  // Seed directo de la categoría heredada en el mapa del mock.
+  const categories = new Map([['ae-1501', { id: 'cat-0001', name: 'AliExpress #1501', slug: 'ae-1501' }]]);
+  db.category.findUnique = async ({ where }) => categories.get(where.slug) ?? null;
+  db.category.update = async ({ where, data }) => {
+    const cat = categories.get(where.slug);
+    cat.name = data.name;
+    return cat;
+  };
+  db.category.upsert = async ({ where, create }) => {
+    let cat = categories.get(where.slug);
+    if (!cat) { cat = { id: 'cat-new', name: create.name, slug: create.slug }; categories.set(where.slug, cat); }
+    return cat;
+  };
   const preview = basePreview({ categoryId: '1501' });
   const resolvedId = await service.resolveCategory(preview, db);
   assert.equal(resolvedId, 'cat-0001');
+  const cat = await db.category.findUnique({ where: { slug: 'ae-1501' } });
+  assert.ok(cat, 'La categoría debe seguir existiendo');
+  assert.ok(!/AliExpress #/.test(cat.name), 'el nombre visible nunca debe ser "AliExpress #ID"');
+  assert.equal(cat.name, 'General');
+});
+
+test('category_id nuevo con keywords → categoría ae-{id} con nombre amigable', async () => {
+  const db = freshDb();
+  const preview = basePreview({ categoryId: '7777', name: 'Smartphone case funda' });
+  await service.resolveCategory(preview, db);
+  const cat = await db.category.findUnique({ where: { slug: 'ae-7777' } });
+  assert.ok(cat);
+  assert.equal(cat.slug, 'ae-7777');
+  assert.ok(!/AliExpress #/.test(cat.name), 'el nombre visible nunca debe ser "AliExpress #ID"');
+  assert.equal(cat.name, 'Electrónica');
 });
 
 // ── 2. category_id nuevo → crear ────────────────────────────────────────────
@@ -119,7 +143,7 @@ test('category_id nuevo → crear categoría ae-{id} vía upsert', async () => {
   assert.match(resolvedId, /^cat-/);
   const cat = await db.category.findUnique({ where: { slug: 'ae-9999' } });
   assert.ok(cat, 'La categoría ae-9999 debe existir en DB después del upsert');
-  assert.equal(cat.name, 'AliExpress #9999');
+  assert.equal(cat.name, 'General', 'el nombre visible debe ser amigable, nunca "AliExpress #ID"');
   assert.equal(cat.slug, 'ae-9999');
 });
 
@@ -133,7 +157,7 @@ test('dos productos con mismo category_id → misma categoría YesYes', async ()
   assert.equal(id1, id2, 'Ambos productos deben obtener la misma categoryId');
   const cat = await db.category.findUnique({ where: { slug: 'ae-1501' } });
   assert.ok(cat, 'La categoría ae-1501 debe existir');
-  assert.equal(cat.name, 'AliExpress #1501');
+  assert.equal(cat.name, 'General', 'mismo slug técnico ae-{id}, nombre amigable');
 });
 
 // ── 4. Importaciones concurrentes → no duplicar ─────────────────────────────
@@ -263,7 +287,8 @@ test('publicación con categoryId de AliExpress → usa ae-{id}', async () => {
   const cat = await db.category.findUnique({ where: { slug: 'ae-1501' } });
   assert.ok(cat);
   assert.equal(product.categoryId, cat.id);
-  assert.equal(cat.name, 'AliExpress #1501');
+  assert.ok(!/AliExpress #/.test(cat.name), 'el nombre visible nunca debe ser "AliExpress #ID"');
+  assert.equal(cat.name, 'Electrónica');
 });
 
 // ── 8. Bulk sin categoryId manual → resolver por producto ────────────────────
