@@ -31,6 +31,12 @@ test('missing freight stays unknown; only explicit free or zero is free', () => 
   assert.equal(service.cheapestFreightCents([{ free_shipping: true }]), 0);
 });
 
+test('live decimal fee "2.99" parses as 299 cents, not PROVIDER_UNAVAILABLE', () => {
+  assert.equal(service.cheapestFreightCents([{ shipping_fee_cent: '2.99', shipping_fee_currency: 'USD' }]), 299);
+  assert.equal(service.cheapestFreightCents([{ shipping_fee_cent: '0.00', shipping_fee_currency: 'USD' }]), 0);
+  assert.equal(service.cheapestFreightCents([{ shipping_fee_cent: 2.99, shipping_fee_currency: 'USD' }]), 299);
+});
+
 test('SKU price and freight request refer to the same selected variant', async () => {
   let requestedSku;
   const preview = await service.previewAliExpressProduct(

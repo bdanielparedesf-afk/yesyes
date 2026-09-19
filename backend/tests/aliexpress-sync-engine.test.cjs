@@ -41,36 +41,41 @@ function freightOptions(cents, free = false) {
   return { delivery_options: [{ free_shipping: free ? 'true' : 'false', shipping_fee_cent: String(cents) }] };
 }
 
-test('envío: FREE (0) vs AVAILABLE (>0) vs UNAVAILABLE vs ERROR no se mezclan', async () => {
+test('envío: CONFIRMED_FREE (0) vs CONFIRMED (>0) vs UNKNOWN vs ERROR no se mezclan', async () => {
   const free = await dropship.resolveFreightCents(
     { productId: '100500123', skuId: 'sku1', quantity: 1 },
     { freightQuery: async () => freightOptions(0, true) });
-  assert.deepEqual(free, { cents: 0, status: 'FREE' });
+  assert.deepEqual(free, { cents: 0, status: 'SHIPPING_CONFIRMED_FREE' });
   const paid = await dropship.resolveFreightCents(
     { productId: '100500123', skuId: 'sku1', quantity: 1 },
     { freightQuery: async () => freightOptions(450) });
-  assert.deepEqual(paid, { cents: 450, status: 'AVAILABLE' });
+  assert.deepEqual(paid, { cents: 450, status: 'SHIPPING_CONFIRMED' });
   // APIs responden sin opciones para esa variante/destino
   const unavailable = await dropship.resolveFreightCents(
     { productId: '100500123', skuId: 'sku1', quantity: 1 },
     { freightQuery: async () => ({}), buyerFreightCalculate: async () => ({ aeop_freight_calculate_result_for_buyer_d_t_o_list: [] }) });
-  assert.deepEqual(unavailable, { cents: null, status: 'PROVIDER_UNAVAILABLE' });
-  // Ambas APIs fallan → error temporal (nunca $0, nunca UNAVAILABLE)
+  assert.deepEqual(unavailable, { cents: null, status: 'SHIPPING_UNKNOWN' });
+  // Ambas APIs fallan → error temporal (nunca $0, nunca UNKNOWN)
   const error = await dropship.resolveFreightCents(
     { productId: '100500123', skuId: 'sku1', quantity: 1 },
     { freightQuery: async () => { throw new Error('net'); },
       buyerFreightCalculate: async () => { throw new Error('net'); } });
-  assert.deepEqual(error, { cents: null, status: 'PROVIDER_ERROR' });
+  assert.deepEqual(error, { cents: null, status: 'SHIPPING_ERROR' });
   // Fallback: freight.query falla, buyer.freight.calculate responde
   const fallback = await dropship.resolveFreightCents(
     { productId: '100500123', skuId: 'sku1', quantity: 1 },
     { freightQuery: async () => { throw new Error('net'); },
       buyerFreightCalculate: async () => ({ aeop_freight_calculate_result_for_buyer_d_t_o_list: [
         { freight: { cent: 250 } }] }) });
-  assert.deepEqual(fallback, { cents: 250, status: 'AVAILABLE' });
+  assert.deepEqual(fallback, { cents: 250, status: 'SHIPPING_CONFIRMED' });
+  // Compatibilidad: la nomenclatura antigua se puede normalizar.
+  assert.equal(dropship.normalizeShippingStatus('AVAILABLE'), 'SHIPPING_CONFIRMED');
+  assert.equal(dropship.normalizeShippingStatus('FREE'), 'SHIPPING_CONFIRMED_FREE');
+  assert.equal(dropship.normalizeShippingStatus('PROVIDER_UNAVAILABLE'), 'SHIPPING_UNKNOWN');
+  assert.equal(dropship.normalizeShippingStatus('PROVIDER_ERROR'), 'SHIPPING_ERROR');
 });
 
-test('preview: estado PROVIDER_ERROR solo cuando ambas APIs fallaron', () => {
+test('preview: estado SHIPPING_UNKNOWN/SHIPPING_ERROR solo cuando ambas APIs fallaron', () => {
   const base = { sourceUrl: 'https://es.aliexpress.com/item/1005001234567890.html',
     aliexpressId: '1005001234567890', marginPercent: 100, fxValue: FX };
   const product = {
@@ -79,14 +84,20 @@ test('preview: estado PROVIDER_ERROR solo cuando ambas APIs fallaron', () => {
     ae_multimedia_info_dto: {},
   };
   const unavailable = dropship.buildImportPreview({ ...base, product });
-  assert.equal(unavailable.shippingStatus, 'PROVIDER_UNAVAILABLE');
+  assert.equal(unavailable.shippingStatus, 'SHIPPING_UNKNOWN');
   assert.equal(unavailable.shippingUsdCents, null);
   const errored = dropship.buildImportPreview({ ...base, product, shippingError: true });
-  assert.equal(errored.shippingStatus, 'PROVIDER_ERROR');
+  assert.equal(errored.shippingStatus, 'SHIPPING_ERROR');
   const free = dropship.buildImportPreview({ ...base, product,
     freight: { delivery_options: [{ free_shipping: 'true', shipping_fee_cent: '0' }] } });
-  assert.equal(free.shippingStatus, 'FREE');
+  assert.equal(free.shippingStatus, 'SHIPPING_CONFIRMED_FREE');
+  assert.equal(free.yesYesShippingState, 'SHIPPING_CONFIRMED_FREE');
+  // El envío AliExpress confirmado es 0; el cargo al cliente es US$5 por regla.
   assert.equal(free.shippingUsdCents, 0);
+  assert.equal(free.customerShippingUsdCents, 500);
+  assert.equal(free.supplierAcquisitionCostUsdCents, 722);
+  assert.equal(free.productSalePriceUsd, 14.44);
+  assert.equal(free.customerTotalUsd, 19.44);
 });
 
 // ── Sync Engine: settings, políticas, checkpoint, importación masiva ──

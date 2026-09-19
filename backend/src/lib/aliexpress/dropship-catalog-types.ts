@@ -264,8 +264,10 @@ export const freightOptionSchema = z.object({
   shipping_fee_currency: z.string().optional(),
   ship_from_country: z.string().optional(),
   company: z.string().optional(),
-  /** Fee in the currency minor unit (official "shipping_fee_cent"). */
-  shipping_fee_cent: z.string().optional(),
+  /** Fee: documented as minor-unit cents, but live payloads also send
+   * decimal-dollar strings ("2.99") or numbers. Kept raw; the
+   * service parser decides cents vs dollars. */
+  shipping_fee_cent: z.union([z.string(), z.number()]).optional(),
   tracking: dropshipBool.optional(),
   mayHavePFS: dropshipBool.optional(),
   available_stock: z.string().optional(),

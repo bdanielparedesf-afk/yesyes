@@ -24,8 +24,19 @@ interface ImportPreview {
   costUsdCents: number | null; shippingUsdCents: number | null; shippingUnknown: boolean;
   fx: number; salePriceClp: number | null; duplicateOfProductId: string | null;
   quantity: number; selectedSkuId?: string;
-  shippingStatus: 'AVAILABLE' | 'FREE' | 'PROVIDER_UNAVAILABLE' | 'PROVIDER_ERROR' | 'UNKNOWN';
-  shippingSource: 'ALIEXPRESS' | 'MANUAL' | 'NONE'; shippingMessage: string;
+  shippingStatus: 'AVAILABLE' | 'FREE' | 'PROVIDER_UNAVAILABLE' | 'PROVIDER_ERROR' | 'UNKNOWN'
+    | 'SHIPPING_CONFIRMED_FREE' | 'SHIPPING_CONFIRMED' | 'SHIPPING_UNKNOWN'
+    | 'SHIPPING_ERROR' | 'SHIPPING_COMMERCIAL_FALLBACK' | 'SHIPPING_CACHED';
+  yesYesShippingState: 'SHIPPING_CONFIRMED_FREE' | 'SHIPPING_CONFIRMED' | 'SHIPPING_UNKNOWN'
+    | 'SHIPPING_ERROR' | 'SHIPPING_COMMERCIAL_FALLBACK' | 'SHIPPING_CACHED';
+  shippingSource: 'ALIEXPRESS' | 'MANUAL' | 'COMMERCIAL' | 'NONE'; shippingMessage: string;
+  // Modelo YesYes: costo proveedor, cargo al cliente y precio de venta NO se mezclan.
+  supplierProductCostUsdCents: number | null;
+  supplierShippingCostUsdCents: number | null;
+  supplierAcquisitionCostUsdCents: number | null;
+  productSalePriceUsd: number | null;
+  customerShippingUsdCents: number | null;
+  customerTotalUsd: number | null;
   fxRate: number; fxSource: string;
   taxUsdCents: number | null; otherUsdCents: number | null; totalUsdCents: number | null;
   acquisition: { productCostUsdCents: number | null };
@@ -57,7 +68,31 @@ interface SyncLogData {
 
 const MARGINS = [50, 100, 150, 200, 250, 300, 350, 400];
 
+/** Fuente del envío al cliente (texto legible, nunca confunde US$10 con AliExpress). */
+const SHIPPING_SOURCE_LABEL: Record<string, string> = {
+  ALIEXPRESS: 'AliExpress', MANUAL: 'Ingreso manual', COMMERCIAL: 'Respaldo comercial', NONE: 'Sin datos',
+};
+/** Estado del envío con la nomenclatura definitiva YesYes. */
+const SHIPPING_STATE_LABEL: Record<string, string> = {
+  SHIPPING_CONFIRMED_FREE: 'Envío AliExpress confirmado (gratis)',
+  SHIPPING_CONFIRMED: 'Envío AliExpress confirmado',
+  SHIPPING_CACHED: 'Cotización AliExpress reutilizada (caché válida)',
+  SHIPPING_UNKNOWN: 'Envío AliExpress no disponible',
+  SHIPPING_ERROR: 'Envío AliExpress con error temporal',
+  SHIPPING_COMMERCIAL_FALLBACK: 'Respaldo comercial YesYes (no es cotización de AliExpress)',
+};
+
+function usdFromCents(cents: number | null): string {
+  return typeof cents === 'number' ? `$${(cents / 100).toFixed(2)} USD` : 'No informado';
+}
+/** Los precios de venta se guardan con precisión total: se redondea solo aquí. */
+function usdFromAmount(value: number | null): string {
+  return typeof value === 'number' ? `$${value.toFixed(2)} USD` : 'No informado';
+}
+
 function PreviewCard({ preview }: { preview: ImportPreview }) {
+  const supplierShipping = preview.supplierShippingCostUsdCents;
+  const customerShipping = usdFromCents(preview.customerShippingUsdCents);
   return <div className="border rounded-xl p-4 space-y-3">
     <div className="flex gap-4">
       {preview.images[0] && <img src={preview.images[0]} alt="" className="w-24 h-24 object-cover rounded-lg" />}
@@ -70,21 +105,28 @@ function PreviewCard({ preview }: { preview: ImportPreview }) {
     </div>
     <div className="grid sm:grid-cols-3 gap-2 text-sm">
       {[
-        ['Producto (cantidad cotizada)', preview.acquisition.productCostUsdCents],
-        ['Envío AliExpress a Chile', preview.shippingUsdCents],
-        ['Impuestos informados', preview.taxUsdCents],
-        ['Otros cargos informados', preview.otherUsdCents],
-        ['Costo total de adquisición estimado', preview.totalUsdCents],
-      ].map(([label, cents]) => <div key={String(label)} className="bg-gray-50 rounded-lg p-3">
+        ['Producto AliExpress (costo proveedor)', usdFromCents(preview.supplierProductCostUsdCents)],
+        ['Envío AliExpress (costo proveedor)', supplierShipping === null ? 'No disponible' : usdFromCents(supplierShipping)],
+        ['Costo de adquisición (producto + envío)', usdFromCents(preview.supplierAcquisitionCostUsdCents)],
+        ['Precio producto con margen', usdFromAmount(preview.productSalePriceUsd)],
+        ['Envío al cliente', customerShipping],
+        ['Total cliente (producto + envío)', usdFromAmount(preview.customerTotalUsd)],
+        ['Impuestos informados', usdFromCents(preview.taxUsdCents)],
+        ['Otros cargos informados', usdFromCents(preview.otherUsdCents)],
+      ].map(([label, value]) => <div key={String(label)} className="bg-gray-50 rounded-lg p-3">
         <p className="text-gray-500">{label}</p>
-        <p className="font-semibold">{typeof cents === 'number' ? `$${(cents / 100).toFixed(2)} USD` : 'No informado'}</p>
+        <p className="font-semibold">{value}</p>
       </div>)}
       <div className="bg-gray-50 rounded-lg p-3"><p className="text-gray-500">Precio venta (CLP)</p>
         <p className="font-semibold">{preview.salePriceClp === null ? '—' : `$${preview.salePriceClp.toLocaleString('es-CL')}`}</p></div>
     </div>
-    <p className="text-sm">Fuente envío: <strong>{preview.shippingSource}</strong> · Estado: {preview.shippingStatus}</p>
-    {preview.shippingUnknown && <p className="text-sm text-amber-700">AliExpress no proporcionó costo de envío para esta variante/destino.</p>}
-    {preview.shippingSource === 'MANUAL' && <p className="text-sm text-amber-700">Envío ingresado manualmente; no confirmado por AliExpress.</p>}
+    <div className="text-sm space-y-1">
+      <p>Envío AliExpress: <strong>{supplierShipping === null ? 'No disponible' : usdFromCents(supplierShipping)}</strong></p>
+      <p>Envío al cliente: <strong>{customerShipping}</strong></p>
+      <p>Fuente: <strong>{SHIPPING_SOURCE_LABEL[preview.shippingSource] ?? preview.shippingSource}</strong> · Estado: {SHIPPING_STATE_LABEL[preview.yesYesShippingState] ?? preview.shippingStatus}</p>
+    </div>
+    <p className="text-sm text-gray-600">{preview.shippingMessage}</p>
+    {preview.shippingSource === 'COMMERCIAL' && <p className="text-sm text-amber-700">Los US$10 de respaldo comercial no son una cotización de AliExpress: no reciben margen, no forman parte del costo de adquisición y se cobran una sola vez como envío al cliente.</p>}
     <p className="text-xs text-gray-500">Los cargos no informados no se presumen cero ni se añaden al estimado. No es una cotización de checkout.</p>
     <div>
       <p className="text-sm font-medium mb-1">Variantes ({preview.variants.length})</p>
@@ -109,12 +151,6 @@ export default function AdminAliExpress() {
   const [searchKeywords, setSearchKeywords] = useState('');
   const [searchResults, setSearchResults] = useState<{ productId: string; subject: string; image_url?: string; price?: string }[]>([]);
   const [importUrl, setImportUrl] = useState('');
-  const [selectedSkuId, setSelectedSkuId] = useState('');
-  const [quantity, setQuantity] = useState('1');
-  const [provinceCode, setProvinceCode] = useState('');
-  const [cityCode, setCityCode] = useState('');
-  const [postalCode, setPostalCode] = useState('');
-  const [manualShippingUsd, setManualShippingUsd] = useState('');
   const [quotedKey, setQuotedKey] = useState('');
   const [margin, setMargin] = useState(100);
   const [customMargin, setCustomMargin] = useState('');
@@ -127,8 +163,9 @@ export default function AdminAliExpress() {
   const [syncInterval, setSyncInterval] = useState('60');
   const isAdmin = status === 'authenticated' && user?.role === 'ADMIN';
   const effectiveMargin = customMargin !== '' ? Number(customMargin) : margin;
-  const quoteKey = (url: string) => JSON.stringify([url.trim(), selectedSkuId.trim(), quantity,
-    provinceCode.trim(), cityCode.trim(), postalCode.trim(), manualShippingUsd, effectiveMargin]);
+  // UI simplificada: la cotización depende solo de URL + margen.
+  // SKU, cantidad (1), destino (CL) y freight los genera el backend.
+  const quoteKey = (url: string) => JSON.stringify([url.trim(), effectiveMargin]);
   const quoteStale = quotedKey !== quoteKey(importUrl);
 
   async function reload() {
@@ -204,21 +241,14 @@ export default function AdminAliExpress() {
   }
 
   async function doPreview(url: string) {
-    if (!Number.isInteger(Number(quantity)) || Number(quantity) < 1 || Number(quantity) > 10000
-      || !Number.isInteger(effectiveMargin) || effectiveMargin < 0 || effectiveMargin > 10000
-      || (manualShippingUsd !== '' && (!Number.isFinite(Number(manualShippingUsd)) || Number(manualShippingUsd) < 0))) {
-      setError('Revisa cantidad, margen y costo de envío.'); return;
+    if (!Number.isInteger(effectiveMargin) || effectiveMargin < 0 || effectiveMargin > 10000) {
+      setError('Revisa el margen seleccionado.'); return;
     }
     const key = quoteKey(url);
     setBusy(true); setError(''); setPreview(null);
     try {
       const data = await api.post<ImportPreview>('/admin/aliexpress/dropship/import/preview', {
-        url, marginPercent: effectiveMargin, quantity: Number(quantity), countryCode: 'CL',
-        ...(selectedSkuId.trim() ? { selectedSkuId: selectedSkuId.trim() } : {}),
-        ...(provinceCode.trim() ? { provinceCode: provinceCode.trim() } : {}),
-        ...(cityCode.trim() ? { cityCode: cityCode.trim() } : {}),
-        ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
-        ...(manualShippingUsd !== '' ? { manualShippingUsd: Number(manualShippingUsd) } : {}),
+        url, marginPercent: effectiveMargin,
       });
       setPreview(data.data);
       setQuotedKey(key);
@@ -349,31 +379,7 @@ export default function AdminAliExpress() {
           className="bg-gray-900 text-white rounded-lg px-4 py-2 disabled:opacity-50">Vista previa</button>
       </div>
       <fieldset disabled={busy} className="grid sm:grid-cols-2 gap-3 text-sm">
-        <label>SKU (vacío: SKU de la URL o primera variante)
-          <input value={selectedSkuId} onChange={e => setSelectedSkuId(e.target.value)} list="aliexpress-skus"
-            className="border rounded-lg px-3 py-2 w-full" />
-          <datalist id="aliexpress-skus">{preview?.variants.map(v => <option key={v.supplierVariantId}
-            value={v.supplierVariantId}>{v.attributes.map(a => a.value).join(' / ')}</option>)}</datalist>
-        </label>
-        <label>Cantidad
-          <input type="number" min="1" max="10000" step="1" value={quantity} onChange={e => setQuantity(e.target.value)}
-            className="border rounded-lg px-3 py-2 w-full" />
-        </label>
-        <label>Destino<input value="Chile (CL)" readOnly className="border rounded-lg px-3 py-2 w-full" /></label>
-        <label>Código de provincia / región (opcional)
-          <input value={provinceCode} onChange={e => setProvinceCode(e.target.value)} className="border rounded-lg px-3 py-2 w-full" />
-        </label>
-        <label>Código de ciudad (opcional)
-          <input value={cityCode} onChange={e => setCityCode(e.target.value)} className="border rounded-lg px-3 py-2 w-full" />
-        </label>
-        <label>Código postal (conservado; estos métodos no lo admiten)
-          <input value={postalCode} onChange={e => setPostalCode(e.target.value)} className="border rounded-lg px-3 py-2 w-full" />
-        </label>
-        <label>Envío manual total en USD (fallback opcional)
-          <input type="number" min="0" max="1000000" step="0.01" value={manualShippingUsd}
-            onChange={e => setManualShippingUsd(e.target.value)} className="border rounded-lg px-3 py-2 w-full" />
-        </label>
-        <p className="text-gray-500">Sólo se aplica si AliExpress no entrega freight. Se marca MANUAL y corresponde a toda la cantidad cotizada, no a cada unidad.</p>
+        <p className="text-gray-500 sm:col-span-2">El SKU, la cantidad (1 unidad), el destino (Chile) y el envío se resuelven automáticamente. Si AliExpress no entrega freight, YesYes usa una cotización reciente válida o un estimado comercial de US$10.</p>
       </fieldset>
       <div className="flex flex-wrap gap-2 items-center">
         <span className="text-sm text-gray-500">Margen:</span>

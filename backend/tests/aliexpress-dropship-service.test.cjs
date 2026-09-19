@@ -57,6 +57,12 @@ test('buildImportPreview keeps unknown stock unknown and unknown shipping unknow
   assert.equal(preview.costUsdCents, 120); // cheapest variant
   assert.equal(preview.shippingUsdCents, 0);
   assert.equal(preview.shippingUnknown, false);
+  // Regla YesYes: envío confirmado $0 → costo proveedor 1.20, margen 100 → 2.40,
+  // cargo al cliente US$5, total 7.40. El US$5 NO entra en la base del margen.
+  assert.equal(preview.supplierAcquisitionCostUsdCents, 120);
+  assert.equal(preview.productSalePriceUsd, 2.4);
+  assert.equal(preview.customerShippingUsdCents, 500);
+  assert.equal(preview.customerTotalUsd, 7.4);
   assert.equal(preview.totalStock, 42); // only the variant that reported stock
   assert.equal(preview.variants[1].stockKnown, false);
   assert.equal(preview.variants[1].stock, null);
