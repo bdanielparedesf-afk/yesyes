@@ -16,39 +16,48 @@ async function resolveCategoryId(categoryId?: string): Promise<string> {
 
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { collection, search, limit = 50, offset = 0 } = req.query;
-    // El modelo Product usa `status` (enum: DRAFT, PUBLISHED, PAUSED, OUT_OF_STOCK, NOT_PROFITABLE, ARCHIVED)
-    // FASE 5: los productos con `hidden=true` (ocultados desde Admin) no se muestran en tienda.
+    const { collection, search, category, limit = 50, offset = 0 } = req.query;
     const where: any = { status: 'PUBLISHED', hidden: false };
 
     if (collection) {
       where.collection = { slug: collection };
     }
+    if (category) {
+      where.category = { slug: String(category) };
+    }
     if (search) {
-      where.name = { contains: String(search), mode: 'insensitive' };
+      const term = String(search).trim();
+      const contains = { contains: term, mode: 'insensitive' as const };
+      where.OR = [
+        { name: contains },
+        { description: contains },
+        { tags: { has: term } },
+        { category: { name: contains } },
+        { aliexpressId: { equals: term } },
+      ];
     }
 
+    const takeNum = Math.min(Number(limit), 100);
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
-        take: Number(limit),
+        take: takeNum,
         skip: Number(offset),
-        // Se eliminó productVariants: true del listado: la página de productos no
-        // muestra variantes y cargar todas las variantes de 50 productos multiplica
-        // innecesariamente el tamaño de la respuesta y el tiempo de consulta.
         include: {
           productImages: { orderBy: { position: 'asc' } },
+          productVariants: true,
           collection: true,
+          category: { select: { id: true, name: true, slug: true, image: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.product.count({ where }),
     ]);
 
-    // Log para debugging: cuántos productos hay en total en BD
     const totalInDb = await prisma.product.count();
     const publishedInDb = await prisma.product.count({ where: { status: 'PUBLISHED' } });
-    console.log(`[getProducts] Productos en BD: ${totalInDb} total, ${publishedInDb} publicados, ${products.length} devueltos`);
+    const visibleInDb = await prisma.product.count({ where: { status: 'PUBLISHED', hidden: false } });
+    console.log(`[getProducts] BD: ${totalInDb} total, ${publishedInDb} publicados, ${visibleInDb} visibles, ${products.length} devueltos`);
 
     res.json({ products, total });
   } catch (error: any) {
@@ -66,6 +75,7 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
         productImages: { orderBy: { position: 'asc' } },
         productVariants: true,
         collection: true,
+        category: { select: { id: true, name: true, slug: true } },
       },
     });
     if (!product) {
@@ -154,6 +164,103 @@ export const getCollections = async (req: Request, res: Response): Promise<void>
   } catch (error: any) {
     console.error('Error fetching collections:', error);
     res.status(500).json({ message: 'Error fetching collections', error: error.message });
+  }
+};
+
+const HOME_PRODUCT_INCLUDE = {
+  productImages: { orderBy: { position: 'asc' as const } },
+  productVariants: true,
+  category: { select: { id: true, name: true, slug: true } },
+  collection: { select: { id: true, name: true, slug: true } },
+};
+
+async function fetchPublishedProducts(db: typeof prisma, whereExtra: any, take: number, orderBy: any) {
+  return db.product.findMany({
+    where: { status: 'PUBLISHED', hidden: false, ...whereExtra },
+    take,
+    orderBy,
+    include: HOME_PRODUCT_INCLUDE,
+  });
+}
+
+export const getHome = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await buildHomeData(prisma);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error fetching home data:', error);
+    res.status(500).json({ message: 'Error fetching home data', error: error.message });
+  }
+};
+
+export async function buildHomeData(db: typeof prisma) {
+  const [categories, featured, latest, offers, uncategorized] = await Promise.all([
+    db.category.findMany({
+      where: { active: true },
+      orderBy: { order: 'asc', name: 'asc' },
+      include: { _count: { select: { products: true } } },
+    }),
+    fetchPublishedProducts(db, { isFeatured: true }, 8, { createdAt: 'desc' }),
+    fetchPublishedProducts(db, {}, 12, { createdAt: 'desc' }),
+    fetchPublishedProducts(db, { isOffer: true }, 8, { createdAt: 'desc' }),
+    fetchPublishedProducts(db, { collectionId: null }, 8, { createdAt: 'desc', id: 'desc' }),
+  ]);
+
+  const categoriesWithProduct = categories.filter((c: any) => c._count.products > 0);
+
+  const byCategory: Record<string, any[]> = {};
+  for (const cat of categoriesWithProduct) {
+    byCategory[cat.slug] = await fetchPublishedProducts(db, { categoryId: cat.id }, 6, { createdAt: 'desc' });
+  }
+
+  return {
+    categories: categoriesWithProduct.map((c: any) => ({
+      id: c.id, name: c.name, slug: c.slug, image: c.image, productCount: c._count.products,
+    })),
+    featured,
+    latest,
+    offers,
+    byCategory,
+    uncategorized,
+  };
+}
+
+export const getCategoryProducts = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { slug } = req.params;
+    const { search, sortBy = 'createdAt', sortDir = 'desc', limit = 50, offset = 0 } = req.query;
+
+    const category = await prisma.category.findUnique({
+      where: { slug, active: true },
+      select: { id: true, name: true, slug: true, image: true },
+    });
+    if (!category) {
+      res.status(404).json({ message: 'Category not found' });
+      return;
+    }
+
+    const where: any = { status: 'PUBLISHED', hidden: false, categoryId: category.id };
+    if (search) {
+      const term = String(search).trim();
+      const contains = { contains: term, mode: 'insensitive' as const };
+      where.OR = [{ name: contains }, { description: contains }, { tags: { has: term } }];
+    }
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        take: Math.min(Number(limit), 100),
+        skip: Number(offset),
+        orderBy: { [String(sortBy)]: String(sortDir) },
+        include: HOME_PRODUCT_INCLUDE,
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    res.json({ category, products, total });
+  } catch (error: any) {
+    console.error('Error fetching category products:', error);
+    res.status(500).json({ message: 'Error fetching category products', error: error.message });
   }
 };
 

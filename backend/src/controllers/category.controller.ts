@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 export const getCategories = async (req: Request, res: Response): Promise<void> => {
   try {
     const categories = await prisma.category.findMany({
+      where: { active: true },
       orderBy: { order: 'asc' },
       include: { _count: { select: { products: true } } },
     });

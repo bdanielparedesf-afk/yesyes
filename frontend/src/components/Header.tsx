@@ -1,141 +1,211 @@
-import { Link } from 'react-router-dom';
-import { ShoppingCart, User, Menu, X, LogOut } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ShoppingCart, User, Menu, X, Search } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useCartStore } from '@/store/useCartStore';
 import { useAuthStore } from '@/store/useAuthStore';
+import { getCategories } from '@/services/products';
 
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categories, setCategories] = useState<any[]>([]);
+  const [showCategories, setShowCategories] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
   const totalItems = useCartStore((s) => s.totalItems());
   const { user, status, checkSession } = useAuthStore();
 
   useEffect(() => {
-    checkSession();
-  }, [checkSession]);
+    void checkSession();
+    void loadCategories();
+  }, []);
 
-  const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
-  const isAdmin = user?.email?.toLowerCase().trim() === ADMIN_EMAIL || user?.role === 'admin';
+  async function loadCategories() {
+    try {
+      const data = await getCategories();
+      setCategories(data);
+    } catch {
+      // Categories optional on header
+    }
+  }
 
-  const handleSignOut = () => {
-    useAuthStore.getState().signOut('/');
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/productos?search=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchQuery('');
+      setSearchOpen(false);
+    }
   };
 
   const displayName = user?.name || user?.email?.split('@')[0] || 'Usuario';
   const userAvatar = user?.image;
+  const ADMIN_EMAIL = 'bdanielparedesf@gmail.com';
+  const isAdmin = user?.email?.toLowerCase().trim() === ADMIN_EMAIL || user?.role === 'admin';
 
   return (
-    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-[0_1px_20px_rgba(232,160,191,0.15)]">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-neutral-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+        {/* Top bar */}
+        <div className="flex items-center justify-between h-14">
+          {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <img src="/logo.svg" alt="YESYES" className="h-8 w-auto" />
           </Link>
 
+          {/* Desktop navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            <Link to="/productos" className="text-[#4A2C3A]/80 hover:text-[#E8A0BF] font-medium transition-colors">
-              Productos
-            </Link>
-            <Link to="/contacto" className="text-[#4A2C3A]/80 hover:text-[#E8A0BF] font-medium transition-colors">
-              Contacto
-            </Link>
+            <Link to="/" className={`text-sm font-medium transition-colors ${
+              location.pathname === '/' ? 'text-primary-700' : 'text-neutral-700 hover:text-primary-700'
+            }`}>Inicio</Link>
+            <Link to="/productos" className={`text-sm font-medium transition-colors ${
+              location.pathname.startsWith('/productos') ? 'text-primary-700' : 'text-neutral-700 hover:text-primary-700'
+            }`}>Productos</Link>
+            {categories.slice(0, 6).map((cat) => (
+              <Link
+                key={cat.id}
+                to={`/categoria/${cat.slug}`}
+                className={`text-sm font-medium transition-colors capitalize ${
+                  location.pathname.startsWith('/categoria/') && location.pathname.includes(cat.slug)
+                    ? 'text-primary-700' : 'text-neutral-700 hover:text-primary-700'
+                }`}
+              >
+                {cat.name}
+              </Link>
+            ))}
           </nav>
 
-          <div className="hidden md:flex items-center space-x-6">
-            <Link to="/carrito" className="relative text-[#4A2C3A]/80 hover:text-[#E8A0BF] transition-colors">
-              <ShoppingCart className="w-6 h-6" />
+          {/* Right side: search, account, cart */}
+          <div className="flex items-center gap-4">
+            {/* Search */}
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="p-2 text-neutral-600 hover:text-primary-700 transition-colors"
+              aria-label="Buscar"
+            >
+              <Search className="w-5 h-5" />
+            </button>
+
+            {/* Account */}
+            {status === 'authenticated' && user ? (
+              <div className="flex items-center gap-2 relative">
+                <button
+                  onClick={() => setShowCategories(!showCategories)}
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  {userAvatar ? (
+                    <img src={userAvatar} alt={displayName} className="w-9 h-9 rounded-full object-cover border-2 border-neutral-100" />
+                  ) : (
+                    <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center">
+                      <User className="w-5 h-5 text-primary-700" />
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <span className="hidden sm:block text-sm font-medium text-neutral-700">{displayName}</span>
+                  )}
+                </button>
+                {showCategories && (
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-[var(--shadow-float)] border border-neutral-100 py-1">
+                    {isAdmin && (
+                      <Link to="/admin" onClick={() => setShowCategories(false)} className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50">
+                        Panel Admin
+                      </Link>
+                    )}
+                    <Link to="/perfil" onClick={() => setShowCategories(false)} className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50">
+                      Mi cuenta
+                    </Link>
+                    <Link to="/mis-pedidos" onClick={() => setShowCategories(false)} className="block px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50">
+                      Mis pedidos
+                    </Link>
+                    <button
+                      onClick={() => useAuthStore.getState().signOut('/')}
+                      className="w-full text-left px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                    >
+                      Cerrar sesión
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link to="/login" className="p-2 text-neutral-600 hover:text-primary-700 transition-colors">
+                <User className="w-5 h-5" />
+              </Link>
+            )}
+
+            {/* Cart */}
+            <Link to="/carrito" className="relative p-2 text-neutral-600 hover:text-primary-700 transition-colors">
+              <ShoppingCart className="w-5 h-5" />
               {totalItems > 0 && (
-                <span className="absolute -top-2 -right-2 bg-[#E8A0BF] text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 bg-primary-700 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                   {totalItems}
                 </span>
               )}
             </Link>
 
-             {status === 'authenticated' && user ? (
-              <div className="flex items-center space-x-3">
-                {isAdmin && (
-                  <Link to="/admin" className="text-sm font-medium text-[#4A2C3A]/80 hover:text-[#E8A0BF] transition-colors">
-                    Admin
-                  </Link>
-                )}
-                {userAvatar ? (
-                  <img src={userAvatar} alt={displayName} className="w-9 h-9 rounded-full object-cover border-2 border-[#FAD3E7]" />
-                ) : (
-                  <div className="w-9 h-9 bg-[#FAD3E7]/40 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-[#E8A0BF]" />
-                  </div>
-                )}
-                <div className="hidden sm:block">
-                  <p className="text-sm font-semibold text-[#4A2C3A]">{displayName}</p>
-                  <p className="text-xs text-[#4A2C3A]/60">{user.email}</p>
-                </div>
-                <button
-                  onClick={handleSignOut}
-                  className="p-1 text-[#4A2C3A]/60 hover:text-red-400 transition-colors"
-                  title="Cerrar sesión"
-                >
-                  <LogOut className="w-5 h-5" />
-                </button>
-              </div>
-            ) : status === 'loading' ? null : (
-              <Link to="/login" className="flex items-center space-x-1 text-[#4A2C3A]/80 hover:text-[#E8A0BF] transition-colors">
-                <User className="w-5 h-5" />
-                <span className="font-medium">Login</span>
-              </Link>
-            )}
+            {/* Mobile menu */}
+            <button
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="md:hidden p-2 text-neutral-600"
+            >
+              {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
           </div>
-
-          <button
-            className="md:hidden text-[#4A2C3A]/80"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Abrir menú"
-          >
-            {mobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
         </div>
 
+        {/* Mobile search overlay */}
+        {searchOpen && (
+          <div className="border-t border-neutral-100 md:hidden">
+            <form onSubmit={handleSearch} className="flex items-center p-3 gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar productos..."
+                autoFocus
+                className="flex-1 px-4 py-2 text-sm border border-neutral-200 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <button type="submit" className="p-2 text-neutral-500">
+                <Search className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchOpen(false)}
+                className="p-2 text-neutral-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Mobile menu */}
         {mobileOpen && (
-          <div className="md:hidden pb-4 space-y-3">
-            <Link to="/productos" className="block text-[#4A2C3A]/80 hover:text-[#E8A0BF] font-medium" onClick={() => setMobileOpen(false)}>
-              Productos
-            </Link>
-            <Link to="/contacto" className="block text-[#4A2C3A]/80 hover:text-[#E8A0BF] font-medium" onClick={() => setMobileOpen(false)}>
-              Contacto
-            </Link>
-            <Link to="/carrito" className="flex items-center space-x-2 text-[#4A2C3A]/80 hover:text-[#E8A0BF] font-medium" onClick={() => setMobileOpen(false)}>
-              <ShoppingCart className="w-5 h-5" />
-              <span>Carrito {totalItems > 0 && `(${totalItems})`}</span>
-            </Link>
-            {status === 'authenticated' && user ? (
-              <div className="flex items-center justify-between pt-2 border-t border-[#FAD3E7]">
-                <div className="flex items-center space-x-3">
-                  {isAdmin && (
-                    <Link to="/admin" className="text-sm font-medium text-[#4A2C3A]/80 hover:text-[#E8A0BF]" onClick={() => setMobileOpen(false)}>
-                      Admin
-                    </Link>
-                  )}
-                  {userAvatar ? (
-                    <img src={userAvatar} alt={displayName} className="w-8 h-8 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-8 h-8 bg-[#FAD3E7]/40 rounded-full flex items-center justify-center">
-                      <User className="w-4 h-4 text-[#E8A0BF]" />
-                    </div>
-                  )}
-                  <span className="font-medium text-[#4A2C3A]">{displayName}</span>
-                </div>
-                <button
-                  onClick={() => { handleSignOut(); setMobileOpen(false); }}
-                  className="p-1 text-[#4A2C3A]/60 hover:text-red-400 transition-colors"
-                  title="Cerrar sesión"
-                >
-                  <LogOut className="w-5 h-5" />
-                </button>
-              </div>
-            ) : (
-              <Link to="/login" className="flex items-center space-x-2 text-[#4A2C3A]/80 hover:text-[#E8A0BF] font-medium" onClick={() => setMobileOpen(false)}>
-                <User className="w-5 h-5" />
-                <span>Login</span>
+          <div className="md:hidden border-t border-neutral-100 bg-white">
+            <div className="px-2 pt-2 pb-3 space-y-1">
+              <Link to="/" onClick={() => setMobileOpen(false)} className="block px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 rounded-lg">
+                Inicio
               </Link>
-            )}
+              <Link to="/productos" onClick={() => setMobileOpen(false)} className="block px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 rounded-lg">
+                Productos
+              </Link>
+              {categories.map((cat) => (
+                <Link
+                  key={cat.id}
+                  to={`/categoria/${cat.slug}`}
+                  onClick={() => setMobileOpen(false)}
+                  className="block px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 rounded-lg capitalize"
+                >
+                  {cat.name}
+                </Link>
+              ))}
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 rounded-lg"
+              >
+                <Search className="w-4 h-4" /> Buscar
+              </button>
+            </div>
           </div>
         )}
       </div>

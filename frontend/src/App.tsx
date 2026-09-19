@@ -3,6 +3,7 @@ import Layout from '@/layouts/Layout';
 import Home from '@/pages/Home';
 import Products from '@/pages/Products';
 import ProductDetail from '@/pages/ProductDetail';
+import Category from '@/pages/Category';
 import Cart from '@/pages/Cart';
 import Checkout from '@/pages/Checkout';
 import Login from '@/pages/Login';
@@ -39,9 +40,8 @@ function App() {
         <Route index element={<Home />} />
         <Route path="productos" element={<Products />} />
         <Route path="productos/:slug" element={<ProductDetail />} />
-        <Route path="categoria/:slug" element={<Products />} />
-        <Route path="categoria/:nombre" element={<Products />} />
-        <Route path="producto/:slug" element={<Navigate to="/productos/:slug" replace />} />
+        <Route path="producto/:slug" element={<Navigate to="/productos" replace />} />
+        <Route path="categoria/:slug" element={<Category />} />
         <Route path="buscar" element={<Products />} />
         <Route path="ofertas" element={<Ofertas />} />
         <Route path="carrito" element={<Cart />} />
