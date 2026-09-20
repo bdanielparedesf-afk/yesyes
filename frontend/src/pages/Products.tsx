@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useProducts, useCategories } from '@/hooks/useProductsQuery';
 import ProductGrid from '@/components/ProductGrid';
+import type { Product } from '@/services/products';
 
 export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -43,7 +44,7 @@ export default function Products() {
   ];
 
   const filtered = useMemo(() => {
-    return products.filter((p) => {
+    return products.filter((p: Product) => {
       const matchesSearch = !search.trim() ||
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.description.toLowerCase().includes(search.toLowerCase());
