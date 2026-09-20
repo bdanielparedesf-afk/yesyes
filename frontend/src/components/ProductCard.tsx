@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+﻿import { Link } from 'react-router-dom';
 import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
 import type { Product } from '@/services/products';
@@ -33,7 +33,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
   const isOutOfStock = product.stock <= 0;
   const lowStock = !isOutOfStock && product.stock <= 5;
 
-  // Proporción consistente en todos los tamaños: evita alturas desiguales en la grilla.
+  // ProporciÃ³n consistente en todos los tamaÃ±os: evita alturas desiguales en la grilla.
   const sizeClasses = {
     sm: 'aspect-[4/5]',
     md: 'aspect-[4/5]',
@@ -55,6 +55,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
                 alt={product.name}
                 className="w-full h-full object-cover object-center group-hover:opacity-0 transition-opacity duration-500"
                 loading="lazy"
+                decoding="async"
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logo-icon.svg'; }}
               />
               <img
@@ -63,6 +64,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
                 aria-hidden
                 className="w-full h-full object-cover object-center scale-[1.02] group-hover:scale-105 opacity-0 group-hover:opacity-100 transition-all duration-500 absolute inset-0"
                 loading="lazy"
+                decoding="async"
               />
             </>
           )}
@@ -78,7 +80,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
           )}
           {lowStock && (
             <span className="absolute top-3 right-3 bg-amber-500/90 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm">
-              ¡Últimas {product.stock}!
+              Â¡Ãšltimas {product.stock}!
             </span>
           )}
         </div>
@@ -119,3 +121,4 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
     </Link>
   );
 }
+

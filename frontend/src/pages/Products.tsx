@@ -1,9 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
-import { getProducts, getCategories } from '@/services/products';
+import { useProducts, useCategories } from '@/hooks/useProductsQuery';
 import ProductGrid from '@/components/ProductGrid';
-import type { Product } from '@/services/products';
 
 export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -14,38 +13,30 @@ export default function Products() {
   const [search, setSearch] = useState(urlSearch);
   const [category, setCategory] = useState(urlCategory);
   const [offerOnly, setOfferOnly] = useState(urlOffer);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  const {
+    data: productsData,
+    isInitialLoading: initialLoading,
+    isFetching: fetching,
+    isError,
+    error,
+    refetch,
+  } = useProducts({ search: search || undefined });
+
+  const { data: categoriesData, isInitialLoading: categoriesLoading } = useCategories();
+
+  const products = productsData?.products || [];
+  const paginating = fetching && !initialLoading;
 
   useEffect(() => {
-    void loadProducts();
-    void loadCategories();
+    setSearch(urlSearch);
+    setCategory(urlCategory);
+    setOfferOnly(urlOffer);
   }, []);
-
-  async function loadProducts() {
-    try {
-      const result = await getProducts({ search: search || undefined });
-      setProducts(result.products);
-    } catch {
-      setProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadCategories() {
-    try {
-      const data = await getCategories();
-      setCategories(data);
-    } catch {
-      // Categories are optional
-    }
-  }
 
   const displayedCategories = [
     { id: 'all', name: 'Todos', slug: 'todos', productCount: undefined as number | undefined },
-    ...categories.map((c) => ({
+    ...(categoriesData || []).map((c: any) => ({
       id: c.id, name: c.name, slug: c.slug,
       productCount: c.productCount ?? c._count?.products ?? 0,
     })),
@@ -73,14 +64,12 @@ export default function Products() {
   return (
     <div className="min-h-screen bg-neutral-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold text-neutral-900">
             {offerOnly ? 'Ofertas' : category !== 'todos' ? category : 'Productos'}
           </h1>
         </div>
 
-        {/* Toolbar */}
         <div className="flex items-center gap-4 mb-6 flex-wrap">
           <div className="relative flex-1 max-w-md">
             <input
@@ -132,7 +121,7 @@ export default function Products() {
                 const params: any = {};
                 if (search.trim()) params.search = search.trim();
                 if (category !== 'todos') params.category = category;
-                if (offerOnly) params.filter = 'ofertas';
+                if (!offerOnly) params.filter = 'ofertas';
                 setSearchParams(params);
               }}
               className={`px-4 py-2 text-sm font-medium rounded-full transition-all ${
@@ -146,9 +135,26 @@ export default function Products() {
           </div>
         </div>
 
+        {/* Error */}
+        {isError && (
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
+            <Search className="w-5 h-5 text-red-500" />
+            <span className="text-red-700 text-sm flex-1">
+              {error instanceof Error ? error.message : 'Error al cargar productos'}
+            </span>
+            <button
+              onClick={() => refetch()}
+              className="px-4 py-2 bg-primary-700 hover:bg-primary-800 text-white text-sm font-medium rounded-full transition-colors"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
         <ProductGrid
           products={filtered}
-          loading={loading}
+          loading={initialLoading && categoriesLoading}
+          paginating={paginating}
           emptyMessage={search ? `No se encontraron productos para "${search}"` : 'No hay productos para mostrar'}
         />
       </div>

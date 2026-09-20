@@ -20,10 +20,14 @@ const GRID = 'grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-3 xl:grid-cols-4';
 interface ProductGridProps {
   products: Product[];
   loading?: boolean;
+  /** Indicador de refetch en background (p. ej. al cambiar de página o refocus).
+   *  Cuando es true se muestra el contenido actual con un indicador sutil de
+   *  actualización en la parte superior, evitando pantallas blancas. */
+  paginating?: boolean;
   emptyMessage?: string;
 }
 
-export default function ProductGrid({ products, loading = false, emptyMessage = 'No hay productos para mostrar' }: ProductGridProps) {
+export default function ProductGrid({ products, loading = false, paginating = false, emptyMessage = 'No hay productos para mostrar' }: ProductGridProps) {
   if (loading) {
     return (
       <div className={GRID} aria-busy="true" aria-label="Cargando productos">
@@ -52,18 +56,29 @@ export default function ProductGrid({ products, loading = false, emptyMessage = 
     );
   }
 
+        // Indicador sutil de actualización en la parte superior.
+  // Se muestra solo durante refetches en background (no en el loading inicial).
+  const topRefreshingBar = paginating ? (
+    <div className="absolute top-0 left-0 w-full h-0.5 overflow-hidden bg-neutral-100">
+      <div className="h-full w-2/3 animate-pulse bg-primary-600" />
+    </div>
+  ) : null;
+
   return (
-    <motion.div
-      variants={container}
-      initial="hidden"
-      animate="show"
-      className={GRID}
-    >
-      {products.map((product) => (
-        <motion.div key={product.id} variants={item} transition={{ duration: 0.4, ease: 'easeOut' }}>
-          <ProductCard product={product} />
-        </motion.div>
-      ))}
-    </motion.div>
+    <div className="relative">
+      {topRefreshingBar}
+      <motion.div
+        variants={container}
+        initial="hidden"
+        animate="show"
+        className={GRID}
+      >
+        {products.map((product) => (
+          <motion.div key={product.id} variants={item} transition={{ duration: 0.4, ease: 'easeOut' }}>
+            <ProductCard product={product} />
+          </motion.div>
+        ))}
+      </motion.div>
+    </div>
   );
 }
