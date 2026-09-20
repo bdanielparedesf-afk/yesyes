@@ -208,7 +208,6 @@ const HOME_PRODUCT_SELECT = {
   name: true,
   slug: true,
   salePrice: true,
-  compareAtPrice: true,
   productCost: true,
   totalCost: true,
   stock: true,
