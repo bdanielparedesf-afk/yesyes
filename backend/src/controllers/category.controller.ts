@@ -1,13 +1,38 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { groupCategories } from '../utils/category-groups';
 
 export const getCategories = async (req: Request, res: Response): Promise<void> => {
   try {
-    const categories = await prisma.category.findMany({
+    const rows = await prisma.category.findMany({
       where: { active: true },
       orderBy: { order: 'asc' },
-      include: { _count: { select: { products: true } } },
     });
+    // Contar SOLO productos visibles (PUBLISHED + no ocultos) por categoria real.
+    const counts = await prisma.product.groupBy({
+      by: ['categoryId'],
+      where: { status: 'PUBLISHED', hidden: false },
+      _count: { categoryId: true },
+    });
+    const countByCat = new Map(counts.map((c) => [c.categoryId, c._count.categoryId]));
+    // Agrupar por clave comercial: N ae-* con mismo nombre => 1 tarjeta.
+    const groups = groupCategories(rows as any[]);
+    const categories = groups
+      .map((g) => {
+        const canonical = (rows as any[]).find((r) => !/^ae-\d+$/i.test(r.slug) && r.slug === g.key);
+        const productCount = g.categoryIds.reduce((acc, id) => acc + (countByCat.get(id) || 0), 0);
+        return {
+          id: canonical?.id || g.categoryIds[0],
+          name: canonical?.name || g.name,
+          slug: g.slug,
+          image: canonical?.image ?? g.image,
+          order: canonical?.order ?? g.order,
+          active: true,
+          productCount,
+          _count: { products: productCount },
+        };
+      })
+      .filter((c) => c.productCount > 0);
     res.json({ categories });
   } catch (error: any) {
     console.error('Error fetching categories:', error);

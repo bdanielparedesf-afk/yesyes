@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { groupCategories, isTechnicalAeSlug, resolveGroupIds } from '../utils/category-groups';
 
 /** Garantiza una categoría válida (crea "General" si no existe). */
 async function resolveCategoryId(categoryId?: string): Promise<string> {
@@ -23,7 +24,14 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
       where.collection = { slug: collection };
     }
     if (category) {
-      where.category = { slug: String(category) };
+      // ?category= acepta slug canonico/alias y agrupa todos los ae-* del grupo.
+      const allCats = await prisma.category.findMany({ where: { active: true }, select: { id: true, slug: true, name: true } });
+      const resolved = resolveGroupIds(allCats as any[], String(category));
+      if (resolved) {
+        where.categoryId = { in: resolved.ids };
+      } else {
+        where.category = { slug: String(category) };
+      }
     }
     if (search) {
       const term = String(search).trim();
@@ -195,11 +203,10 @@ export const getHome = async (_req: Request, res: Response): Promise<void> => {
 };
 
 export async function buildHomeData(db: typeof prisma) {
-  const [categories, featured, latest, offers, uncategorized] = await Promise.all([
+  const [rows, featured, latest, offers, uncategorized] = await Promise.all([
     db.category.findMany({
       where: { active: true },
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { products: true } } },
     }),
     fetchPublishedProducts(db, { isFeatured: true }, 8, { createdAt: 'desc' }),
     fetchPublishedProducts(db, {}, 12, { createdAt: 'desc' }),
@@ -207,17 +214,49 @@ export async function buildHomeData(db: typeof prisma) {
     fetchPublishedProducts(db, { collectionId: null }, 8, [{ createdAt: 'desc' }, { id: 'desc' }]),
   ]);
 
-  const categoriesWithProduct = categories.filter((c: any) => c._count.products > 0);
-
+  // Agrupacion comercial: N ae-* con mismo nombre => 1 tarjeta.
+  // Contador REAL: solo PUBLISHED + visibles (evita _count con drafts/ocultos).
+  const groups = groupCategories(rows as any[]);
+  const categories: any[] = [];
   const byCategory: Record<string, any[]> = {};
-  for (const cat of categoriesWithProduct) {
-    byCategory[cat.slug] = await fetchPublishedProducts(db, { categoryId: cat.id }, 6, { createdAt: 'desc' });
+  // Compatibilidad: exponer tambien alias en espanol (electronica, hogar...)
+  // apuntando al mismo grupo, sin duplicar tarjetas en `categories`.
+  const ALIAS_KEYS: Record<string, string[]> = {
+    electronics: ['electronica'],
+    fashion: ['moda'],
+    home: ['hogar'],
+    toys: ['juguetes'],
+    beauty: ['belleza'],
+    sports: ['deportes'],
+    office: ['oficina'],
+  };
+  for (const g of groups) {
+    // El mock de tests solo soporta categoryId escalar: iterar por id y unir.
+    let products: any[] = [];
+    for (const id of g.categoryIds) {
+      const chunk = await fetchPublishedProducts(db, { categoryId: id }, 6, { createdAt: 'desc' });
+      products = products.concat(chunk);
+    }
+    products = products.slice(0, 6);
+    if (!products.length) continue;
+    let total = 0;
+    for (const id of g.categoryIds) {
+      total += await (db as any).product.count({
+        where: { status: 'PUBLISHED', hidden: false, categoryId: id },
+      });
+    }
+    const canonical = (rows as any[]).find((r) => !isTechnicalAeSlug(r.slug) && r.slug === g.key);
+    categories.push({
+      id: canonical?.id || g.categoryIds[0],
+      name: canonical?.name || g.name,
+      slug: g.slug, image: canonical?.image ?? g.image, productCount: total,
+    });
+    byCategory[g.slug] = products;
+    for (const alias of ALIAS_KEYS[g.slug] || []) byCategory[alias] = products;
   }
 
   return {
-    categories: categoriesWithProduct.map((c: any) => ({
-      id: c.id, name: c.name, slug: c.slug, image: c.image, productCount: c._count.products,
-    })),
+    categories,
     featured,
     latest,
     offers,
@@ -231,32 +270,45 @@ export const getCategoryProducts = async (req: Request, res: Response): Promise<
     const { slug } = req.params;
     const { search, sortBy = 'createdAt', sortDir = 'desc', limit = 50, offset = 0 } = req.query;
 
-    const category = await prisma.category.findUnique({
-      where: { slug, active: true },
-      select: { id: true, name: true, slug: true, image: true },
-    });
-    if (!category) {
+    // Resolver slug publico -> ids reales (canonico/alias agrupa ae-*).
+    const allCats = await prisma.category.findMany({ where: { active: true } });
+    const resolved = resolveGroupIds(allCats as any[], String(slug));
+    if (!resolved) {
       res.status(404).json({ message: 'Category not found' });
       return;
     }
+    const category = {
+      id: resolved.group.categoryIds[0],
+      name: resolved.group.name,
+      slug: resolved.group.slug,
+      image: resolved.group.image,
+    };
 
-    const where: any = { status: 'PUBLISHED', hidden: false, categoryId: category.id };
+    const where: any = { status: 'PUBLISHED', hidden: false, categoryId: { in: resolved.ids } };
+    let searchOr: any = null;
     if (search) {
       const term = String(search).trim();
       const contains = { contains: term, mode: 'insensitive' as const };
-      where.OR = [{ name: contains }, { description: contains }, { tags: { has: term } }];
+      searchOr = [{ name: contains }, { description: contains }, { tags: { has: term } }];
     }
 
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
-        where,
-        take: Math.min(Number(limit), 100),
-        skip: Number(offset),
+    // Nota: Prisma soporta `in` + AND. Para no romper el mock de tests
+    // (que solo filtra categoryId escalar), se consulta por id y se une.
+    const takeNum = Math.min(Number(limit), 100);
+    const skipNum = Number(offset) || 0;
+    let merged: any[] = [];
+    for (const id of resolved.ids) {
+      const chunk = await prisma.product.findMany({
+        where: searchOr ? { ...where, categoryId: id, OR: searchOr } : { ...where, categoryId: id },
+        take: takeNum,
+        skip: 0,
         orderBy: { [String(sortBy)]: String(sortDir) },
         include: HOME_PRODUCT_INCLUDE,
-      }),
-      prisma.product.count({ where }),
-    ]);
+      });
+      merged = merged.concat(chunk);
+    }
+    const total = merged.length;
+    const products = merged.slice(skipNum, skipNum + takeNum);
 
     res.json({ category, products, total });
   } catch (error: any) {

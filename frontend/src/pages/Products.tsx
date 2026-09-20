@@ -47,7 +47,7 @@ export default function Products() {
     { id: 'all', name: 'Todos', slug: 'todos', productCount: undefined as number | undefined },
     ...categories.map((c) => ({
       id: c.id, name: c.name, slug: c.slug,
-      productCount: c._count?.products || 0,
+      productCount: c.productCount ?? c._count?.products ?? 0,
     })),
   ];
 
