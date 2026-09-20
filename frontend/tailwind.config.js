@@ -78,10 +78,20 @@ export default {
         'fade-in': 'fadeIn 0.4s ease-out',
         'slide-up': 'slideUp 0.5s ease-out',
         'pulse-slow': 'pulse 3s ease-in-out infinite',
+        'price-pop': 'pricePop 220ms ease-out',
+        'gallery-in': 'galleryIn 260ms ease-out',
       },
       keyframes: {
         fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
         slideUp: { '0%': { opacity: '0', transform: 'translateY(20px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+        pricePop: {
+          '0%': { opacity: '0.35', transform: 'translateY(2px) scale(0.985)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        galleryIn: {
+          '0%': { opacity: '0', transform: 'scale(1.012)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
       },
     },
   },

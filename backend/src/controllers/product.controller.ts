@@ -84,6 +84,16 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
         productVariants: true,
         collection: true,
         category: { select: { id: true, name: true, slug: true } },
+        // Solo reseñas ya curadas/moderadas: la ficha muestra valoraciones reales.
+        productReviews: {
+          where: { isModerated: true },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          select: {
+            id: true, rating: true, comment: true,
+            createdAt: true, images: true, verifiedPurchase: true,
+          },
+        },
       },
     });
     if (!product) {

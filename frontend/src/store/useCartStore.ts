@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+export interface CartItemAttribute {
+  name: string;
+  value: string;
+}
+
 export interface CartItem {
   id: string;
   name: string;
@@ -11,11 +16,16 @@ export interface CartItem {
   variant?: string;
   stock: number;
   providerPrice?: number;
+  /** Identidad exacta de la combinacion elegida (dos combinaciones = dos lineas). */
+  productId?: string;
+  variantId?: string;
+  sku?: string;
+  attributes?: CartItemAttribute[];
 }
 
 interface CartState {
   items: CartItem[];
-  addItem: (item: Omit<CartItem, 'quantity'>) => void;
+  addItem: (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
@@ -27,21 +37,21 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       items: [],
-  addItem: (item: Omit<CartItem, 'quantity'> & { quantity?: number }) =>
-    set((state) => {
-      const existing = state.items.find((i) => i.id === item.id);
-      const qty = item.quantity ?? 1;
-      if (existing) {
-        return {
-          items: state.items.map((i) =>
-            i.id === item.id
-              ? { ...i, quantity: Math.min(i.quantity + qty, i.stock) }
-              : i
-          ),
-        };
-      }
-      return { items: [...state.items, { ...item, quantity: qty }] };
-    }),
+      addItem: (item) =>
+        set((state) => {
+          const existing = state.items.find((i) => i.id === item.id);
+          const qty = item.quantity ?? 1;
+          if (existing) {
+            return {
+              items: state.items.map((i) =>
+                i.id === item.id
+                  ? { ...i, ...item, quantity: Math.min(i.quantity + qty, i.stock) }
+                  : i
+              ),
+            };
+          }
+          return { items: [...state.items, { ...item, quantity: qty }] };
+        }),
       removeItem: (id) =>
         set((state) => ({
           items: state.items.filter((i) => i.id !== id),

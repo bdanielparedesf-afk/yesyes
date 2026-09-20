@@ -44,3 +44,29 @@
     background: #C999B9;
   }
 }
+
+@layer utilities {
+  /* Carrusel de miniaturas: scroll sin barra visible. */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Evita que la barra de compra mobile tape contenido. */
+  .pb-safe-bar {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Respeta la preferencia de movimiento reducido: sin animaciones exageradas. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
