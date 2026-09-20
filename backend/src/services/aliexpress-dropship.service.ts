@@ -137,6 +137,16 @@ export interface PreviewVariant {
   costUsdCents: number | null;
   stock: number | null;
   stockKnown: boolean;
+  shippingUsdCents: number | null;
+  shippingUsd: number | null;
+  supplierAcquisitionCostUsdCents: number | null;
+  productSalePriceUsd: number | null;
+  customerShippingUsdCents: number | null;
+  customerTotalUsd: number | null;
+  salePriceClp: number | null;
+  shippingStatus: ShippingStatus;
+  shippingSource: ShippingSource;
+  shippingMessage: string;
 }
 
 /** Explicit shipping resolution — never collapse unknown into 0.
@@ -173,6 +183,70 @@ export function normalizeShippingStatus(status: string): ShippingStatus {
     case 'UNKNOWN': return 'SHIPPING_UNKNOWN';
     default: return status as ShippingStatus;
   }
+}
+
+interface ShippingResolutionInput {
+  providerShippingCents: number | null;
+  cachedShippingCents: number | null;
+  manualShippingCents: number | null;
+  commercialShippingCents: number | null;
+  shippingError?: boolean;
+}
+
+interface ShippingResolution {
+  shippingCents: number | null;
+  shippingSource: ShippingSource;
+  shippingStatus: ShippingStatus;
+  yesYesShippingState: YesYesShippingState;
+  shippingMessage: string;
+  supplierConfirmedForMargin: number | null;
+  customerShippingUsdCents: number | null;
+}
+
+function resolveShippingResolution(input: ShippingResolutionInput): ShippingResolution {
+  const { providerShippingCents, cachedShippingCents, manualShippingCents, commercialShippingCents } = input;
+  const supplierConfirmedForMargin = providerShippingCents ?? cachedShippingCents;
+  const isCommercialFallback = providerShippingCents === null && cachedShippingCents === null
+    && manualShippingCents === null && commercialShippingCents !== null;
+  const isManual = providerShippingCents === null && cachedShippingCents === null && manualShippingCents !== null;
+  const shippingSource: ShippingSource = supplierConfirmedForMargin !== null ? 'ALIEXPRESS'
+    : manualShippingCents !== null ? 'MANUAL'
+    : commercialShippingCents !== null ? 'COMMERCIAL' : 'NONE';
+  const shippingStatus: ShippingStatus = providerShippingCents !== null
+    ? (providerShippingCents === 0 ? 'SHIPPING_CONFIRMED_FREE' : 'SHIPPING_CONFIRMED')
+    : cachedShippingCents !== null ? 'SHIPPING_CACHED'
+    : manualShippingCents !== null ? (input.shippingError === true ? 'SHIPPING_ERROR' : 'SHIPPING_UNKNOWN')
+    : commercialShippingCents !== null
+      ? (input.shippingError === true ? 'SHIPPING_ERROR' : 'SHIPPING_COMMERCIAL_FALLBACK')
+    : (input.shippingError === true ? 'SHIPPING_ERROR' : 'SHIPPING_UNKNOWN');
+  const yesYesShippingState: YesYesShippingState = shippingStatus === 'SHIPPING_CONFIRMED_FREE'
+    ? 'SHIPPING_CONFIRMED_FREE'
+    : shippingStatus === 'SHIPPING_CONFIRMED' ? 'SHIPPING_CONFIRMED'
+    : shippingStatus === 'SHIPPING_CACHED' ? 'SHIPPING_CACHED'
+    : shippingStatus === 'SHIPPING_ERROR' ? 'SHIPPING_ERROR'
+    : shippingStatus === 'SHIPPING_COMMERCIAL_FALLBACK' ? 'SHIPPING_COMMERCIAL_FALLBACK'
+    : 'SHIPPING_UNKNOWN';
+  const customerShippingUsdCents = supplierConfirmedForMargin !== null
+    ? (supplierConfirmedForMargin === 0
+      ? 500 : supplierConfirmedForMargin)
+    : isManual && manualShippingCents !== null ? manualShippingCents
+    : commercialShippingCents ?? null;
+  const shippingCents = supplierConfirmedForMargin ?? customerShippingUsdCents;
+  const shippingMessage = shippingCents === null
+    ? SHIPPING_STATUS_MESSAGE[shippingStatus]
+    : isCommercialFallback
+      ? (input.shippingError === true
+          ? 'Envío AliExpress: No disponible (error temporal). Envío al cliente: US$10. Fuente: Respaldo comercial (los US$10 no son cotización de AliExpress, no llevan margen y no forman parte del costo de adquisición).'
+          : 'Envío AliExpress: No disponible. Envío al cliente: US$10. Fuente: Respaldo comercial (los US$10 no son cotización de AliExpress, no llevan margen y no forman parte del costo de adquisición).')
+    : shippingSource === 'MANUAL'
+      ? 'Costo de envío manual del administrador; no confirmado por AliExpress.'
+      : cachedShippingCents !== null && supplierConfirmedForMargin === cachedShippingCents
+        ? 'Cotización AliExpress reutilizada desde caché reciente.'
+        : SHIPPING_STATUS_MESSAGE[shippingStatus];
+  return {
+    shippingCents, shippingSource, shippingStatus, yesYesShippingState, shippingMessage,
+    supplierConfirmedForMargin, customerShippingUsdCents,
+  };
 }
 
 export interface AcquisitionCost {
@@ -235,6 +309,7 @@ export interface ImportPreview {
 export function buildImportPreview(payload: {
   product: ProductGetResult;
   freight?: { delivery_options?: { free_shipping?: boolean | string; shipping_fee_cent?: string | number; shipping_fee_currency?: string }[] };
+  freightBySkuId?: Record<string, { delivery_options?: { free_shipping?: boolean | string; shipping_fee_cent?: string | number; shipping_fee_currency?: string }[] }>;
   sourceUrl: string;
   aliexpressId: string;
   marginPercent: number;
@@ -245,8 +320,10 @@ export function buildImportPreview(payload: {
   manualShippingUsd?: number;
   /** Backend-only: fallback comercial automático US$10 cuando no hay freight válido. */
   commercialShippingUsdCents?: number;
+  commercialShippingUsdCentsBySkuId?: Record<string, number>;
   /** Backend-only: cotización AliExpress válida reutilizada desde caché. */
   cachedShippingUsdCents?: number;
+  cachedShippingUsdCentsBySkuId?: Record<string, number>;
   shipFrom?: string | null;
   destination?: ImportPreview['destination'];
   duplicateOfProductId?: string | null;
@@ -260,17 +337,76 @@ export function buildImportPreview(payload: {
   const images = (multimedia?.image_urls || '').split(';').map(url => url.trim()).filter(Boolean);
   const video = multimedia?.ae_video_dtos?.find(v => v.media_url && v.media_type?.toLowerCase() !== 'image')?.media_url;
 
+  const selectedSkuId = payload.skuId
+    ?? product.ae_item_sku_info_dtos[0]?.sku_id;
+  if (payload.skuId && !product.ae_item_sku_info_dtos.some(sku => sku.sku_id === payload.skuId)) {
+    throw new AliExpressDropshipError('INPUT');
+  }
+  const stocks = product.ae_item_sku_info_dtos
+    .map(sku => typeof sku.sku_available_stock === 'number' ? Math.trunc(sku.sku_available_stock) : null)
+    .filter((stock): stock is number => stock !== null);
+  const quantity = z.number().int().min(1).max(10000).parse(payload.quantity ?? 1);
+  const manualShipping = payload.manualShippingUsd === undefined ? null
+    : parseAmountToCents(z.number().finite().nonnegative().parse(payload.manualShippingUsd));
+
   const variants: PreviewVariant[] = product.ae_item_sku_info_dtos.map(sku => {
     const props = (sku.ae_sku_property_dtos || []).map(prop => ({
       name: prop.sku_property_name || '',
       value: prop.property_value_definition_name || prop.sku_property_value || '',
       image: prop.sku_image || undefined,
     }));
-    // Stock is only "known" when the provider sent a numeric count. `sku_stock`
-    // is a boolean availability flag and must never become a fake number.
     const stock = typeof sku.sku_available_stock === 'number'
       ? Math.trunc(sku.sku_available_stock) : null;
     const costCents = parseAmountToCents(sku.sku_price);
+    const variantFreight = payload.freightBySkuId?.[sku.sku_id]
+      ?? (sku.sku_id === selectedSkuId ? payload.freight : undefined);
+    const providerShipping = cheapestFreightCents(variantFreight?.delivery_options);
+    const cachedShipping = payload.cachedShippingUsdCentsBySkuId?.[sku.sku_id]
+      ?? (sku.sku_id === selectedSkuId ? payload.cachedShippingUsdCents ?? null : null);
+    const commercialShipping = payload.commercialShippingUsdCentsBySkuId?.[sku.sku_id]
+      ?? (sku.sku_id === selectedSkuId ? payload.commercialShippingUsdCents ?? null : null);
+    const shipping = resolveShippingResolution({
+      providerShippingCents: providerShipping,
+      cachedShippingCents: cachedShipping === undefined ? null : cachedShipping,
+      manualShippingCents: manualShipping,
+      commercialShippingCents: commercialShipping === undefined ? null : commercialShipping,
+      shippingError: payload.shippingError,
+    });
+    const productCostCents = costCents === null ? null : costCents * quantity;
+    let supplierAcquisitionCostUsdCents: number | null = null;
+    let productSalePriceUsd: number | null = null;
+    let customerShippingUsdCents: number | null = null;
+    let customerTotalUsd: number | null = null;
+    if (productCostCents !== null && shipping.supplierConfirmedForMargin !== null) {
+      try {
+        const priced = computeYesYesPrice({
+          supplierProductCostUsdCents: productCostCents,
+          supplierShippingCostUsdCents: shipping.supplierConfirmedForMargin,
+          marginPercent,
+        });
+        supplierAcquisitionCostUsdCents = priced.supplierAcquisitionCostUsdCents;
+        productSalePriceUsd = priced.productSalePriceUsd;
+        customerShippingUsdCents = priced.customerShippingUsdCents;
+        customerTotalUsd = priced.customerTotalUsd;
+      } catch { /* deja nulos */ }
+    } else if (productCostCents !== null && shipping.customerShippingUsdCents !== null) {
+      try {
+        const priced = computeYesYesPrice({
+          supplierProductCostUsdCents: productCostCents,
+          supplierShippingCostUsdCents: null,
+          marginPercent,
+        });
+        productSalePriceUsd = priced.productSalePriceUsd;
+        customerShippingUsdCents = shipping.customerShippingUsdCents;
+        // El US$10 comercial/manual NO recibe margen: total = venta + envio.
+        customerTotalUsd = productSalePriceUsd + customerShippingUsdCents / 100;
+      } catch { /* deja nulos */ }
+    }
+    let salePriceClp: number | null = null;
+    if (productSalePriceUsd !== null) {
+      const clp = Math.round(productSalePriceUsd * fxValue);
+      salePriceClp = Number.isSafeInteger(clp) ? clp : null;
+    }
     return {
       supplierVariantId: sku.sku_id,
       skuAttr: sku.sku_attr || '',
@@ -279,134 +415,30 @@ export function buildImportPreview(payload: {
       costUsd: costCents === null ? null : costCents / 100,
       costUsdCents: costCents,
       stock, stockKnown: stock !== null,
+      shippingUsdCents: shipping.supplierConfirmedForMargin,
+      shippingUsd: shipping.supplierConfirmedForMargin === null ? null : shipping.supplierConfirmedForMargin / 100,
+      supplierAcquisitionCostUsdCents,
+      productSalePriceUsd,
+      customerShippingUsdCents,
+      customerTotalUsd,
+      salePriceClp,
+      shippingStatus: shipping.shippingStatus,
+      shippingSource: shipping.shippingSource,
+      shippingMessage: shipping.shippingMessage,
     };
   });
 
-  const selectedVariant = payload.skuId
-    ? variants.find(variant => variant.supplierVariantId === payload.skuId)
-    : variants[0];
-  if (payload.skuId && !selectedVariant) throw new AliExpressDropshipError('INPUT');
-  const costCents = selectedVariant?.costUsd === null || !selectedVariant
-    ? null : Math.round(selectedVariant.costUsd * 100);
-  const stocks = variants.map(v => v.stock).filter((s): s is number => s !== null);
-  const quantity = z.number().int().min(1).max(10000).parse(payload.quantity ?? 1);
-  const providerShipping = cheapestFreightCents(payload.freight?.delivery_options);
-  const cachedShipping = payload.cachedShippingUsdCents !== undefined
-    ? z.number().int().nonnegative().parse(payload.cachedShippingUsdCents) : null;
-  const commercialShipping = payload.commercialShippingUsdCents !== undefined
-    ? z.number().int().nonnegative().parse(payload.commercialShippingUsdCents) : null;
-  const manualShipping = payload.manualShippingUsd === undefined ? null
-    : parseAmountToCents(z.number().finite().nonnegative().parse(payload.manualShippingUsd));
-  // Prioridad: AliExpress confirmado > caché válida > manual legacy > fallback comercial > ninguno.
-  const confirmedSupplierShipping = providerShipping;
-  const shippingCents = providerShipping ?? cachedShipping ?? manualShipping ?? commercialShipping;
-  const usedCache = providerShipping === null && cachedShipping !== null;
-  const shippingSource: ShippingSource = providerShipping !== null ? 'ALIEXPRESS'
-    : cachedShipping !== null ? 'ALIEXPRESS'
-    : manualShipping !== null ? 'MANUAL'
-    : commercialShipping !== null ? 'COMMERCIAL' : 'NONE';
-  // ── Regla comercial YesYes (definitiva) ──────────────────────────────
-  // - Envío AliExpress confirmado ($0 o >$0): forma parte del costo proveedor
-  //   sobre el que se aplica el margen; además se cobra separado al cliente
-  //   ($0 → US$5; >$0 → mismo envío real). NO es doble cobro: el precio del
-  //   producto lleva el margen sobre (producto+envío) y el cargo de envío es
-  //   la línea separada `customerShipping`.
-  // - Sin confirmación (UNKNOWN/ERROR/caché ausente): fallback US$10 que NO
-  //   forma parte del costo ni recibe margen; solo `customerShipping`.
-  // - Caché válida: reutiliza cotización AliExpress real (con margen).
-  const fromCache = usedCache;
-  const isCommercialFallback = providerShipping === null && cachedShipping === null
-    && manualShipping === null && commercialShipping !== null;
-  const isManual = providerShipping === null && cachedShipping === null && manualShipping !== null;
-  // Nomenclatura única (definitiva). El estado responde "de dónde sale el envío
-  // al cliente": cotización AliExpress (gratis/paga) > caché válida > override
-  // manual legacy > respaldo comercial US$10. Cuando el proveedor falló a nivel
-  // transporte se reporta SHIPPING_ERROR (nunca se oculta como UNKNOWN), pero el
-  // respaldo comercial sigue aplicando: `shippingSource === 'COMMERCIAL'` indica
-  // que los US$10 no son cotización de AliExpress.
-  const shippingStatus: ShippingStatus = providerShipping !== null
-    ? (providerShipping === 0 ? 'SHIPPING_CONFIRMED_FREE' : 'SHIPPING_CONFIRMED')
-    : cachedShipping !== null ? 'SHIPPING_CACHED'
-    : manualShipping !== null ? (payload.shippingError === true ? 'SHIPPING_ERROR' : 'SHIPPING_UNKNOWN')
-    : commercialShipping !== null
-      ? (payload.shippingError === true ? 'SHIPPING_ERROR' : 'SHIPPING_COMMERCIAL_FALLBACK')
-    : (payload.shippingError === true ? 'SHIPPING_ERROR' : 'SHIPPING_UNKNOWN');
-  const yesYesShippingState: YesYesShippingState = shippingStatus === 'SHIPPING_CONFIRMED_FREE'
-    ? 'SHIPPING_CONFIRMED_FREE'
-    : shippingStatus === 'SHIPPING_CONFIRMED' ? 'SHIPPING_CONFIRMED'
-    : shippingStatus === 'SHIPPING_CACHED' ? 'SHIPPING_CACHED'
-    : shippingStatus === 'SHIPPING_ERROR' ? 'SHIPPING_ERROR'
-    : shippingStatus === 'SHIPPING_COMMERCIAL_FALLBACK' ? 'SHIPPING_COMMERCIAL_FALLBACK'
-    : 'SHIPPING_UNKNOWN';
-  const shippingMessage = shippingCents === null
-    ? SHIPPING_STATUS_MESSAGE[shippingStatus]
-    : isCommercialFallback
-      ? (payload.shippingError === true
-          ? 'Envío AliExpress: No disponible (error temporal). Envío al cliente: US$10. Fuente: Respaldo comercial (los US$10 no son cotización de AliExpress, no llevan margen y no forman parte del costo de adquisición).'
-          : 'Envío AliExpress: No disponible. Envío al cliente: US$10. Fuente: Respaldo comercial (los US$10 no son cotización de AliExpress, no llevan margen y no forman parte del costo de adquisición).')
-    : shippingSource === 'MANUAL'
-      ? 'Costo de envío manual del administrador; no confirmado por AliExpress.'
-    : fromCache
-      ? 'Cotización AliExpress reutilizada desde caché reciente.'
-      : SHIPPING_STATUS_MESSAGE[shippingStatus];
-  const sku = product.ae_item_sku_info_dtos.find(s => s.sku_id === selectedVariant?.supplierVariantId);
-  // Missing charges are not reported as zero. Only explicit, interpretable USD amounts are added.
-  const taxUnit = sku?.tax_currency_code === 'USD' ? parseAmountToCents(sku.tax_amount) : null;
+  const selectedVariant = variants.find(variant => variant.supplierVariantId === selectedSkuId) ?? null;
+  const selectedCostCents = selectedVariant?.costUsdCents ?? null;
+  const selectedSku = product.ae_item_sku_info_dtos.find(s => s.sku_id === selectedSkuId);
+  const taxUnit = selectedSku?.tax_currency_code === 'USD' ? parseAmountToCents(selectedSku.tax_amount) : null;
   const taxUsdCents = taxUnit === null ? null : taxUnit * quantity;
-  const otherUsdCents = null; // estimated_import_charges has no documented currency/inclusion semantics.
-  const taxIncluded = sku?.price_include_tax === true;
-  const ambiguousCharges = Boolean(sku?.estimated_import_charges?.trim())
-    || (Boolean(sku?.tax_amount?.trim()) && (taxUnit === null || sku?.price_include_tax === undefined));
-  const productCostUsdCents = costCents === null ? null : costCents * quantity;
-  // ── Modelo YesYes: costo proveedor vs envío cliente (NO mezclar) ──────
-  // supplierProductCost: precio AliExpress (por cantidad cotizada).
-  // supplierShippingCost: envío CONFIRMADO por AliExpress (o caché válida).
-  //   El fallback US$10 y el manual legacy NUNCA son costo proveedor.
-  // supplierAcquisitionCost: producto + envío confirmado.
-  // customerShipping: lo que YesYes cobra al cliente.
-  // productSalePrice: precio producto tras margen (USD exacto).
-  // customerTotal: productSalePrice + customerShipping.
-  const supplierConfirmedForMargin = confirmedSupplierShipping ?? cachedShipping;
-  let supplierProductCostUsdCents: number | null = productCostUsdCents;
-  let supplierShippingCostUsdCents: number | null = supplierConfirmedForMargin;
-  let supplierAcquisitionCostUsdCents: number | null = null;
-  let productSalePriceUsd: number | null = null;
-  let customerShippingUsdCents: number | null = null;
-  let customerTotalUsd: number | null = null;
-  if (productCostUsdCents !== null && supplierConfirmedForMargin !== null) {
-    try {
-      const priced = computeYesYesPrice({
-        supplierProductCostUsdCents: productCostUsdCents,
-        supplierShippingCostUsdCents: supplierConfirmedForMargin,
-        marginPercent,
-      });
-      supplierAcquisitionCostUsdCents = priced.supplierAcquisitionCostUsdCents;
-      productSalePriceUsd = priced.productSalePriceUsd;
-      customerShippingUsdCents = priced.customerShippingUsdCents;
-      customerTotalUsd = priced.customerTotalUsd;
-    } catch { /* deja nulos */ }
-  } else if (productCostUsdCents !== null && (isCommercialFallback || isManual)) {
-    // Fallback/manual: margen SOLO sobre producto; envío fuera de la base.
-    try {
-      const priced = computeYesYesPrice({
-        supplierProductCostUsdCents: productCostUsdCents,
-        supplierShippingCostUsdCents: null,
-        marginPercent,
-      });
-      supplierAcquisitionCostUsdCents = null; // el US$10/manual NO es adquisición.
-      productSalePriceUsd = priced.productSalePriceUsd;
-      // Manual legacy conserva su valor como cargo cliente; comercial siempre US$10.
-      customerShippingUsdCents = isManual && manualShipping !== null
-        ? manualShipping : COMMERCIAL_FALLBACK_SHIPPING_USD_CENTS;
-            // Total en cents (margina SOLO el producto; US$10/manual no recibe margen).
-      // Evita drift float: total = (producto × factor + envío cliente) / 100.
-      customerTotalUsd = (productCostUsdCents * (1 + marginPercent / 100) + customerShippingUsdCents) / 100;
-      supplierShippingCostUsdCents = null; // AliExpress: No disponible.
-    } catch { /* deja nulos */ }
-  }
-  // Legacy `totalUsdCents`: costo proveedor (producto+envío confirmado+tax).
-  // El fallback US$10 NUNCA entra aquí (no es costo proveedor).
-  const legacySupplierShipping = supplierConfirmedForMargin;
+  const otherUsdCents = null;
+  const taxIncluded = selectedSku?.price_include_tax === true;
+  const ambiguousCharges = Boolean(selectedSku?.estimated_import_charges?.trim())
+    || (Boolean(selectedSku?.tax_amount?.trim()) && (taxUnit === null || selectedSku?.price_include_tax === undefined));
+  const productCostUsdCents = selectedCostCents === null ? null : selectedCostCents * quantity;
+  const legacySupplierShipping = selectedVariant?.shippingUsdCents ?? null;
   const totalUsdCents = productCostUsdCents === null || legacySupplierShipping === null || ambiguousCharges ? null
     : productCostUsdCents + legacySupplierShipping + (taxIncluded ? 0 : taxUsdCents ?? 0);
   const acquisition: AcquisitionCost = {
@@ -414,14 +446,7 @@ export function buildImportPreview(payload: {
     shippingCostUsdCents: legacySupplierShipping, taxCostUsdCents: taxUsdCents,
     otherCostUsdCents: otherUsdCents, totalCostUsdCents: totalUsdCents,
   };
-  // salePriceClp (compat CLP): conversion FX del productSalePriceUsd exacto.
-  // Fallback: margen solo sobre producto; US$10 fuera de la base.
-  // Sin redondeo prematuro: CLP = round(productSalePriceUsd * fx).
-  let salePriceClp: number | null = null;
-  if (productSalePriceUsd !== null) {
-    const clp = Math.round(productSalePriceUsd * fxValue);
-    salePriceClp = Number.isSafeInteger(clp) ? clp : null;
-  }
+  const salePriceClp = selectedVariant?.salePriceClp ?? null;
 
   return {
     sourceUrl, aliexpressId,
@@ -434,16 +459,27 @@ export function buildImportPreview(payload: {
     variants,
     stockKnown: variants.length === 0 || variants.some(v => v.stockKnown),
     totalStock: stocks.length ? stocks.reduce((a, b) => a + b, 0) : null,
-    costUsdCents: costCents,
-    // `shippingUsdCents` (legacy) = SOLO envío cotizado por AliExpress (o caché
-    // válida). El respaldo comercial US$10 / manual NUNCA se expone aquí: vive
-    // únicamente en `customerShippingUsdCents` como cargo al cliente.
-    shippingUsdCents: supplierConfirmedForMargin,
-    shippingUnknown: customerShippingUsdCents === null && shippingCents === null,
-    shippingStatus, shippingSource, shippingMessage, yesYesShippingState,
-    supplierProductCostUsdCents, supplierShippingCostUsdCents,
-    supplierAcquisitionCostUsdCents, productSalePriceUsd,
-    customerShippingUsdCents, customerTotalUsd,
+    costUsdCents: selectedCostCents,
+    shippingUsdCents: legacySupplierShipping,
+    shippingUnknown: !selectedVariant
+      || (selectedVariant.customerShippingUsdCents === null && legacySupplierShipping === null),
+    shippingStatus: selectedVariant?.shippingStatus ?? 'SHIPPING_UNKNOWN',
+    shippingSource: selectedVariant?.shippingSource ?? 'NONE',
+    shippingMessage: selectedVariant?.shippingMessage ?? SHIPPING_STATUS_MESSAGE.SHIPPING_UNKNOWN,
+    yesYesShippingState: selectedVariant
+      ? (selectedVariant.shippingStatus === 'SHIPPING_CONFIRMED_FREE' ? 'SHIPPING_CONFIRMED_FREE'
+        : selectedVariant.shippingStatus === 'SHIPPING_CONFIRMED' ? 'SHIPPING_CONFIRMED'
+        : selectedVariant.shippingStatus === 'SHIPPING_CACHED' ? 'SHIPPING_CACHED'
+        : selectedVariant.shippingStatus === 'SHIPPING_ERROR' ? 'SHIPPING_ERROR'
+        : selectedVariant.shippingStatus === 'SHIPPING_COMMERCIAL_FALLBACK' ? 'SHIPPING_COMMERCIAL_FALLBACK'
+        : 'SHIPPING_UNKNOWN')
+      : 'SHIPPING_UNKNOWN',
+    supplierProductCostUsdCents: productCostUsdCents,
+    supplierShippingCostUsdCents: legacySupplierShipping,
+    supplierAcquisitionCostUsdCents: selectedVariant?.supplierAcquisitionCostUsdCents ?? null,
+    productSalePriceUsd: selectedVariant?.productSalePriceUsd ?? null,
+    customerShippingUsdCents: selectedVariant?.customerShippingUsdCents ?? null,
+    customerTotalUsd: selectedVariant?.customerTotalUsd ?? null,
     quantity,
     shipFrom: payload.shipFrom ?? null, selectedSkuId: selectedVariant?.supplierVariantId,
     destination: payload.destination ?? { countryCode: 'CL' }, acquisition,
@@ -617,6 +653,101 @@ async function withFreightRetry<T>(
   return { attempts: maxAttempts, failed: true };
 }
 
+type FreightPayload = {
+  delivery_options?: { free_shipping?: boolean | string; shipping_fee_cent?: string | number; shipping_fee_currency?: string }[];
+};
+
+interface ResolvedPreviewFreight {
+  freight?: FreightPayload;
+  providerShippingCents: number | null;
+  cachedShippingCents: number | null;
+  commercialShippingCents: number | null;
+  failed: boolean;
+}
+
+async function resolvePreviewFreight(input: {
+  productId: string;
+  skuId: string;
+  quantity: number;
+  options: PreviewOptions;
+  deps: PreviewDeps;
+}): Promise<ResolvedPreviewFreight> {
+  const freightQuery = input.deps.freightQuery
+    ?? ((freight: FreightQueryInput) => service.freightQuery(freight));
+  const buyerFreightCalculate = input.deps.buyerFreightCalculate
+    ?? ((freight: BuyerFreightCalculateInput) => service.buyerFreightCalculate(freight));
+  const meta = {
+    productId: input.productId, skuId: input.skuId, quantity: input.quantity,
+    destinationCountry: input.options.countryCode ?? 'CL',
+  };
+  const freightInput: FreightQueryInput = {
+    productId: input.productId, quantity: input.quantity,
+    shipToCountry: input.options.countryCode ?? 'CL', selectedSkuId: input.skuId,
+    ...(input.options.provinceCode ? { provinceCode: input.options.provinceCode } : {}),
+    ...(input.options.cityCode ? { cityCode: input.options.cityCode } : {}),
+  };
+  logImport('método AliExpress utilizado', { method: 'aliexpress.ds.freight.query', ...meta });
+  const freightOutcome = input.deps.freightQuery
+    ? await withFreightRetry('aliexpress.ds.freight.query',
+      () => freightQuery(freightInput), { ...meta, skuId: input.skuId }, [])
+    : await withFreightRetry('aliexpress.ds.freight.query',
+      () => freightQuery(freightInput), { ...meta, skuId: input.skuId });
+  let buyerFailed = false;
+  let effectiveFreight: FreightPayload | undefined = freightOutcome.value;
+  const freightOptions = effectiveFreight?.delivery_options?.length ?? 0;
+  let parsedCents = cheapestFreightCents(effectiveFreight?.delivery_options);
+  logImport('parser de aliexpress.ds.freight.query', { ...meta,
+    deliveryOptions: freightOptions, parsedCents,
+    decisionSoFar: parsedCents !== null
+      ? (parsedCents === 0 ? 'FREE_CANDIDATE' : 'PAID_CANDIDATE') : 'NO_QUOTE_YET' });
+  if (!freightOptions || parsedCents === null) {
+    const buyerInput: BuyerFreightCalculateInput = {
+      product_id: input.productId, product_num: input.quantity, sku_id: input.skuId,
+    };
+    logImport('método AliExpress utilizado', {
+      method: 'aliexpress.logistics.buyer.freight.calculate', ...meta,
+    });
+    const buyerOutcome = input.deps.buyerFreightCalculate
+      ? await withFreightRetry('aliexpress.logistics.buyer.freight.calculate',
+        () => buyerFreightCalculate(buyerInput), { ...meta, skuId: input.skuId }, [])
+      : await withFreightRetry('aliexpress.logistics.buyer.freight.calculate',
+        () => buyerFreightCalculate(buyerInput), { ...meta, skuId: input.skuId });
+    if (buyerOutcome.failed) {
+      buyerFailed = true;
+    } else {
+      const result = buyerOutcome.value!;
+      const options = (result.aeop_freight_calculate_result_for_buyer_d_t_o_list || [])
+        .map(option => {
+          const cent = typeof option.freight?.cent === 'number'
+            ? option.freight.cent : parseAmountToCents(option.freight?.amount);
+          return cent === null ? null : {
+            free_shipping: cent === 0 ? 'true' : 'false', shipping_fee_cent: String(cent),
+          };
+        }).filter((option): option is { free_shipping: string; shipping_fee_cent: string } => option !== null);
+      parsedCents = cheapestFreightCents(options);
+      logImport('parser de aliexpress.logistics.buyer.freight.calculate', { ...meta,
+        deliveryOptions: options.length, parsedCents,
+        decisionSoFar: parsedCents !== null
+          ? (parsedCents === 0 ? 'FREE_CANDIDATE' : 'PAID_CANDIDATE') : 'NO_QUOTE_YET' });
+      effectiveFreight = options.length ? { delivery_options: options } : undefined;
+    }
+  }
+  const providerShippingCents = cheapestFreightCents(effectiveFreight?.delivery_options);
+  if (providerShippingCents !== null) rememberFreightQuote(input.productId, input.skuId, providerShippingCents);
+  let cachedShippingCents: number | null = null;
+  let commercialShippingCents: number | null = null;
+  if (providerShippingCents === null) {
+    cachedShippingCents = readFreightCache(input.productId, input.skuId);
+    if (cachedShippingCents === null && input.options.manualShippingUsd === undefined) {
+      commercialShippingCents = COMMERCIAL_FREIGHT_FALLBACK_USD_CENTS;
+    }
+  }
+  return {
+    freight: effectiveFreight, providerShippingCents, cachedShippingCents,
+    commercialShippingCents, failed: freightOutcome.failed || buyerFailed,
+  };
+}
+
 export async function previewAliExpressProduct(
   rawUrl: string, options: PreviewOptions = {}, deps: PreviewDeps = {},
 ): Promise<ImportPreview> {
@@ -639,92 +770,33 @@ export async function previewAliExpressProduct(
     productId, variants: product.ae_item_sku_info_dtos.length,
     images: (product.ae_multimedia_info_dto?.image_urls || '').split(';').filter(Boolean).length,
   });
-  // Freight for Chile via the official aliexpress.ds.freight.query. The provider
-  // contract requires the SKU: use the URL sku_id when present, otherwise the
-  // product's first SKU. ship_from=CL never implies free shipping — the real
-  // freight response decides.
-  // Chain: API responded X -> parser found Y -> resolver decided Z is logged
-  // at each stage (safe fields only: ids, counts, durations, error labels).
-  let freightQueryFailed = false;
   const freightSkuId = options.selectedSkuId ?? urlSkuId
     ?? (String(product.ae_item_sku_info_dtos[0]?.sku_id ?? '') || undefined);
   if (!freightSkuId || !product.ae_item_sku_info_dtos.some(sku => sku.sku_id === freightSkuId)) {
     throw new AliExpressDropshipError('INPUT');
   }
-  const freightMeta = { productId, skuId: freightSkuId ?? null, quantity,
-    destinationCountry: options.countryCode ?? 'CL' };
-  logImport('método AliExpress utilizado', { method: 'aliexpress.ds.freight.query', ...freightMeta });
-  const freightQuery = deps.freightQuery ?? ((input: FreightQueryInput) => service.freightQuery(input));
-  const freightInput: FreightQueryInput = { productId, quantity,
-    shipToCountry: options.countryCode ?? 'CL',
-    ...(freightSkuId ? { selectedSkuId: freightSkuId } : {}),
-    ...(options.provinceCode ? { provinceCode: options.provinceCode } : {}),
-    ...(options.cityCode ? { cityCode: options.cityCode } : {}),
-  };
-  const freightOutcome = deps.freightQuery
-    ? await withFreightRetry('aliexpress.ds.freight.query',
-        () => freightQuery(freightInput), { ...freightMeta, skuId: freightSkuId ?? null }, [])
-    : await withFreightRetry('aliexpress.ds.freight.query',
-        () => freightQuery(freightInput), { ...freightMeta, skuId: freightSkuId ?? null });
   const duplicateOfProductId = await (deps.findDuplicate ?? findDuplicateProduct)(productId);
-  const freight = freightOutcome.value;
-  freightQueryFailed = freightOutcome.failed;
-  const freightOptions = freight?.delivery_options?.length ?? 0;
-  const parsedPreviewCents = cheapestFreightCents(freight?.delivery_options);
-  logImport('parser de aliexpress.ds.freight.query', { ...freightMeta,
-    deliveryOptions: freightOptions, parsedCents: parsedPreviewCents,
-    decisionSoFar: parsedPreviewCents !== null
-      ? (parsedPreviewCents === 0 ? 'FREE_CANDIDATE' : 'PAID_CANDIDATE') : 'NO_QUOTE_YET' });
-  // Official fallback for products where aliexpress.ds.freight.query is rejected:
-  // aliexpress.logistics.buyer.freight.calculate (already-validated contract).
-  let effectiveFreight = freight;
-  if (!freightOptions || parsedPreviewCents === null) {
-    const buyerFreightCalc = deps.buyerFreightCalculate
-      ?? ((input: BuyerFreightCalculateInput) => service.buyerFreightCalculate(input));
-    logImport('método AliExpress utilizado', { method: 'aliexpress.logistics.buyer.freight.calculate', ...freightMeta });
-    const buyerInput: BuyerFreightCalculateInput = {
-      product_id: productId, product_num: quantity, ...(freightSkuId ? { sku_id: freightSkuId } : {}),
-    };
-    const buyerOutcome = deps.buyerFreightCalculate
-      ? await withFreightRetry('aliexpress.logistics.buyer.freight.calculate',
-          () => buyerFreightCalc(buyerInput), { ...freightMeta, skuId: freightSkuId ?? null }, [])
-      : await withFreightRetry('aliexpress.logistics.buyer.freight.calculate',
-          () => buyerFreightCalc(buyerInput), { ...freightMeta, skuId: freightSkuId ?? null });
-    if (buyerOutcome.failed) {
-      freightQueryFailed = true;
-      effectiveFreight = undefined;
-    } else {
-      const result = buyerOutcome.value!;
-      const options = (result.aeop_freight_calculate_result_for_buyer_d_t_o_list || [])
-        .map(option => {
-          const cent = typeof option.freight?.cent === 'number'
-            ? option.freight.cent : parseAmountToCents(option.freight?.amount);
-          return cent === null ? null : {
-            free_shipping: cent === 0 ? 'true' : 'false', shipping_fee_cent: String(cent),
-          };
-        }).filter((o): o is { free_shipping: string; shipping_fee_cent: string } => o !== null);
-      const parsedBuyerCents = cheapestFreightCents(options);
-      logImport('parser de aliexpress.logistics.buyer.freight.calculate', { ...freightMeta,
-        deliveryOptions: options.length, parsedCents: parsedBuyerCents,
-        decisionSoFar: parsedBuyerCents !== null
-          ? (parsedBuyerCents === 0 ? 'FREE_CANDIDATE' : 'PAID_CANDIDATE') : 'NO_QUOTE_YET' });
-      effectiveFreight = options.length ? { delivery_options: options } : undefined;
-    }
+  const freightResolutions: Record<string, ResolvedPreviewFreight> = {};
+  for (const sku of product.ae_item_sku_info_dtos) {
+    freightResolutions[sku.sku_id] = await resolvePreviewFreight({
+      productId, skuId: sku.sku_id, quantity, options, deps,
+    });
   }
-  const finalCents = cheapestFreightCents(effectiveFreight?.delivery_options);
-  // Cadena automática: API respondió X -> parser encontró Y -> resolver decidió Z.
-  // 1) freight.query 2) retry 3) buyer.calculate 4) caché reciente 5) fallback US$10.
-  let commercialFallbackCents: number | undefined;
-  let cachedFallbackCents: number | null = null;
-  if (finalCents !== null && freightSkuId) {
-    rememberFreightQuote(productId, freightSkuId, finalCents);
+  const selectedResolution = freightResolutions[freightSkuId];
+  if (!selectedResolution) throw new AliExpressDropshipError('INPUT');
+  const freightBySkuId: Record<string, FreightPayload> = {};
+  const cachedShippingUsdCentsBySkuId: Record<string, number> = {};
+  const commercialShippingUsdCentsBySkuId: Record<string, number> = {};
+  for (const [skuId, resolution] of Object.entries(freightResolutions)) {
+    if (resolution.freight) freightBySkuId[skuId] = resolution.freight;
+    if (resolution.cachedShippingCents !== null) cachedShippingUsdCentsBySkuId[skuId] = resolution.cachedShippingCents;
+    if (resolution.commercialShippingCents !== null) commercialShippingUsdCentsBySkuId[skuId] = resolution.commercialShippingCents;
   }
-  if (finalCents === null && freightSkuId) {
-    cachedFallbackCents = readFreightCache(productId, freightSkuId);
-    if (cachedFallbackCents === null) {
-      commercialFallbackCents = COMMERCIAL_FREIGHT_FALLBACK_USD_CENTS;
-    }
-  }
+  const freightMeta = { productId, skuId: freightSkuId, quantity,
+    destinationCountry: options.countryCode ?? 'CL' };
+  const finalCents = selectedResolution.providerShippingCents;
+  const cachedFallbackCents = selectedResolution.cachedShippingCents;
+  const commercialFallbackCents = selectedResolution.commercialShippingCents;
   logImport('resolver decidió', { ...freightMeta,
     finalCents: finalCents ?? cachedFallbackCents ?? commercialFallbackCents ?? null,
     finalDecision: finalCents !== null
@@ -735,21 +807,17 @@ export async function previewAliExpressProduct(
       : cachedFallbackCents !== null ? 'RECENT_CACHED_QUOTE_REUSED'
       : 'NO_QUOTE_US10_COMMERCIAL_FALLBACK' });
   return buildImportPreview({
-    product, freight: effectiveFreight, sourceUrl, aliexpressId: productId, marginPercent,
-    fxValue: fxRate.value, fxSource: fxRate.source,
-    // Prioridad: AliExpress confirmado > caché válida > MANUAL legacy > comercial US$10.
-    // La caché reutiliza cotización AliExpress REAL (con margen); el US$10
-    // NUNCA es costo proveedor ni lleva margen.
+    product, freight: selectedResolution.freight, freightBySkuId, sourceUrl,
+    aliexpressId: productId, marginPercent, fxValue: fxRate.value, fxSource: fxRate.source,
     cachedShippingUsdCents: finalCents === null ? cachedFallbackCents ?? undefined : undefined,
+    cachedShippingUsdCentsBySkuId,
     commercialShippingUsdCents: finalCents === null && cachedFallbackCents === null
       && options.manualShippingUsd === undefined
       ? commercialFallbackCents ?? undefined : undefined,
+    commercialShippingUsdCentsBySkuId,
     manualShippingUsd: options.manualShippingUsd,
     duplicateOfProductId, skuId: freightSkuId, quantity,
-    // CASO D: si ambas APIs fallaron a nivel transporte el estado es
-    // SHIPPING_ERROR, aunque el respaldo comercial US$10 siga aplicando como
-    // cargo al cliente (shippingSource=COMMERCIAL, supplierShipping=null).
-    shippingError: freightQueryFailed,
+    shippingError: selectedResolution.failed,
   });
 }
 // ─── Category resolution (auto, no frontend input) ────────────────────────────
@@ -856,25 +924,39 @@ export interface PublishOptions {
 export async function publishAliExpressProduct(options: PublishOptions, db: typeof prisma = prisma) {
   const { preview, categoryId } = options;
   const marginPercent = marginSchema.parse(options.marginPercent ?? 100);
-  if (preview.costUsdCents === null) throw new AliExpressDropshipError('INPUT');
-  // Sin envío al cliente (ni AliExpress ni respaldo comercial/manual) no se
-  // publica: un envío desconocido jamás se convierte en cero.
   if (preview.shippingUnknown || preview.customerShippingUsdCents === null) {
     throw new AliExpressDropshipError('SHIPPING_UNKNOWN');
   }
-  if (preview.salePriceClp === null) throw new AliExpressDropshipError('INPUT');
+  // Precio nivel producto = minimo de los precios individuales de variantes.
+  // Compatibilidad: previews legacy sin precio por variante usan el precio
+  // unico del producto. Si alguna variante trae precio propio, todas deben
+  // traerlo (evita copiar el precio principal a variantes sin precio).
+  const hasAnyVariantPrice = preview.variants.some(variant => variant.salePriceClp !== null && variant.salePriceClp !== undefined);
+  const variantPrices = preview.variants.length && hasAnyVariantPrice
+    ? preview.variants.map(variant => variant.salePriceClp ?? null)
+    : [preview.salePriceClp];
+  if (variantPrices.some(price => price === null)) throw new AliExpressDropshipError('INPUT');
+  const salePrice = Math.min(...variantPrices.filter((price): price is number => price !== null));
+  const knownCostCents = preview.variants
+    .map(variant => variant.costUsdCents)
+    .filter((cost): cost is number => cost !== null);
+  if (!knownCostCents.length && preview.costUsdCents === null) {
+    throw new AliExpressDropshipError('INPUT');
+  }
+  const costUsd = (knownCostCents.length ? Math.min(...knownCostCents) : preview.costUsdCents!) / 100;
+  const knownShippingCents = preview.variants
+    .map(variant => variant.shippingUsdCents)
+    .filter((shipping): shipping is number => shipping !== null);
+  const supplierShippingCents = knownShippingCents.length
+    ? Math.min(...knownShippingCents)
+    : preview.supplierShippingCostUsdCents;
+  const supplierShipUsd = supplierShippingCents === null ? null : supplierShippingCents / 100;
   // Resolver categoría automáticamente si no se proporcionó (frontend ya no lo envía)
   const resolvedCategoryId = categoryId ?? await resolveCategory(preview, db);
   const category = await db.category.findUnique({ where: { id: resolvedCategoryId }, select: { id: true } });
   if (!category) throw new AliExpressDropshipError('INPUT');
   const duplicate = preview.duplicateOfProductId ?? await findDuplicateProduct(preview.aliexpressId, db);
   if (duplicate) throw new AliExpressDropshipError('INPUT');
-  // salePrice SIEMPRE del motor de precios YesYes (preview ya lo calcula con margen).
-  const salePrice = preview.salePriceClp ?? 0;
-  const costUsd = preview.costUsdCents / 100;
-  // Persistencia: shippingCost/totalCost guardan COSTO PROVEEDOR (sin US$10).
-  // El cargo al cliente (US$10 o US$5/real) vive en el snapshot YesYes.
-  const supplierShipUsd = (preview.supplierShippingCostUsdCents ?? 0) / 100;
   return db.product.create({
     data: {
       name: preview.name, slug: slugify(preview.name, preview.aliexpressId),
@@ -886,12 +968,14 @@ export async function publishAliExpressProduct(options: PublishOptions, db: type
        importSource: 'ALIEXPRESS_DROPSHIP', sourcePlatform: 'ALIEXPRESS',
        sourceId: preview.aliexpressId, sourceUrl: preview.sourceUrl,
        stock: preview.totalStock ?? 0,
-       productCost: costUsd, shippingCost: supplierShipUsd, totalCost: costUsd + supplierShipUsd,
-       salePrice, margin: marginPercent,
-       weight: preview.weight ?? null,
-       aliexpressMarginPercent: marginPercent,
-       aliexpressShippingUsdCents: preview.supplierShippingCostUsdCents,
-       aliexpressShippingUnknown: preview.supplierShippingCostUsdCents === null,
+      productCost: costUsd,
+      shippingCost: supplierShipUsd ?? 0,
+      totalCost: costUsd + (supplierShipUsd ?? 0),
+      salePrice, margin: marginPercent,
+      weight: preview.weight ?? null,
+      aliexpressMarginPercent: marginPercent,
+      aliexpressShippingUsdCents: supplierShippingCents,
+      aliexpressShippingUnknown: supplierShippingCents === null,
        aliexpressSnapshot: {
          ...(preview.raw as object),
          acquisition: preview.acquisition,
@@ -899,7 +983,7 @@ export async function publishAliExpressProduct(options: PublishOptions, db: type
          shippingStatus: preview.shippingStatus,
          yesYesShippingState: preview.yesYesShippingState,
          supplierProductCostUsdCents: preview.supplierProductCostUsdCents,
-         supplierShippingCostUsdCents: preview.supplierShippingCostUsdCents,
+         supplierShippingCostUsdCents: supplierShippingCents,
          supplierAcquisitionCostUsdCents: preview.supplierAcquisitionCostUsdCents,
          productSalePriceUsd: preview.productSalePriceUsd,
          customerShippingUsdCents: preview.customerShippingUsdCents,
@@ -907,20 +991,27 @@ export async function publishAliExpressProduct(options: PublishOptions, db: type
          destination: preview.destination,
          fxRate: preview.fxRate,
          fxSource: preview.fxSource,
+         variants: preview.variants,
+         variantShippingUsdCents: Object.fromEntries(preview.variants.map(variant => [
+           variant.supplierVariantId, variant.shippingUsdCents,
+         ])),
+         variantSalePriceClp: Object.fromEntries(preview.variants.map(variant => [
+           variant.supplierVariantId, variant.salePriceClp,
+         ])),
        } as object,
        status: options.publish ? 'PUBLISHED' : 'DRAFT',
-       variants: { type: preview.variants } as object,
+       variants: preview.variants as unknown as object,
        productVariants: {
          create: preview.variants.map(variant => ({
            sku: `${preview.aliexpressId}-${variant.supplierVariantId}`,
            size: variant.attributes.find(a => /talla|size/i.test(a.name))?.value ?? null,
            color: variant.attributes.find(a => /colou?r/i.test(a.name))?.value ?? null,
-           price: salePrice, stock: variant.stock ?? 0,
+           price: variant.salePriceClp ?? salePrice, stock: variant.stock ?? 0,
            supplierVariantId: variant.supplierVariantId,
            supplierAttributes: variant.attributes as object,
            supplierImage: variant.image ?? null,
            supplierCostUsd: variant.costUsd,
-           supplierShippingUsd: supplierShipUsd,
+           supplierShippingUsd: variant.shippingUsd ?? supplierShipUsd,
            supplierStock: variant.stock,
            supplierStockKnown: variant.stockKnown,
          })),
@@ -1215,6 +1306,8 @@ export async function syncAliExpressProduct(input: {
       changes.shipping = { before: currentShippingCents, after: supplierShippingCents };
     }
     const shouldUpdateSalePrice = (input.updateSalePrice ?? true) && preview.salePriceClp !== null;
+    const variantSalePrices = preview.variants.map(variant => variant.salePriceClp).filter((price): price is number => price !== null);
+    const minSalePriceClp = variantSalePrices.length ? Math.min(...variantSalePrices) : preview.salePriceClp;
     const previousStatus = product.status;
     let nextStatus = previousStatus;
     if (stockAfter === 0) nextStatus = 'OUT_OF_STOCK';
@@ -1228,26 +1321,39 @@ export async function syncAliExpressProduct(input: {
         ...(costAfter !== null && supplierShippingCents !== null
           ? { shippingCost: supplierShippingCents / 100, totalCost: costAfter + supplierShippingCents / 100 } : {}),
         ...(stockAfter !== null ? { stock: stockAfter } : {}),
-        ...(shouldUpdateSalePrice && preview.salePriceClp ? { salePrice: preview.salePriceClp } : {}),
+        ...(shouldUpdateSalePrice && minSalePriceClp ? { salePrice: minSalePriceClp } : {}),
         ...(supplierShippingCents !== null ? { aliexpressShippingUsdCents: supplierShippingCents } : {}),
         aliexpressShippingUnknown: supplierShippingCents === null,
         aliexpressSyncedAt: new Date(),
         ...(nextStatus !== previousStatus ? { status: nextStatus } : {}),
-        // Per-SKU stock/cost/shipping: each variant is synchronised individually.
-        productVariants: {
-          updateMany: preview.variants
-            .filter(variant => variant.stockKnown || variant.costUsdCents !== null)
-            .map(variant => ({
-              where: { supplierVariantId: variant.supplierVariantId },
-              data: {
-                ...(variant.stockKnown ? { supplierStock: variant.stock, supplierStockKnown: true } : {}),
-                ...(variant.costUsd !== null ? { supplierCostUsd: variant.costUsd } : {}),
-                ...(supplierShippingCents !== null ? { supplierShippingUsd: supplierShippingCents / 100 } : {}),
-              },
-            })),
-        },
       },
     });
+    // Per-SKU stock/cost/shipping/price: cada variante se sincroniza
+    // individualmente con su propio costo, su propio envio y su propio
+    // precio de venta (mismo margen del producto). El envio comun
+    // confirmado solo se usa como respaldo cuando la variante no trae
+    // el suyo. No se toca el calculo de envio.
+    for (const variant of preview.variants) {
+      const hasStock = variant.stockKnown;
+      const hasCost = variant.costUsd !== null;
+      const variantShipping = variant.shippingUsd ?? (supplierShippingCents !== null ? supplierShippingCents / 100 : null);
+      const hasShipping = variantShipping !== null;
+      const hasPrice = shouldUpdateSalePrice && variant.salePriceClp !== null && variant.salePriceClp !== undefined;
+      if (!hasStock && !hasCost && !hasShipping && !hasPrice) continue;
+      const updateVariant = (db.productVariant && (db.productVariant as unknown as { updateMany: unknown }).updateMany)
+        ? ((where: object, data: object) => (db.productVariant as unknown as { updateMany: (args: object) => Promise<unknown> }).updateMany({ where: where as never, data: data as never }))
+        : null;
+      if (!updateVariant) continue;
+      await updateVariant(
+        { productId: product.id, supplierVariantId: variant.supplierVariantId },
+        {
+          ...(hasStock ? { stock: variant.stock ?? 0, supplierStock: variant.stock, supplierStockKnown: true } : {}),
+          ...(hasCost ? { supplierCostUsd: variant.costUsd } : {}),
+          ...(hasShipping ? { supplierShippingUsd: variantShipping } : {}),
+          ...(hasPrice ? { price: variant.salePriceClp } : {}),
+        },
+      );
+    }
     await db.aliExpressSyncLog.create({
       data: { productId: product.id, aliexpressId, skuId: freightSkuId,
         status: Object.keys(changes).length ? 'CHANGED' : 'UNCHANGED',

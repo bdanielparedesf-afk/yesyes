@@ -65,27 +65,41 @@ export interface HomeData {
 interface DbProductImage { url: string; alt?: string; position: number; id?: string }
 
 function crossVariants(p: any): ProductVariant[] {
-  const jsonVariants: any[] = Array.isArray(p.variants) ? p.variants : [];
+  // Product.variants ahora se guarda como array plano de PreviewVariant
+  // (antes existio como objeto { type: [...] } y el cruce quedaba vacio).
+  const rawVariants: any = Array.isArray(p.variants) ? p.variants : (Array.isArray(p.variants?.type) ? p.variants.type : []);
+  const jsonVariants: any[] = rawVariants;
   const byVid = new Map<string, any>();
   for (const j of jsonVariants) {
-    if (j && (j.vid || j.sku)) byVid.set(String(j.vid || j.sku), j);
+    if (j && (j.supplierVariantId || j.vid || j.sku)) byVid.set(String(j.supplierVariantId || j.vid || j.sku), j);
     if (j && j.sku) byVid.set(String(j.sku), j);
   }
   const dbVariants: any[] = Array.isArray(p.productVariants) ? p.productVariants : [];
   if (dbVariants.length) {
     return dbVariants.map((pv: any) => {
-      const j = byVid.get(String(pv.sku)) || (pv.supplierVariantId ? byVid.get(String(pv.supplierVariantId)) : {}) || {};
+      const j = byVid.get(String(pv.sku))
+        || (pv.supplierVariantId ? byVid.get(String(pv.supplierVariantId)) : undefined)
+        || (pv.sku && pv.sku.includes('-') ? byVid.get(String(pv.sku.split('-').slice(1).join('-'))) : undefined)
+        || {};
+      // El precio de la variante seleccionada manda: pv.price ya es el precio
+      // de venta individual calculado en backend (costo variante + envio
+      // variante, con el mismo margen, convertido a CLP).
+      const label = j.skuAttr
+        || [j.attributes?.map?.((a: any) => a?.value).filter(Boolean).join(' / ')].filter(Boolean)[0]
+        || j.name
+        || undefined;
+      const variantPrice = Number(pv.price ?? 0);
       return {
         id: pv.id || pv.sku,
         sku: pv.sku || pv.supplierVariantId || '',
-        name: j.name || pv.size || undefined,
-        nameEs: j.nameEs || pv.size || undefined,
+        name: label || j.nameEs || pv.size || undefined,
+        nameEs: label || j.nameEs || pv.size || undefined,
         size: pv.size ?? null,
         color: pv.color ?? null,
-        price: Number(pv.price || 0),
-        stock: Number(pv.stock || 0),
+        price: variantPrice,
+        stock: Number(pv.stock ?? 0),
         image: j.image || pv.supplierImage || undefined,
-        finalPrice: Number(j.finalPriceCLP ?? j.finalPrice ?? pv.price ?? 0),
+        finalPrice: Number(j.salePriceClp ?? j.finalPriceCLP ?? j.finalPrice ?? (variantPrice || 0)),
       };
     });
   }

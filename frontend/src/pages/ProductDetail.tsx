@@ -48,7 +48,7 @@ export default function ProductDetail() {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  const displayPrice = selectedVariant?.finalPrice || product?.price || 0;
+  const displayPrice = Number(selectedVariant?.finalPrice ?? selectedVariant?.price ?? 0) || Number(product?.price || 0);
   const displayStock = selectedVariant?.stock ?? product?.stock ?? 0;
 
   const handleAdd = () => {
