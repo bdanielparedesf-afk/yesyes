@@ -61,7 +61,11 @@ function makeMockDb() {
       if (where.isFeatured !== undefined && p.isFeatured !== where.isFeatured) return false;
       if (where.isOffer !== undefined && p.isOffer !== where.isOffer) return false;
       if (where.collectionId !== undefined && p.collectionId !== where.collectionId) return false;
-      if (where.categoryId !== undefined && p.categoryId !== where.categoryId) return false;
+      if (where.categoryId !== undefined) {
+        if (where.categoryId.in) {
+          if (!where.categoryId.in.includes(p.categoryId)) return false;
+        } else if (p.categoryId !== where.categoryId) return false;
+      }
       return true;
     }).slice(0, where.take || 100);
   }

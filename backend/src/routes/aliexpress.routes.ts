@@ -15,6 +15,7 @@ import {
   prepareAliExpressOrder, executeAliExpressOrder, simulateAliExpressOrder,
   getAliExpressOrder, getAliExpressTracking,
 } from '../services/aliexpress-dropship.service';
+import { invalidateHomeCache } from '../controllers/product.controller';
 import service from '../services/aliexpress-dropship.service';
 
 const productIdSchema = z.string().regex(/^\d{5,32}$/);
@@ -144,10 +145,12 @@ const importRoutes = (router: Router, preview = previewAliExpressProduct) => {
       publish: z.boolean().optional(), preview: z.record(z.unknown()) }).strict().safeParse(req.body);
     if (!input.success) { res.status(400).json({ message: 'Datos de publicacion invalidos.' }); return; }
     try {
-      res.json(await publishAliExpressProduct({
+      const result = await publishAliExpressProduct({
         categoryId: input.data.categoryId, marginPercent: input.data.marginPercent,
         publish: input.data.publish === true, preview: input.data.preview as never,
-      }));
+      });
+      invalidateHomeCache();
+      res.json(result);
     } catch (error) { next(error); }
   });
   router.post('/dropship/import/jobs', async (req, res, next) => {
@@ -172,7 +175,13 @@ const importRoutes = (router: Router, preview = previewAliExpressProduct) => {
   // Cada request reclama un item pendiente de forma atómica (claim + retry +
   // MAX_ATTEMPTS existentes). Se vuelve a llamar hasta que la respuesta marque done.
   router.post('/dropship/import/jobs/:id/step', async (req, res, next) => {
-    try { res.json(await processNextImportJobItem(req.params.id)); } catch (error) { next(error); }
+    try {
+      const result = await processNextImportJobItem(req.params.id);
+      if (result.done) {
+        invalidateHomeCache();
+      }
+      res.json(result);
+    } catch (error) { next(error); }
   });
   router.post('/dropship/import/items/:id/retry', async (req, res, next) => {
     try { res.json(await retryImportJobItem(req.params.id)); } catch (error) { next(error); }

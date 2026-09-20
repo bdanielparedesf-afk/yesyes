@@ -160,6 +160,7 @@ export const hideProduct = async (req: Request, res: Response): Promise<void> =>
       data: { hidden: true, hasAlert: false, alert: null, alertLevel: 'info' },
       include: { productImages: true, collection: true, category: true },
     });
+    invalidateHomeCache();
     res.json({ active: false, hidden: true, product });
   } catch (error: any) {
     console.error('Error hiding product:', error);
@@ -255,11 +256,17 @@ export const getHome = async (_req: Request, res: Response): Promise<void> => {
   }
 };
 
-const HOME_CACHE_TTL_MS = 60_000;
+const HOME_CACHE_TTL_MS = 5 * 60_000; // 5 minutos: reduce drásticamente carga en BD/Supabase
 let homeDataCache: { at: number; data: unknown } | null = null;
 
+export function invalidateHomeCache(): void {
+  homeDataCache = null;
+}
+
 export async function buildHomeData(db: typeof prisma) {
-  const [rows, featured, latest, offers, uncategorized] = await Promise.all([
+  // FASE 1: queries rapidas primero (no saturan el pool).
+  // categories + featured + latest + offers son findMany con filtros simples.
+  const [rows, featured, latest, offers] = await Promise.all([
     db.category.findMany({
       where: { active: true },
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
@@ -267,15 +274,22 @@ export async function buildHomeData(db: typeof prisma) {
     fetchPublishedProducts(db, { isFeatured: true }, 8, { createdAt: 'desc' }),
     fetchPublishedProducts(db, {}, 12, { createdAt: 'desc' }),
     fetchPublishedProducts(db, { isOffer: true }, 8, { createdAt: 'desc' }),
-    fetchPublishedProducts(db, { collectionId: null }, 8, [{ createdAt: 'desc' }, { id: 'desc' }]),
   ]);
+
+  // FASE 2: uncategorized (query rapida de productos sin coleccion).
+  const uncategorized = await fetchPublishedProducts(
+    db,
+    { collectionId: null },
+    8,
+    [{ createdAt: 'desc' }, { id: 'desc' }],
+  );
 
   // Agrupacion comercial: N ae-* con mismo nombre => 1 tarjeta.
   // Contador REAL: solo PUBLISHED + visibles (evita _count con drafts/ocultos).
   const groups = groupCategories(rows as any[]);
   const categories: any[] = [];
   const byCategory: Record<string, any[]> = {};
-  // Compatibilidad: exponer tambien alias en espanol (electronica, hogar...)
+  // Compatibilidad: exponer tambien alias en espanol (electronica, hogar...).
   // apuntando al mismo grupo, sin duplicar tarjetas en `categories`.
   const ALIAS_KEYS: Record<string, string[]> = {
     electronics: ['electronica'],
@@ -286,29 +300,101 @@ export async function buildHomeData(db: typeof prisma) {
     sports: ['deportes'],
     office: ['oficina'],
   };
+
+  // Recolectar todos los categoryIds de todos los grupos (evita duplicados).
+  const allCategoryIds: string[] = [];
   for (const g of groups) {
-    // El mock de tests solo soporta categoryId escalar: iterar por id y unir.
-    let products: any[] = [];
     for (const id of g.categoryIds) {
-      const chunk = await fetchPublishedProducts(db, { categoryId: id }, 6, { createdAt: 'desc' });
-      products = products.concat(chunk);
+      if (!allCategoryIds.includes(id)) allCategoryIds.push(id);
     }
-    products = products.slice(0, 6);
-    if (!products.length) continue;
-    let total = 0;
-    for (const id of g.categoryIds) {
-      total += await (db as any).product.count({
+  }
+
+  // CHUNK: productos por categoría en UNA sola consulta (en vez de N consultas
+  // serializadas en el bucle siguiente). Se fetching 6 por categoría = top global.
+  // Luego se chunkifica en memoria. Esto reduce ~8 consultas serializadas a 1.
+  const MAX_PER_CATEGORY = 6;
+  let categoryProductsBySlug: Record<string, any[]> = {};
+  let countsByCategoryId: Record<string, number> = {};
+
+  if (allCategoryIds.length > 0) {
+    // 1 consulta gigante para todos los productos de todas las categorías.
+    // Se ejecuta DESPUES de las queries rapidas para no saturar el pool.
+    const allProducts = await fetchPublishedProducts(
+      db,
+      { categoryId: { in: allCategoryIds } },
+      MAX_PER_CATEGORY * allCategoryIds.length,
+      { createdAt: 'desc' },
+    );
+
+    // Chunk en memoria: agrupar por categoryId y cortar a MAX_PER_CATEGORY.
+    const grouped: Record<string, any[]> = {};
+    for (const p of allProducts) {
+      const cat = p.category as { id?: string } | null | undefined;
+      const cid = cat?.id;
+      if (!cid) continue;
+      if (!grouped[cid]) grouped[cid] = [];
+      grouped[cid].push(p);
+    }
+    for (const cid of allCategoryIds) {
+      if (grouped[cid]) grouped[cid] = grouped[cid].slice(0, MAX_PER_CATEGORY);
+    }
+
+    // Counts: ejecucion secuencial para no saturar el pool de Prisma (connection_limit=1).
+    // Los COUNT son queries rapidos; en produccion con pool mayor se pueden paralelizar.
+    for (const id of allCategoryIds) {
+      const count = await (db as any).product.count({
         where: { status: 'PUBLISHED', hidden: false, categoryId: id },
       });
+      countsByCategoryId[id] = count;
     }
-    const canonical = (rows as any[]).find((r) => !isTechnicalAeSlug(r.slug) && r.slug === g.key);
+
+    // Map ear: categoryId → slug del grupo.
+    // Se construye un mapa para saber a qué slug asignar los productos chunkificados.
+    const categoryIdToSlug: Record<string, string> = {};
+    for (const g of groups) {
+      for (const id of g.categoryIds) {
+        categoryIdToSlug[id] = g.slug;
+      }
+    }
+
+    for (const id of allCategoryIds) {
+      const slug = categoryIdToSlug[id];
+      if (!slug) continue;
+      const chunk = grouped[id] || [];
+      if (!chunk.length) continue;
+      // Solo asignar si aún no tenemos productos para este slug (primer id del grupo gana).
+      if (!categoryProductsBySlug[slug]) {
+        categoryProductsBySlug[slug] = chunk;
+      }
+    }
+  }
+
+  // Construir lista de categorías con sus counts.
+  for (const g of groups) {
+    let total = 0;
+    for (const id of g.categoryIds) {
+      total += countsByCategoryId[id] || 0;
+    }
+    if (total === 0) continue;
+
+    const canonical = (rows as any[]).find(
+      (r) => !isTechnicalAeSlug(r.slug) && r.slug === g.key,
+    );
     categories.push({
       id: canonical?.id || g.categoryIds[0],
       name: canonical?.name || g.name,
-      slug: g.slug, image: canonical?.image ?? g.image, productCount: total,
+      slug: g.slug,
+      image: canonical?.image ?? g.image,
+      productCount: total,
     });
-    byCategory[g.slug] = products;
-    for (const alias of ALIAS_KEYS[g.slug] || []) byCategory[alias] = products;
+  }
+
+  // byCategory: usar los productos chunkificados por slug.
+  for (const [slug, products] of Object.entries(categoryProductsBySlug)) {
+    byCategory[slug] = products;
+    for (const alias of ALIAS_KEYS[slug] || []) {
+      byCategory[alias] = products;
+    }
   }
 
   return {
@@ -396,6 +482,7 @@ export const updateProduct = async (req: Request, res: Response): Promise<void> 
       include: { productImages: { orderBy: { position: 'asc' } }, collection: true, category: true },
     });
 
+    invalidateHomeCache();
     res.json({ product });
   } catch (error: any) {
     console.error('Error updating product:', error);
@@ -449,6 +536,7 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
       include: { productImages: { orderBy: { position: 'asc' } }, collection: true, category: true },
     });
 
+    invalidateHomeCache();
     res.status(201).json({ product });
   } catch (error: any) {
     console.error('Error creating product:', error);
@@ -477,6 +565,7 @@ export const deleteProduct = async (req: Request, res: Response): Promise<void> 
 
     await prisma.product.delete({ where: { id: String(id) } });
 
+    invalidateHomeCache();
     res.json({ message: 'Product deleted' });
   } catch (error: any) {
     console.error('Error deleting product:', error);
@@ -507,6 +596,7 @@ export const bulkDeleteProducts = async (req: Request, res: Response): Promise<v
       where: { id: { in: list } },
     });
 
+    invalidateHomeCache();
     res.json({ deleted: result.count });
   } catch (error: any) {
     console.error('Error bulk deleting products:', error);
