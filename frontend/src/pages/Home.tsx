@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Truck, Shield, RefreshCw, AlertCircle } from 'lucide-react';
-import { getHomeData } from '@/services/products';
+import { useHomeData } from '@/hooks/useProductsQuery';
 import ProductGrid from '@/components/ProductGrid';
 import type { Product } from '@/services/products';
 
@@ -12,15 +12,6 @@ interface HomeCategory {
   slug: string;
   image?: string | null;
   productCount: number;
-}
-
-interface HomeData {
-  categories: HomeCategory[];
-  featured: Product[];
-  latest: Product[];
-  offers: Product[];
-  byCategory: Record<string, Product[]>;
-  uncategorized: Product[];
 }
 
 function Hero() {
@@ -131,134 +122,164 @@ function CategoryGrid({ categories }: { categories: HomeCategory[] }) {
   );
 }
 
-function ProductSection({
-  title, products, link, linkText,
-}: { title: string; products: Product[]; link?: string; linkText?: string }) {
-  if (!products.length) return null;
-    return (
-    <section className="py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <SectionHeading title={title} link={link} linkText={linkText} />
-        <ProductGrid products={products} />
-      </div>
-    </section>
-  );
-}
-
 export default function Home() {
-  const [data, setData] = useState<HomeData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // React Query maneja fetching, cache, background refetch.
+  // El Hero se renderiza inmediatamente sin esperar estos datos.
+  const { data, isLoading, error, refetch } = useHomeData();
+  const categoriesRef = useRef<HTMLDivElement>(null);
+  const [categoriesVisible, setCategoriesVisible] = useState(false);
 
+  // IntersectionObserver: las categorías se renderizan cuando el viewport
+  // llega a su región (ya pasado el Hero). Evita chequeo innecesario.
   useEffect(() => {
-    void loadHome();
+    const el = categoriesRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setCategoriesVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
-  async function loadHome() {
-    try {
-      setError(null);
-      const result = await getHomeData();
-      setData(result);
-    } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Error al cargar la tienda');
-    } finally {
-      setLoading(false);
+  // Cada sección se renderiza de forma independiente.
+  // Mientras isLoading sea true, cada sección muestra su propio skeleton.
+  // Una vez que isLoading es false, se muestran los datos reales o estado de error.
+  const renderProductSection = (
+    title: string,
+    products: Product[] | undefined,
+    link?: string,
+    linkText?: string,
+  ) => {
+    // Si hay datos disponibles, mostrarlos inmediatamente (even during background refetch).
+    // Esto permite que secciones con datos listos se rendericen sin esperar a otras.
+    if (products && products.length > 0) {
+      return (
+        <section className="py-10 border-t border-neutral-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <SectionHeading title={title} link={link} linkText={linkText} />
+            <ProductGrid products={products} />
+          </div>
+        </section>
+      );
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-neutral-50">
-        <div className="h-96 bg-neutral-200 animate-pulse" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-12">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-20 bg-neutral-200 animate-pulse rounded-xl" />
-            ))}
+    // Primer fetch sin datos aún → skeleton
+    if (isLoading) {
+      return (
+        <section className="py-10 border-t border-neutral-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <SectionHeading title={title} />
+            <ProductGrid products={[]} loading />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="aspect-[4/5] bg-neutral-200 animate-pulse rounded-[var(--radius-xl)]" />
-            ))}
+        </section>
+      );
+    }
+    // Error o sin productos
+    return (
+      <section className="py-10 border-t border-neutral-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <SectionHeading title={title} />
+          <div className="py-12 text-center">
+            <AlertCircle className="w-8 h-8 text-neutral-300 mx-auto mb-3" />
+            <p className="text-neutral-500 text-sm mb-4">No se pudieron cargar los productos</p>
+            <button
+              onClick={() => refetch()}
+              className="inline-flex items-center gap-2 px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-full transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reintentar
+            </button>
           </div>
         </div>
-      </div>
+      </section>
     );
-  }
+  };
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center px-4">
-        <div className="text-center space-y-4 max-w-md">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-red-50 rounded-full">
-            <AlertCircle className="w-8 h-8 text-red-500" />
-          </div>
-          <h3 className="text-lg font-semibold text-neutral-900">Error al cargar la tienda</h3>
-          <p className="text-neutral-500">{error}</p>
-          <button
-            onClick={loadHome}
-            className="inline-flex items-center px-6 py-3 bg-primary-700 hover:bg-primary-800 text-white font-medium rounded-full transition-colors"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Reintentar
-          </button>
-        </div>
+  // Categorías: solo se muestran cuando el IntersectionObserver las activó
+  const categoriesEl = categoriesVisible ? (
+    <section className="py-10 border-t border-neutral-200" ref={categoriesRef}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <CategoryGrid categories={data?.categories ?? []} />
       </div>
-    );
-  }
+    </section>
+  ) : null;
+
+  // El estado de error se maneja a nivel de cada sección de productos
+  // vía renderProductSection(). No hay error global que bloquee todo el Home.
 
   return (
     <div className="min-h-screen bg-neutral-50">
+      {/* ── Hero: siempre visible, no espera la API ── */}
       <Hero />
 
-      {data && <CategoryGrid categories={data.categories} />}
+      {/* ── Categorías: se muestran cuando IntersectionObserver las activa ── */}
+      {categoriesEl}
 
-      {data && <ProductSection
-        title="Productos destacados"
-        products={data.featured}
-        link="/productos"
-        linkText="Ver todos"
-      />}
-
-      {data && <ProductSection
-        title="Nuevos productos"
-        products={data.latest}
-        link="/productos"
-        linkText="Ver nuevos"
-      />}
-
-      {data && <ProductSection
-        title="Ofertas"
-        products={data.offers}
-        link="/ofertas"
-        linkText="Ver ofertas"
-      />}
-
-      {data && Object.entries(data.byCategory).map(([slug, products]) => {
-        if (!products.length) return null;
-        const category = data.categories.find((c) => c.slug === slug);
-        return (
-          <ProductSection
-            key={slug}
-            title={category ? category.name : slug}
-            products={products}
-            link={`/categoria/${slug}`}
-            linkText="Ver categoría"
-          />
-        );
-      })}
-
-      {/* Products not in any collection but published */}
-      {data && data.uncategorized.length > 0 && (
-        <ProductSection
-          title="Lo último"
-          products={data.uncategorized}
-          link="/productos"
-          linkText="Ver todos"
-        />
+      {/* ── Productos destacados ── */}
+      {renderProductSection(
+        'Productos destacados',
+        data?.featured,
+        '/productos',
+        'Ver todos',
       )}
 
-      {/* Trust badges */}
+      {/* ── Nuevos productos ── */}
+      {renderProductSection(
+        'Nuevos productos',
+        data?.latest,
+        '/productos',
+        'Ver nuevos',
+      )}
+
+      {/* ── Ofertas ── */}
+      {renderProductSection(
+        'Ofertas',
+        data?.offers,
+        '/ofertas',
+        'Ver ofertas',
+      )}
+
+      {/* ── Productos por categoría ── */}
+      {isLoading ? (
+        <section className="py-10 border-t border-neutral-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <SectionHeading title="Más categorías" />
+            <ProductGrid products={[]} loading />
+          </div>
+        </section>
+      ) : error ? null : data && Object.entries(data.byCategory ?? {}).length > 0 ? (
+        Object.entries(data.byCategory).map(([slug, products]) => {
+          if (!products?.length) return null;
+          const category = data?.categories?.find((c) => c.slug === slug);
+          return (
+            <section key={slug} className="py-10 border-t border-neutral-200">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <SectionHeading
+                  title={category?.name ?? slug}
+                  link={`/categoria/${slug}`}
+                  linkText="Ver categoría"
+                />
+                <ProductGrid products={products} />
+              </div>
+            </section>
+          );
+        })
+      ) : null}
+
+      {/* ── Productos sin categoría ── */}
+      {renderProductSection(
+        'Lo último',
+        data?.uncategorized,
+        '/productos',
+        'Ver todos',
+      )}
+
+      {/* ── Trust badges: siempre visibles, no dependen de datos ── */}
       <section className="py-12 border-t border-neutral-200 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -197,19 +197,43 @@ export const getCollections = async (req: Request, res: Response): Promise<void>
   }
 };
 
+// Select mínimo para el HOME: solo campos que ProductCard necesita para renderizar
+// la tarjeta (imagen, nombre, precio, descuento, stock, categoría para navegación).
+// Se excluyen deliberadamente: description, weight, dimensions, tags, video.
+// Se mantiene: variants (JSON usado por crossVariants para precio/stock de variantes
+// en mapHomeProduct) y productVariants (DB, usado por crossVariants).
+// aliexpressSnapshot ya está excluido por diseño (no está en este select).
 const HOME_PRODUCT_SELECT = {
-  ...PUBLIC_PRODUCT_SELECT,
-  category: { select: { id: true, name: true, slug: true } },
+  id: true,
+  name: true,
+  slug: true,
+  salePrice: true,
+  compareAtPrice: true,
+  productCost: true,
+  totalCost: true,
+  stock: true,
+  isFeatured: true,
+  isOffer: true,
+  variants: true,
   collection: { select: { id: true, name: true, slug: true } },
+  category: { select: { id: true, name: true, slug: true } },
+  productImages: { take: 2, orderBy: { position: 'asc' as const } },
+  productVariants: { select: PUBLIC_VARIANT_SELECT },
 };
 
-async function fetchPublishedProducts(db: typeof prisma, whereExtra: any, take: number, orderBy: any) {
+async function fetchPublishedProducts(
+  db: typeof prisma,
+  whereExtra: any,
+  take: number,
+  orderBy: any,
+  select?: any,
+) {
   return db.product.findMany({
     where: { status: 'PUBLISHED', hidden: false, ...whereExtra },
     take,
     // Prisma exige orderBy como array de objetos de un solo campo.
     orderBy: Array.isArray(orderBy) ? orderBy : [orderBy],
-    select: HOME_PRODUCT_SELECT,
+    select: select ?? HOME_PRODUCT_SELECT,
   });
 }
 

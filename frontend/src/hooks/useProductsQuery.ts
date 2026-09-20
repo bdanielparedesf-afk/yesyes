@@ -93,12 +93,14 @@ export function useProductsByCategory(
 /**
  * Datos de la home page (categorías, destacados, novedades, ofertas, etc.).
  * El backend ya tiene un caché de 60s; el frontend complementa con staleTime.
+ * Home usa 5min de staleTime porque los productos destacados/nuevos/ofertas
+ * cambian poco en breve período y la caché reduce requests innecesarios.
  */
 export function useHomeData(options?: Parameters<typeof useQuery>[1]) {
   return useQuery({
     queryKey: [QUERY_KEYS.home],
     queryFn: () => getHomeData(),
-    staleTime: 30_000,
+    staleTime: 5 * 60_000, // 5 minutos: productos destacados/nuevos/ofertas cambian poco
     ...options,
   });
 }
