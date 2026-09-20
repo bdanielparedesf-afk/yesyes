@@ -31,16 +31,22 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
     ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
     : 0;
   const isOutOfStock = product.stock <= 0;
+  const lowStock = !isOutOfStock && product.stock <= 5;
 
+  // Proporción consistente en todos los tamaños: evita alturas desiguales en la grilla.
   const sizeClasses = {
-    sm: 'aspect-[3/4]',
+    sm: 'aspect-[4/5]',
     md: 'aspect-[4/5]',
-    lg: 'aspect-[3/4]',
+    lg: 'aspect-[4/5]',
   };
 
   return (
-    <Link to={`/productos/${product.slug}`} className="group block">
-      <div className="bg-white rounded-[var(--radius-xl)] shadow-sm group-hover:shadow-[var(--shadow-float-hover)] transition-all duration-300 overflow-hidden border border-neutral-100">
+    <Link
+      to={`/productos/${product.slug}`}
+      className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 rounded-[var(--radius-xl)]"
+      aria-label={product.name}
+    >
+      <div className="relative flex h-full flex-col bg-white rounded-[var(--radius-xl)] shadow-soft group-hover:shadow-float-hover group-hover:-translate-y-1 transition-all duration-300 ease-out overflow-hidden border border-neutral-100">
         <div className={`relative ${sizeClasses[size]} overflow-hidden bg-neutral-50`}>
           {product.image && (
             <>
@@ -53,15 +59,16 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
               />
               <img
                 src={product.imageHover || product.image}
-                alt={product.name}
-                className="w-full h-full object-cover object-center opacity-0 group-hover:opacity-100 transition-opacity duration-500 absolute inset-0"
+                alt=""
+                aria-hidden
+                className="w-full h-full object-cover object-center scale-[1.02] group-hover:scale-105 opacity-0 group-hover:opacity-100 transition-all duration-500 absolute inset-0"
                 loading="lazy"
               />
             </>
           )}
           {discountPercent > 0 && (
-            <span className="absolute top-3 left-3 bg-accent-600 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md">
-              -{discountPercent}%
+            <span className="absolute top-3 left-3 bg-accent-600 text-white text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-full shadow-md">
+              -{discountPercent}% OFF
             </span>
           )}
           {isOutOfStock && (
@@ -69,32 +76,44 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
               Agotado
             </span>
           )}
+          {lowStock && (
+            <span className="absolute top-3 right-3 bg-amber-500/90 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm">
+              ¡Últimas {product.stock}!
+            </span>
+          )}
         </div>
 
-        <div className="p-4 space-y-2">
-          <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider">{product.category}</p>
-          <h3 className="font-semibold text-neutral-900 text-sm line-clamp-2 group-hover:text-primary-700 transition-colors leading-tight">
+        <div className="flex flex-col flex-1 p-4 sm:p-5">
+          {product.category && (
+            <p className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest">{product.category}</p>
+          )}
+          <h3 className="mt-1 font-semibold text-neutral-900 text-sm line-clamp-2 leading-snug group-hover:text-primary-700 transition-colors">
             {product.name}
           </h3>
-          <div className="flex items-baseline gap-2">
-            <span className="font-bold text-neutral-900">${product.price.toLocaleString('es-CL')}</span>
-            {hasDiscount && (
-              <span className="text-sm text-neutral-500 line-through">
-                ${product.providerPrice.toLocaleString('es-CL')}
+          <div className="mt-auto pt-3">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="text-lg font-extrabold tracking-tight text-neutral-900">
+                ${product.price.toLocaleString('es-CL')}
               </span>
-            )}
+              {hasDiscount && (
+                <span className="text-sm text-neutral-400 line-through">
+                  ${product.compareAtPrice.toLocaleString('es-CL')}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={handleQuickAdd}
+              disabled={isOutOfStock}
+              aria-label={`Agregar ${product.name} al carrito`}
+              className={`w-full mt-3 py-2.5 text-sm font-semibold rounded-full transition-all duration-200 active:scale-[0.98] ${!isOutOfStock ? 'sm:opacity-90 sm:group-hover:opacity-100' : ''} ${
+                isOutOfStock
+                  ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed'
+                  : 'bg-primary-700 hover:bg-primary-800 text-white shadow-sm hover:shadow-md'
+              }`}
+            >
+              {isOutOfStock ? 'Sin stock' : 'Agregar al carrito'}
+            </button>
           </div>
-          <button
-            onClick={handleQuickAdd}
-            disabled={isOutOfStock}
-            className={`w-full mt-2 py-2 text-sm font-semibold rounded-full transition-all ${
-              isOutOfStock
-                ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
-                : 'bg-primary-700 hover:bg-primary-800 text-white shadow-md hover:shadow-lg'
-            }`}
-          >
-            {isOutOfStock ? 'Sin stock' : 'Agregar al carrito'}
-          </button>
         </div>
       </div>
     </Link>

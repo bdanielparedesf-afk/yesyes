@@ -50,65 +50,59 @@ export default function Cart() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-3xl font-bold text-neutral-900 mb-8">Tu carrito</h1>
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Cart items */}
-          <div className="lg:col-span-2 bg-white rounded-[var(--radius-xl)] shadow-sm border border-neutral-100 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-neutral-50 border-b border-neutral-100">
-                  <tr>
-                    <th className="text-left py-4 px-6 text-sm font-semibold text-neutral-500">Producto</th>
-                    <th className="text-center py-4 px-4 text-sm font-semibold text-neutral-500">Cant.</th>
-                    <th className="text-right py-4 px-4 text-sm font-semibold text-neutral-500">Precio</th>
-                    <th className="text-right py-4 px-4 text-sm font-semibold text-neutral-500">Subtotal</th>
-                    <th className="py-4 px-4"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100">
-                  {items.map((item) => (
-                    <tr key={item.id} className="hover:bg-neutral-50 transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="flex items-center space-x-4">
-                          <img src={item.image} alt={item.name} className="w-16 h-16 rounded-lg object-cover" />
-                          <div>
-                            <p className="font-medium text-neutral-900">{item.name}</p>
-                            {item.variant && <p className="text-sm text-neutral-500">{item.variant}</p>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center justify-center space-x-2">
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                            className="w-7 h-7 rounded-full border border-neutral-200 flex items-center justify-center text-neutral-600 hover:bg-neutral-100 transition-colors"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="w-7 text-center text-sm font-medium text-neutral-900">{item.quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                            className="w-7 h-7 rounded-full border border-neutral-200 flex items-center justify-center text-neutral-600 hover:bg-neutral-100 transition-colors"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-4 px-4 text-right text-neutral-600">${item.price.toLocaleString('es-CL')}</td>
-                      <td className="py-4 px-4 text-right font-semibold text-neutral-900">
+          {/* Cart items: lista responsive (sin scroll horizontal en móvil) */}
+          <div className="lg:col-span-2 bg-white rounded-[var(--radius-xl)] shadow-sm border border-neutral-100 overflow-hidden divide-y divide-neutral-100">
+            {items.map((item) => (
+              <div key={item.id} className="p-4 sm:p-6 flex gap-4 sm:gap-5 hover:bg-neutral-50/60 transition-colors">
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  loading="lazy"
+                  className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 rounded-xl object-cover border border-neutral-100 bg-neutral-50"
+                />
+                <div className="flex flex-col flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-neutral-900 text-sm sm:text-base line-clamp-2">{item.name}</p>
+                      {item.variant && <p className="mt-0.5 text-xs sm:text-sm text-neutral-500">{item.variant}</p>}
+                      <p className="mt-1 text-sm text-neutral-500 sm:hidden">${item.price.toLocaleString('es-CL')} c/u</p>
+                    </div>
+                    <button
+                      onClick={() => { removeItem(item.id); toast.success('Producto eliminado'); }}
+                      aria-label={`Eliminar ${item.name} del carrito`}
+                      className="p-2 rounded-full text-neutral-400 hover:text-red-500 hover:bg-red-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="mt-auto pt-3 flex items-end justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                        aria-label="Disminuir cantidad"
+                        className="w-8 h-8 rounded-full border border-neutral-200 flex items-center justify-center text-neutral-600 hover:bg-neutral-100 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="w-7 text-center text-sm font-semibold text-neutral-900">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                        aria-label="Aumentar cantidad"
+                        className="w-8 h-8 rounded-full border border-neutral-200 flex items-center justify-center text-neutral-600 hover:bg-neutral-100 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="text-right">
+                      <p className="hidden sm:block text-xs text-neutral-400">${item.price.toLocaleString('es-CL')} c/u</p>
+                      <p className="font-bold text-neutral-900">
                         ${(item.price * item.quantity).toLocaleString('es-CL')}
-                      </td>
-                      <td className="py-4 px-4 text-right">
-                        <button
-                          onClick={() => { removeItem(item.id); toast.success('Producto eliminado'); }}
-                          className="p-2 text-neutral-400 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Summary */}

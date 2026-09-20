@@ -26,8 +26,9 @@ interface HomeData {
 function Hero() {
   return (
     <section className="relative bg-neutral-900 overflow-hidden">
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary-900/40 via-primary-800/30 to-transparent" />
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute -top-40 -right-32 h-[420px] w-[420px] rounded-full bg-gradient-to-br from-primary-800/30 to-transparent blur-3xl" />
+        <div className="absolute -bottom-40 -left-32 h-[360px] w-[360px] rounded-full bg-gradient-to-tr from-accent-600/20 to-transparent blur-3xl" />
       </div>
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32">
         <div className="max-w-2xl">
@@ -54,7 +55,7 @@ function Hero() {
           >
             <Link
               to="/productos"
-              className="inline-flex items-center px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-full shadow-lg shadow-primary-600/30 transition-all hover:shadow-xl"
+              className="inline-flex items-center px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-full shadow-lg shadow-primary-600/30 transition-all hover:shadow-xl hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-2"
             >
               Ver productos
             </Link>
@@ -73,39 +74,59 @@ function Hero() {
   );
 }
 
+function SectionHeading({ title, link, linkText }: { title: string; link?: string; linkText?: string }) {
+  return (
+    <div className="flex items-end justify-between gap-4 mb-6">
+      <div>
+        <span className="block text-[11px] font-semibold text-primary-600 uppercase tracking-[0.2em] mb-1">YesYes</span>
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-900">{title}</h2>
+      </div>
+      {link && linkText && (
+        <Link
+          to={link}
+          className="group flex-shrink-0 inline-flex items-center gap-1 text-sm font-semibold text-primary-700 hover:text-primary-800 transition-colors"
+        >
+          {linkText}
+          <span aria-hidden className="inline-block transition-transform duration-200 group-hover:translate-x-0.5">→</span>
+        </Link>
+      )}
+    </div>
+  );
+}
+
 function CategoryGrid({ categories }: { categories: HomeCategory[] }) {
   if (!categories.length) return null;
   return (
     <section className="py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-neutral-900">Categorías</h2>
-          <Link to="/productos" className="text-sm font-medium text-primary-700 hover:underline">
-            Ver todas →
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <SectionHeading title="Categorías" link="/productos" linkText="Ver todas" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
           {categories.map((cat) => (
             <Link
               key={cat.id}
               to={`/categoria/${cat.slug}`}
-              className="group bg-white rounded-xl p-4 text-center shadow-sm border border-neutral-100 hover:shadow-md transition-all hover:-translate-y-0.5"
+              className="group relative flex flex-col items-center text-center bg-white rounded-xl p-4 sm:p-5 shadow-soft border border-neutral-100 hover:shadow-float-hover hover:-translate-y-0.5 transition-all duration-300 overflow-hidden"
             >
-              <div className="w-12 h-12 mx-auto mb-2 bg-primary-100 rounded-full flex-shrink-0 flex items-center justify-center">
+              <div className="absolute inset-0 -z-10 rounded-xl bg-gradient-to-br from-primary-50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="w-16 h-16 mb-2 bg-primary-100 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden border-2 border-neutral-50">
                 {cat.image ? (
-                  <img src={cat.image} alt={cat.name} className="w-10 h-10 rounded-full object-cover" />
+                  <img
+                    src={cat.image}
+                    alt={cat.name}
+                    className="w-12 h-12 rounded-full object-cover object-center group-hover:scale-110 transition-transform duration-300"
+                  />
                 ) : (
                   <span className="text-2xl">📦</span>
                 )}
               </div>
-              <p className="text-sm font-medium text-neutral-800 group-hover:text-primary-700 transition-colors">
+              <p className="text-sm font-semibold text-neutral-800 group-hover:text-primary-700 transition-colors line-clamp-1">
                 {cat.name}
               </p>
-              <p className="text-xs text-neutral-500">{cat.productCount} productos</p>
+              <p className="text-xs text-neutral-400 mt-0.5">{cat.productCount} productos</p>
             </Link>
           ))}
         </div>
-      </div>
+            </div>
     </section>
   );
 }
@@ -114,17 +135,10 @@ function ProductSection({
   title, products, link, linkText,
 }: { title: string; products: Product[]; link?: string; linkText?: string }) {
   if (!products.length) return null;
-  return (
+    return (
     <section className="py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-neutral-900">{title}</h2>
-          {link && linkText && (
-            <Link to={link} className="text-sm font-medium text-primary-700 hover:underline">
-              {linkText} →
-            </Link>
-          )}
-        </div>
+        <SectionHeading title={title} link={link} linkText={linkText} />
         <ProductGrid products={products} />
       </div>
     </section>
