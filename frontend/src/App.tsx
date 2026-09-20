@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '@/layouts/Layout';
 import Home from '@/pages/Home';
@@ -5,7 +6,6 @@ import Products from '@/pages/Products';
 import ProductDetail from '@/pages/ProductDetail';
 import Category from '@/pages/Category';
 import Cart from '@/pages/Cart';
-import Checkout from '@/pages/Checkout';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import RecuperarPassword from '@/pages/RecuperarPassword';
@@ -17,16 +17,20 @@ import Favorites from '@/pages/Favorites';
 import Contact from '@/pages/Contact';
 import FAQ from '@/pages/FAQ';
 import Legal from '@/pages/Legal';
-import Admin from '@/pages/Admin';
-import AdminProducts from '@/pages/AdminProducts';
-import AdminOrders from '@/pages/AdminOrders';
-import AdminUsers from '@/pages/AdminUsers';
-import AdminImport from '@/pages/AdminImport';
-import AdminBulk from '@/pages/AdminBulk';
-import AdminAliExpress from '@/pages/AdminAliExpress';
-import AdminLayout from '@/components/admin/AdminLayout';
 import NotFound from '@/pages/NotFound';
-import PaymentResult from '@/pages/PaymentResult';
+import AdminLayout from '@/components/admin/AdminLayout';
+// Code splitting: páginas pesadas o de uso admin se cargan bajo demanda para
+// reducir el JS inicial de la tienda pública. Home/Catálogo/Producto/Carrito
+// permanecen en el bundle inicial (LCP sin cadenas de lazy).
+const Checkout = lazy(() => import('@/pages/Checkout'));
+const Admin = lazy(() => import('@/pages/Admin'));
+const AdminProducts = lazy(() => import('@/pages/AdminProducts'));
+const AdminOrders = lazy(() => import('@/pages/AdminOrders'));
+const AdminUsers = lazy(() => import('@/pages/AdminUsers'));
+const AdminImport = lazy(() => import('@/pages/AdminImport'));
+const AdminBulk = lazy(() => import('@/pages/AdminBulk'));
+const AdminAliExpress = lazy(() => import('@/pages/AdminAliExpress'));
+const PaymentResult = lazy(() => import('@/pages/PaymentResult'));
 
 function Ofertas() {
   return <Navigate to="/productos?filter=ofertas" replace />;
@@ -34,6 +38,11 @@ function Ofertas() {
 
 function App() {
   return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50">
+        <div className="animate-pulse text-neutral-500">Cargando…</div>
+      </div>
+    }>
     <Routes>
       {/* Tienda pública con Header/Footer */}
       <Route path="/" element={<Layout />}>
@@ -83,6 +92,7 @@ function App() {
       <Route path="/admin/aliexpress" element={<AdminLayout><AdminAliExpress /></AdminLayout>} />
       <Route path="/admin/import-aliexpress" element={<Navigate to="/admin/aliexpress" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

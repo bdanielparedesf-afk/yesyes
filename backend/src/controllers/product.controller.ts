@@ -15,6 +15,30 @@ async function resolveCategoryId(categoryId?: string): Promise<string> {
   }).then((c) => c.id);
 }
 
+/**
+ * Select mínimo para endpoints PÚBLICOS: todo lo que el frontend consume
+ * (mapProduct en services/products.ts) y nada más. Excluye deliberadamente
+ * aliexpressSnapshot (JSONB gigante con raw del proveedor), cjVariants y
+ * campos administrativos que no usa la tienda pública.
+ */
+const PUBLIC_VARIANT_SELECT = {
+  id: true, sku: true, size: true, color: true, price: true, stock: true,
+  supplierVariantId: true, supplierAttributes: true, supplierImage: true,
+  supplierCostUsd: true, supplierShippingUsd: true, supplierStock: true, supplierStockKnown: true,
+};
+
+const PUBLIC_PRODUCT_SELECT = {
+  id: true, name: true, slug: true, description: true, images: true, video: true,
+  tags: true, sku: true, weight: true, dimensions: true, stock: true,
+  productCost: true, totalCost: true, salePrice: true,
+  isFeatured: true, isOffer: true,
+  variants: true,
+  productImages: { orderBy: { position: 'asc' as const } },
+  productVariants: { select: PUBLIC_VARIANT_SELECT },
+  category: { select: { id: true, name: true, slug: true, image: true } },
+  collection: { select: { id: true, name: true, slug: true } },
+};
+
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
     const { collection, search, category, limit = 50, offset = 0 } = req.query;
@@ -51,21 +75,11 @@ export const getProducts = async (req: Request, res: Response): Promise<void> =>
         where,
         take: takeNum,
         skip: Number(offset),
-        include: {
-          productImages: { orderBy: { position: 'asc' } },
-          productVariants: true,
-          collection: true,
-          category: { select: { id: true, name: true, slug: true, image: true } },
-        },
+        select: PUBLIC_PRODUCT_SELECT,
         orderBy: { createdAt: 'desc' },
       }),
       prisma.product.count({ where }),
     ]);
-
-    const totalInDb = await prisma.product.count();
-    const publishedInDb = await prisma.product.count({ where: { status: 'PUBLISHED' } });
-    const visibleInDb = await prisma.product.count({ where: { status: 'PUBLISHED', hidden: false } });
-    console.log(`[getProducts] BD: ${totalInDb} total, ${publishedInDb} publicados, ${visibleInDb} visibles, ${products.length} devueltos`);
 
     res.json({ products, total });
   } catch (error: any) {
@@ -79,10 +93,8 @@ export const getProductBySlug = async (req: Request, res: Response): Promise<voi
     const { id } = req.params;
     const product = await prisma.product.findUnique({
       where: { slug: id },
-      include: {
-        productImages: { orderBy: { position: 'asc' } },
-        productVariants: true,
-        collection: true,
+      select: {
+        ...PUBLIC_PRODUCT_SELECT,
         category: { select: { id: true, name: true, slug: true } },
         // Solo reseñas ya curadas/moderadas: la ficha muestra valoraciones reales.
         productReviews: {
@@ -185,9 +197,8 @@ export const getCollections = async (req: Request, res: Response): Promise<void>
   }
 };
 
-const HOME_PRODUCT_INCLUDE = {
-  productImages: { orderBy: { position: 'asc' as const } },
-  productVariants: true,
+const HOME_PRODUCT_SELECT = {
+  ...PUBLIC_PRODUCT_SELECT,
   category: { select: { id: true, name: true, slug: true } },
   collection: { select: { id: true, name: true, slug: true } },
 };
@@ -198,19 +209,31 @@ async function fetchPublishedProducts(db: typeof prisma, whereExtra: any, take: 
     take,
     // Prisma exige orderBy como array de objetos de un solo campo.
     orderBy: Array.isArray(orderBy) ? orderBy : [orderBy],
-    include: HOME_PRODUCT_INCLUDE,
+    select: HOME_PRODUCT_SELECT,
   });
 }
 
 export const getHome = async (_req: Request, res: Response): Promise<void> => {
   try {
+    // Caché TTL corta en memoria: la home es lectura pública que cambia poco y
+    // concentra ~10+ consultas. 60s es imperceptible para contenido nuevo y
+    // reduce drásticamente la carga en Supabase/Vercel. NO se cachea carrito,
+    // stock crítico, pagos ni datos privados.
+    if (homeDataCache && Date.now() - homeDataCache.at < HOME_CACHE_TTL_MS) {
+      res.json(homeDataCache.data);
+      return;
+    }
     const result = await buildHomeData(prisma);
+    homeDataCache = { at: Date.now(), data: result };
     res.json(result);
   } catch (error: any) {
     console.error('Error fetching home data:', error);
     res.status(500).json({ message: 'Error fetching home data', error: error.message });
   }
 };
+
+const HOME_CACHE_TTL_MS = 60_000;
+let homeDataCache: { at: number; data: unknown } | null = null;
 
 export async function buildHomeData(db: typeof prisma) {
   const [rows, featured, latest, offers, uncategorized] = await Promise.all([
@@ -313,7 +336,7 @@ export const getCategoryProducts = async (req: Request, res: Response): Promise<
         take: takeNum,
         skip: 0,
         orderBy: { [String(sortBy)]: String(sortDir) },
-        include: HOME_PRODUCT_INCLUDE,
+        select: HOME_PRODUCT_SELECT,
       });
       merged = merged.concat(chunk);
     }

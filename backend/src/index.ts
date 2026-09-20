@@ -26,8 +26,12 @@ app.use(morgan('combined', {
   skip: req => req.path.startsWith('/api/admin/aliexpress/oauth/'),
   stream: { write: message => logger.info(message.trim()) },
 }));
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+// 1mb: el flujo de publicación AliExpress envía la preview completa (con variantes
+// y snapshot del proveedor) y con el límite anterior (10kb) los jobs masivos
+// recibían 413 al publicar. No es un límite global "grande": 1mb sigue siendo
+// razonable y solo las rutas admin autenticadas reciben payloads así.
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(rateLimiter);
 
 const isVercel = process.env.VERCEL === '1';

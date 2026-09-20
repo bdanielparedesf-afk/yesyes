@@ -55,6 +55,9 @@ function freshDb() {
         return target;
       },
       findUnique: async ({ where }) => items.find(i => i.id === where.id) || null,
+      count: async ({ where }) =>
+        items.filter(i => i.jobId === where.jobId && i.status === where.status
+          && (!where.attempts || i.attempts < where.attempts.lt)).length,
     },
     category: {
       findUnique: async ({ where }) => {
@@ -195,10 +198,11 @@ test('bulk: reintento procesa el Ã­tem fallido sin crear duplicados', async ()
   await service.processImportJob('job1', db, deps);
   assert.equal(db._state.products.length, 0);
   const item = db._state.items[0];
-  // Quitar el fallo y reintentar (nueva spec sin throw)
+  // Quitar el fallo y reintentar (nueva spec sin throw). El reintento ya NO
+  // lanza un worker oculto: el driver (aquí processImportJob) procesa el item.
   delete spec['https://x/p1'].throw;
   await service.retryImportJobItem(item.id, db, deps);
-  await new Promise(r => setTimeout(r, 50));
+  await service.processImportJob('job1', db, deps);
   assert.equal(db._state.products.length, 1, 'reintento crea exactamente un producto');
   assert.equal(db._state.items[0].status, 'DONE');
 });

@@ -776,11 +776,26 @@ export async function previewAliExpressProduct(
     throw new AliExpressDropshipError('INPUT');
   }
   const duplicateOfProductId = await (deps.findDuplicate ?? findDuplicateProduct)(productId);
+  // Freight: UNA sola cotización por el SKU de referencia (seleccionado/default).
+  // Antes se cotizaba freight por CADA SKU (hasta 6 llamadas al proveedor por SKU
+  // con reintentos): con 160 variantes la preview tardaba minutos. El costo de
+  // envío sigue participando en productCost + shippingCost = totalCost y luego
+  // totalCost + margen = salePrice. Las diferencias de precio entre variantes
+  // provienen del sku_price (intacto). Si hay caché reciente por SKU se reutiliza.
   const freightResolutions: Record<string, ResolvedPreviewFreight> = {};
+  const referenceResolution = await resolvePreviewFreight({
+    productId, skuId: freightSkuId, quantity, options, deps,
+  });
   for (const sku of product.ae_item_sku_info_dtos) {
-    freightResolutions[sku.sku_id] = await resolvePreviewFreight({
-      productId, skuId: sku.sku_id, quantity, options, deps,
-    });
+    if (sku.sku_id === freightSkuId) {
+      freightResolutions[sku.sku_id] = referenceResolution;
+      continue;
+    }
+    const cachedCents = readFreightCache(productId, sku.sku_id);
+    freightResolutions[sku.sku_id] = cachedCents !== null
+      ? { providerShippingCents: cachedCents, cachedShippingCents: null,
+          commercialShippingCents: null, failed: false }
+      : referenceResolution;
   }
   const selectedResolution = freightResolutions[freightSkuId];
   if (!selectedResolution) throw new AliExpressDropshipError('INPUT');
@@ -1058,73 +1073,127 @@ export interface ImportJobDeps {
 }
 
 /**
- * Processes queue items one by one. A failed item never stops the queue;
- * failures are retried up to MAX_ATTEMPTS via retryImportJobItem.
- * Concurrency-safe: each item is claimed atomically (PENDING → PROCESSING) so
- * two workers on the same job can never process the same item twice.
+ * Procesa EXACTAMENTE UN item del job (modelo serverless-safe: una request = un item).
+ * Un fallo de item nunca detiene la cola; los fallos se reintentan hasta MAX_ATTEMPTS
+ * con la misma semántica previa. Concurrency-safe: el claim PENDING → PROCESSING es
+ * atómico, así dos steps concurrentes nunca procesan el mismo item dos veces.
+ * Devuelve un snapshot de progreso para el driver del frontend; no queda ningún
+ * worker vivo después de responder.
  */
-export async function processImportJob(jobId: string, db: typeof prisma = prisma,
-  deps: ImportJobDeps = {}): Promise<void> {
+export async function processNextImportJobItem(jobId: string, db: typeof prisma = prisma,
+  deps: ImportJobDeps = {}): Promise<{
+  jobId: string; itemId: string | null; processed: number; succeeded: number; failed: number;
+  pending: number; processing: number; total: number; status: string; done: boolean;
+}> {
   const previewFor = deps.preview ?? previewAliExpressProduct;
   const publishFor = deps.publish ?? publishAliExpressProduct;
   const rateLimitMs = deps.rateLimitMs ?? RATE_LIMIT_DELAY_MS;
   const job = await db.aliExpressImportJob.findUnique({ where: { id: jobId } });
   if (!job) throw new AliExpressDropshipError('INPUT');
-  await db.aliExpressImportJob.update({ where: { id: jobId }, data: { status: 'RUNNING' } });
-  let processed = job.processed, succeeded = job.succeeded, failed = job.failed;
-  for (;;) {
-    const item = await db.aliExpressImportJobItem.findFirst({
-      where: { jobId, status: 'PENDING', attempts: { lt: MAX_ATTEMPTS } },
-      orderBy: { createdAt: 'asc' },
+
+  const pendingFilter = { jobId, status: 'PENDING' as const, attempts: { lt: MAX_ATTEMPTS } };
+  let pending = await db.aliExpressImportJobItem.count({ where: pendingFilter });
+  if (pending === 0) {
+    const processing = await db.aliExpressImportJobItem.count({ where: { jobId, status: 'PROCESSING' } });
+    // Nada pendiente y nada en vuelo: cerrar el job (idempotente).
+    if (processing === 0 && job.status !== 'DONE') {
+      await db.aliExpressImportJob.update({ where: { id: jobId }, data: { status: 'DONE' } });
+    }
+    const done = processing === 0;
+    return { jobId, itemId: null, processed: job.processed, succeeded: job.succeeded, failed: job.failed,
+      pending: 0, processing, total: job.total, status: done ? 'DONE' : job.status, done };
+  }
+
+  // Marca el job como en proceso solo si hay trabajo real (evita jobs RUNNING eternos).
+  if (job.status !== 'RUNNING') {
+    await db.aliExpressImportJob.update({ where: { id: jobId }, data: { status: 'RUNNING' } });
+  }
+
+  const item = await db.aliExpressImportJobItem.findFirst({
+    where: pendingFilter, orderBy: { createdAt: 'asc' },
+  });
+  if (!item) {
+    return { jobId, itemId: null, processed: job.processed, succeeded: job.succeeded, failed: job.failed,
+      pending, processing: 0, total: job.total, status: 'RUNNING', done: false };
+  }
+  // Claim atómico: solo un step puede llevar PENDING → PROCESSING.
+  const claimed = await db.aliExpressImportJobItem.updateMany({
+    where: { id: item.id, status: 'PENDING' }, data: { status: 'PROCESSING' },
+  });
+  if (claimed.count === 0) {
+    // Otro worker/step lo tomó primero: devolver progreso sin procesar nada.
+    return { jobId, itemId: null, processed: job.processed, succeeded: job.succeeded, failed: job.failed,
+      pending, processing: 1, total: job.total, status: 'RUNNING', done: false };
+  }
+  let succeeded = job.succeeded, failed = job.failed;
+  try {
+    const preview = await previewFor(item.sourceUrl, { marginPercent: job.marginPercent });
+    logImport('item de cola', { jobId, itemId: item.id, productId: preview.aliexpressId });
+    if (preview.duplicateOfProductId) throw new AliExpressDropshipError('DUPLICATE');
+    if (preview.shippingUnknown) throw new AliExpressDropshipError('SHIPPING_UNKNOWN');
+    // Si el job no tiene categoryId, resolver por producto (reutiliza misma categoría
+    // para productos con mismo category_id; keywords/general para el resto)
+    const itemCategoryId = job.categoryId ?? await resolveCategory(preview, db);
+    const product = await publishFor({
+      preview, categoryId: itemCategoryId, marginPercent: job.marginPercent, publish: true,
+    }, db);
+    await db.aliExpressImportJobItem.update({
+      where: { id: item.id },
+      data: { status: 'DONE', aliexpressId: preview.aliexpressId, createdProductId: product.id, error: null },
     });
-    if (!item) break;
-    // Claim atómico: solo un worker puede llevar PENDING → PROCESSING.
-    const claimed = await db.aliExpressImportJobItem.updateMany({
-      where: { id: item.id, status: 'PENDING' }, data: { status: 'PROCESSING' },
-    });
-    if (claimed.count === 0) continue; // otro worker lo tomó primero
-    try {
-      const preview = await previewFor(item.sourceUrl, { marginPercent: job.marginPercent });
-      logImport('item de cola', { jobId, itemId: item.id, productId: preview.aliexpressId });
-      if (preview.duplicateOfProductId) throw new AliExpressDropshipError('DUPLICATE');
-      if (preview.shippingUnknown) throw new AliExpressDropshipError('SHIPPING_UNKNOWN');
-      // Si el job no tiene categoryId, resolver por producto (reutiliza misma categoría
-      // para productos con mismo category_id; keywords/general para el resto)
-      const itemCategoryId = job.categoryId ?? await resolveCategory(preview, db);
-      const product = await publishFor({
-        preview, categoryId: itemCategoryId, marginPercent: job.marginPercent, publish: true,
-      }, db);
+    succeeded += 1;
+  } catch (error) {
+    const failureReason = sanitizeImportError(error);
+    logImport('item de cola falló', { jobId, itemId: item.id, error: failureReason });
+    if (failureReason === 'DUPLICATE') {
+      // Determinista: reintentar no cambia el resultado; fallar de inmediato
+      // sin crear duplicados ni gastar llamadas al proveedor.
       await db.aliExpressImportJobItem.update({
         where: { id: item.id },
-        data: { status: 'DONE', aliexpressId: preview.aliexpressId, createdProductId: product.id, error: null },
+        data: { status: 'FAILED', attempts: MAX_ATTEMPTS, error: failureReason },
       });
-      succeeded += 1;
-    } catch (error) {
-      const failureReason = sanitizeImportError(error);
-      logImport('item de cola falló', { jobId, itemId: item.id, error: failureReason });
-      if (failureReason === 'DUPLICATE') {
-        // Determinista: reintentar no cambia el resultado; fallar de inmediato
-        // sin crear duplicados ni gastar llamadas al proveedor.
-        await db.aliExpressImportJobItem.update({
-          where: { id: item.id },
-          data: { status: 'FAILED', attempts: MAX_ATTEMPTS, error: failureReason },
-        });
-        failed += 1;
-      } else {
-        const attempts = item.attempts + 1;
-        const done = attempts >= MAX_ATTEMPTS;
-        await db.aliExpressImportJobItem.updateMany({
-          where: { id: item.id, status: 'PROCESSING' },
-          data: { status: done ? 'FAILED' : 'PENDING', attempts, error: failureReason },
-        });
-        if (done) failed += 1;
-      }
+      failed += 1;
+    } else {
+      const attempts = item.attempts + 1;
+      const done = attempts >= MAX_ATTEMPTS;
+      await db.aliExpressImportJobItem.updateMany({
+        where: { id: item.id, status: 'PROCESSING' },
+        data: { status: done ? 'FAILED' : 'PENDING', attempts, error: failureReason },
+      });
+      if (done) failed += 1;
     }
-    processed += 1;
-    await db.aliExpressImportJob.update({ where: { id: jobId }, data: { processed, succeeded, failed } });
-    await new Promise(resolve => setTimeout(resolve, rateLimitMs));
   }
-  await db.aliExpressImportJob.update({ where: { id: jobId }, data: { status: 'DONE' } });
+  const processed = job.processed + 1;
+  await db.aliExpressImportJob.update({ where: { id: jobId }, data: { processed, succeeded, failed } });
+  // El pacing original se conserva dentro del step: limita la presión sobre la API.
+  if (rateLimitMs > 0) await new Promise(resolve => setTimeout(resolve, rateLimitMs));
+
+  pending = await db.aliExpressImportJobItem.count({ where: pendingFilter });
+  const processing = await db.aliExpressImportJobItem.count({ where: { jobId, status: 'PROCESSING' } });
+  const queueEmpty = pending === 0 && processing === 0;
+  if (queueEmpty) {
+    await db.aliExpressImportJob.update({ where: { id: jobId }, data: { status: 'DONE' } });
+  }
+  return { jobId, itemId: item.id, processed, succeeded, failed, pending, processing,
+    total: job.total, status: queueEmpty ? 'DONE' : 'RUNNING', done: queueEmpty };
+}
+
+/**
+ * Compatibilidad (dev local / tests): procesa la cola completa step a step.
+ * En producción (Vercel serverless) el driver es el frontend vía
+ * POST /dropship/import/jobs/:id/step; esta función ya NO se invoca
+ * fire-and-forget desde las rutas.
+ */
+export async function processImportJob(jobId: string, db: typeof prisma = prisma,
+  deps: ImportJobDeps = {}): Promise<void> {
+  for (;;) {
+    const step = await processNextImportJobItem(jobId, db, deps);
+    if (step.done) break;
+    if (!step.itemId) {
+      // Otro worker reclamó el item; breve espera para no girar en vacío.
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
 }
 
 export async function retryImportJobItem(itemId: string, db: typeof prisma = prisma,
@@ -1135,9 +1204,9 @@ export async function retryImportJobItem(itemId: string, db: typeof prisma = pri
     where: { id: itemId }, data: { status: 'PENDING', attempts: 0, error: null },
     select: { id: true, status: true },
   });
-  // Si el job ya estaba DONE no hay worker vivo: relanzar el procesamiento
-  // para que el ítem reencolado se procese (los CLAIM atómicos evitan duplicar).
-  if (item.jobId) void processImportJob(item.jobId, db, deps).catch(() => undefined);
+  // Ya no se relanza ningún worker: el driver del frontend vuelve a llamar a
+  // POST /dropship/import/jobs/:id/step para procesar el item reencolado
+  // (los CLAIM atómicos evitan duplicar).
   return updated;
 }
 

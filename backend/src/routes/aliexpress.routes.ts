@@ -10,7 +10,7 @@ import {
 import { AliExpressOAuthError } from '../aliexpress/oauth-client';
 import * as syncEngine from '../services/aliexpress-sync-engine.service';
 import {
-  AliExpressDropshipError, createImportJob, getImportJobStatus, processImportJob, retryImportJobItem,
+  AliExpressDropshipError, createImportJob, getImportJobStatus, processNextImportJobItem, retryImportJobItem,
   previewAliExpressProduct, publishAliExpressProduct, syncAliExpressProduct, syncHistory,
   prepareAliExpressOrder, executeAliExpressOrder, simulateAliExpressOrder,
   getAliExpressOrder, getAliExpressTracking,
@@ -159,14 +159,20 @@ const importRoutes = (router: Router, preview = previewAliExpressProduct) => {
       const job = await createImportJob({ urls: input.data.urls, marginPercent: input.data.marginPercent,
         categoryId: input.data.categoryId ?? null,
         createdBy: String((req as unknown as { user?: { id?: unknown } }).user?.id ?? '') });
-      // Fire-and-forget processing with per-item isolation; the job row is the
-      // progress source of truth (see /dropship/import/jobs/:id).
-      void processImportJob(job.id).catch(() => undefined);
+      // Solo crea job + items y responde 202. NO se arranca ningún worker de larga
+      // duración (en serverless moriría tras responder y dejaba jobs en RUNNING).
+      // El driver es el frontend vía POST /dropship/import/jobs/:id/step.
       res.status(202).json(job);
     } catch (error) { next(error); }
   });
   router.get('/dropship/import/jobs/:id', async (req, res, next) => {
     try { res.json(await getImportJobStatus(req.params.id)); } catch (error) { next(error); }
+  });
+  // Serverless-safe: procesa COMO MÁXIMO UN item por request y devuelve progreso.
+  // Cada request reclama un item pendiente de forma atómica (claim + retry +
+  // MAX_ATTEMPTS existentes). Se vuelve a llamar hasta que la respuesta marque done.
+  router.post('/dropship/import/jobs/:id/step', async (req, res, next) => {
+    try { res.json(await processNextImportJobItem(req.params.id)); } catch (error) { next(error); }
   });
   router.post('/dropship/import/items/:id/retry', async (req, res, next) => {
     try { res.json(await retryImportJobItem(req.params.id)); } catch (error) { next(error); }
@@ -258,7 +264,18 @@ export function createAliExpressRouter(dependencies: {
 } = { authenticate, requireAdmin, accounts: getAliExpressAccounts, disconnect: disconnectAliExpress }) {
   const router = Router();
   const oauth = dependencies.oauth ?? createAliExpressBrowserOAuth();
-  router.use(rateLimit({ windowMs: 60000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false }));
+  // Rate limit separado: el polling de estado y los steps del job NO deben agotar
+  // el límite pensado para endpoints pesados (cada uno consume llamadas AliExpress).
+  // - Pesados (preview/publish/search/...): 30/min (comportamiento previo, intacto).
+  // - GET /dropship/import/jobs/:id y POST /dropship/import/jobs/:id/step: 240/min.
+  const heavyLimiter = rateLimit({ windowMs: 60000, limit: 30, standardHeaders: 'draft-7', legacyHeaders: false });
+  const pollingLimiter = rateLimit({ windowMs: 60000, limit: 240, standardHeaders: 'draft-7', legacyHeaders: false });
+  const isJobProgressPath = (path: string): boolean =>
+    /^\/dropship\/import\/jobs\/[^/]+(\/step)?$/.test(path);
+  router.use((req, res, next) => {
+    const limiter = isJobProgressPath(req.path) ? pollingLimiter : heavyLimiter;
+    limiter(req, res, next);
+  });
   router.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
   /**

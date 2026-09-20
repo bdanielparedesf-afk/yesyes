@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { RefreshCw, Unplug, PlugZap, ShieldAlert, Search, Upload, PackageCheck } from 'lucide-react';
 import api from '@/lib/axios';
@@ -160,6 +160,9 @@ export default function AdminAliExpress() {
   const [bulkCustomMargin, setBulkCustomMargin] = useState('');
   const [bulkPreviews, setBulkPreviews] = useState<{ url: string; preview: ImportPreview | null }[]>([]);
   const [job, setJob] = useState<ImportJob | null>(null);
+  // Guarda el driver de steps activo (máximo 1 por página) para cancelarlo
+  // al desmontar el componente o al iniciar otro job.
+  const stepDriverRef = useRef<{ cancelled: boolean } | null>(null);
   const [syncStats, setSyncStats] = useState<SyncStatsData | null>(null);
   const [syncLogs, setSyncLogs] = useState<SyncLogData[] | null>(null);
   const [syncInterval, setSyncInterval] = useState('60');
@@ -215,16 +218,25 @@ export default function AdminAliExpress() {
     if (!bulkMarginValid) { setError('El margen debe estar entre 50% y 400%.'); return; }
     setBusy(true); setError('');
     try {
-      const results: { url: string; preview: ImportPreview | null }[] = [];
-      // Una sola consulta a AliExpress por URL: el porcentaje se aplica/recalcula
-      // en el cliente sin volver a pedir la cotización.
-      for (const url of urls.slice(0, 50)) {
-        try {
-          const data = await api.post<ImportPreview>('/admin/aliexpress/dropship/import/preview',
-            { url, marginPercent: bulkEffectiveMargin });
-          results.push({ url, preview: data.data });
-        } catch { results.push({ url, preview: null }); }
-      }
+      // Concurso limitado: máximo 3 previews simultáneas (antes eran 50 secuenciales).
+      // Una preview que falla NO detiene las demás (Promise.allSettled).
+      const results: { url: string; preview: ImportPreview | null }[] = new Array(urls.length);
+      let next = 0;
+      const worker = async () => {
+        for (;;) {
+          const index = next++;
+          if (index >= urls.length) return;
+          const url = urls[index];
+          try {
+            // Una sola consulta a AliExpress por URL: el porcentaje se aplica/recalcula
+            // en el cliente sin volver a pedir la cotización.
+            const data = await api.post<ImportPreview>('/admin/aliexpress/dropship/import/preview',
+              { url, marginPercent: bulkEffectiveMargin });
+            results[index] = { url, preview: data.data };
+          } catch { results[index] = { url, preview: null }; }
+        }
+      };
+      await Promise.allSettled([worker(), worker(), worker()]);
       setBulkPreviews(results);
     } finally { setBusy(false); }
   }
@@ -242,6 +254,8 @@ export default function AdminAliExpress() {
   }
   useEffect(() => { if (isAdmin) void reload(); }, [isAdmin]);
   useEffect(() => { if (isAdmin) void loadSync(); }, [isAdmin]);
+  // Cancela el driver de steps si el panel se desmonta (no deja requests huérfanas).
+  useEffect(() => () => { if (stepDriverRef.current) stepDriverRef.current.cancelled = true; }, []);
 
   async function loadSync() {
     setBusy(true); setError('');
@@ -342,31 +356,112 @@ const JOB_STATUS_LABELS: Record<string, string> = {
   PENDING: 'Pendiente', RUNNING: 'Procesando', DONE: 'Completado',
 };
 
+interface JobStepResult {
+  jobId: string; itemId: string | null; processed: number; succeeded: number;
+  failed: number; pending: number; total: number; status: string; done: boolean;
+}
+
+// Driver serverless-safe: cada step procesa UN item en el backend; el frontend
+// los encadena de a uno (nunca steps simultáneos para el mismo job) y espera
+// entre pasos. El polling de estado es secundario y más espaciado.
+const STEP_INTERVAL_MS = 4000;
+const RATE_LIMIT_BACKOFF_MS = [3000, 6000, 10000];
+const wait = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
+
+  async function driveImportJob(jobId: string) {
+    if (stepDriverRef.current) stepDriverRef.current.cancelled = true;
+    const driver = { cancelled: false };
+    stepDriverRef.current = driver;
+    setBusy(true); setError('');
+    setMessage('Importación masiva en curso...');
+    let backoffIndex = 0;
+    let steps = 0;
+    try {
+      for (;;) {
+        if (driver.cancelled) return;
+        try {
+          const result = await api.post<JobStepResult>(
+            `/admin/aliexpress/dropship/import/jobs/${jobId}/step`, {});
+          backoffIndex = 0; steps += 1;
+          applyJobProgress(result.data);
+          if (result.data.done) {
+            await refreshJob(jobId);
+            if (driver.cancelled) return;
+            setMessage('Importación masiva terminada.');
+            return;
+          }
+          // Estado detallado (items) cada 5 steps, sin bloquear el driver.
+          if (steps % 5 === 0) void refreshJob(jobId);
+          await wait(STEP_INTERVAL_MS);
+        } catch (error: any) {
+          const is429 = error?.response?.status === 429;
+          // 429: NUNCA marcar el job como FAILED ni detener la UI; backoff 3/6/10s.
+          if (is429 && backoffIndex < RATE_LIMIT_BACKOFF_MS.length) {
+            await wait(RATE_LIMIT_BACKOFF_MS[backoffIndex]);
+            backoffIndex += 1;
+            continue;
+          }
+          const current = await refreshJob(jobId);
+          if (driver.cancelled) return;
+          if (current && current.status === 'DONE') {
+            setMessage('Importación masiva terminada.');
+            return;
+          }
+          if (!current) {
+            setError('Se perdió la conexión con la cola de importación.');
+            return;
+          }
+          await wait(STEP_INTERVAL_MS);
+        }
+      }
+    } finally {
+      if (stepDriverRef.current === driver) stepDriverRef.current = null;
+      setBusy(false);
+    }
+  }
+
+  function applyJobProgress(progress: { processed: number; succeeded: number; failed: number; total: number; status: string }) {
+    setJob(prev => prev ? { ...prev,
+      processed: progress.processed, succeeded: progress.succeeded,
+      failed: progress.failed, total: progress.total, status: progress.status } : prev);
+  }
+
+  async function refreshJob(jobId: string): Promise<ImportJob | null> {
+    try {
+      const status = await api.get<ImportJob>(`/admin/aliexpress/dropship/import/jobs/${jobId}`);
+      setJob(status.data);
+      return status.data;
+    } catch { return null; }
+  }
+
   async function startBulkImport() {
     if (!bulkMarginValid) { setError('El margen debe estar entre 50% y 400%.'); return; }
     const urls = bulkUrls.split(/\s+/).map(u => u.trim()).filter(Boolean);
     if (!urls.length) { setError('Ingresa al menos una URL.'); return; }
     setBusy(true); setError('');
     try {
-      const data = await api.post<{ id: string }>('/admin/aliexpress/dropship/import/jobs',
+      const data = await api.post<{ id: string; total: number }>('/admin/aliexpress/dropship/import/jobs',
         { urls, marginPercent: bulkEffectiveMargin });
       const jobId = data.data.id;
       setMessage(`Cola creada (${jobId}). Procesando...`);
       setBulkUrls('');
-      const poll = window.setInterval(async () => {
-        try {
-          const status = await api.get<ImportJob>(`/admin/aliexpress/dropship/import/jobs/${jobId}`);
-          setJob(status.data);
-          if (status.data.status === 'DONE') { window.clearInterval(poll); setMessage('Importacion masiva terminada.'); }
-        } catch { window.clearInterval(poll); }
-      }, 2000);
+      setJob({ id: jobId, status: 'PENDING', total: data.data.total, processed: 0, succeeded: 0, failed: 0, items: [] });
+      await refreshJob(jobId);
+      // El procesamiento lo conduce el driver de steps; el job NO depende de
+      // ningún worker serverless.
+      await driveImportJob(jobId);
     } catch { setError('No fue posible crear la cola de importacion.'); }
     finally { setBusy(false); }
   }
 
   async function retryItem(itemId: string) {
     setBusy(true); setError('');
-    try { await api.post(`/admin/aliexpress/dropship/import/items/${itemId}/retry`, {}); setMessage('Item reencolado.'); }
+    try {
+      await api.post(`/admin/aliexpress/dropship/import/items/${itemId}/retry`, {});
+      setMessage('Item reencolado.');
+      // Ya no hay worker backend: el driver de steps procesa el item reencolado.
+      if (job) await driveImportJob(job.id);
+    }
     catch { setError('No fue posible reencolar el item.'); }
     finally { setBusy(false); }
   }
@@ -517,7 +612,7 @@ const JOB_STATUS_LABELS: Record<string, string> = {
       </div>}
 
       {job && <div className="border rounded-lg p-3 text-sm space-y-2">
-        <p>Progreso: {job.processed}/{job.total} · OK {job.succeeded} · Fallos {job.failed} · Estado {JOB_STATUS_LABELS[job.status] ?? job.status}</p>
+        <p>Progreso: {job.processed}/{job.total} · Completados {job.succeeded} · Errores {job.failed} · Pendientes {job.items.filter(i => i.status === 'PENDING' || i.status === 'PROCESSING').length || Math.max(0, job.total - job.processed)} · Estado {JOB_STATUS_LABELS[job.status] ?? job.status}</p>
         <div className="space-y-1 max-h-40 overflow-auto">
           {job.items.map(item => <div key={item.id} className="flex justify-between gap-2 border-b py-1">
             <span className="truncate" title={item.error ?? undefined}>{item.sourceUrl}</span>

@@ -166,6 +166,9 @@ function freshDb() {
         Object.assign(t, data);
         return t;
       },
+      count: async ({ where }) =>
+        items.filter(i => i.jobId === where.jobId && i.status === where.status
+          && (!where.attempts || i.attempts < where.attempts.lt)).length,
     },
     category: {
       findUnique: async ({ where }) => where.id ? [...categories.values()].find(c => c.id === where.id) : categories.get(where.slug) || null,
