@@ -5,12 +5,12 @@ import { Search, ChevronDown, HelpCircle, Truck, Shield, RotateCcw, CreditCard }
 const faqs = [
   {
     question: '¿Cuáles son los métodos de pago aceptados?',
-    answer: 'Aceptamos tarjetas de crédito, débito y transferencia a través de MercadoPago. Pago 100% seguro. Tu pedido se procesa cuando el pago está confirmado.',
+    answer: 'Aceptamos tarjetas de crédito, débito y transferencia a través de Mercado Pago. Pago seguro con Mercado Pago: compra de forma rápida y protegida. Tu pedido se procesa cuando el pago está confirmado.',
     icon: CreditCard,
   },
   {
     question: '¿Cuánto tarda el envío?',
-    answer: 'Nuestros productos son importados y despachados por CJdropshipping. 15 a 25 días hábiles. Solo Chile donde CJ tenga cobertura.',
+    answer: 'Envíos a todo Chile. Seguimiento disponible para tu pedido. Los tiempos de entrega pueden variar según la región.',
     icon: Truck,
   },
   {
@@ -20,7 +20,7 @@ const faqs = [
   },
   {
     question: '¿Qué garantía tienen los productos?',
-    answer: 'Garantía legal 6 meses por falla de fábrica según ley chilena. Escríbenos a yesyeswebsms@gmail.com con video. No cubre mal uso o golpes.',
+    answer: 'Compra con respaldo: garantía legal según la normativa vigente. Escríbenos a yesyeswebsms@gmail.com con video. No cubre mal uso o golpes.',
     icon: Shield,
   },
   {
@@ -30,7 +30,7 @@ const faqs = [
   },
   {
     question: '¿Hacen envíos a todo Chile?',
-    answer: 'Despachamos solo a comunas y regiones donde CJdropshipping tenga cobertura dentro de Chile continental. No llegamos a bases militares, apartados ni zonas sin código postal.',
+    answer: 'Sí. Envíos a todo Chile con seguimiento disponible para tu pedido. No llegamos a bases militares, apartados ni zonas sin código postal.',
     icon: Truck,
   },
 ];

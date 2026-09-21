@@ -26,7 +26,7 @@ const docs: Record<string, LegalDoc> = {
       {
         title: 'Envíos',
         items: [
-          'Nuestros productos son importados y despachados por CJdropshipping. 15 a 25 días hábiles. Solo Chile donde CJ tenga cobertura.',
+          'Envíos a todo Chile. Seguimiento disponible para tu pedido.',
         ],
       },
     ],
@@ -54,7 +54,7 @@ const docs: Record<string, LegalDoc> = {
       {
         title: 'Garantía legal',
         items: [
-          'Garantía legal 6 meses por falla de fábrica según ley chilena.',
+          'Compra con respaldo: garantía legal según la normativa vigente.',
           `Escríbenos a ${CONTACT_EMAIL} con video.`,
           'No cubre mal uso o golpes.',
         ],
@@ -83,9 +83,9 @@ const docs: Record<string, LegalDoc> = {
       {
         title: 'Servicio',
         items: [
-          'YESYES vende productos importados vía CJdropshipping dentro de Chile.',
-          'Al comprar aceptas los tiempos de entrega de 15 a 25 días hábiles.',
-          'Al comprar aceptas la política de devolución de 10 días corridos y garantía legal de 6 meses.',
+          'YESYES vende productos importados con envíos a todo Chile.',
+          'Al comprar aceptas los tiempos de entrega informados en cada producto y en el checkout.',
+          'Al comprar aceptas la política de devolución de 10 días corridos y la garantía legal según la normativa vigente.',
         ],
       },
       {
@@ -99,7 +99,7 @@ const docs: Record<string, LegalDoc> = {
         title: 'Precios y pagos',
         items: [
           'Los precios están en pesos chilenos (CLP) e incluyen lo mostrado en pantalla al momento de la compra.',
-          'Los pagos se procesan de forma 100% segura a través de MercadoPago.',
+          'Los pagos se procesan de forma segura a través de Mercado Pago. Compra de forma rápida y protegida.',
           'Tu pedido se procesa cuando el pago está confirmado.',
         ],
       },

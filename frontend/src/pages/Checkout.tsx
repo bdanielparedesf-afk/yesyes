@@ -222,7 +222,7 @@ export default function Checkout() {
                 </button>
                 <p className="text-xs text-neutral-500 flex items-center justify-center gap-1">
                   <Shield className="w-3 h-3" />
-                  Pago seguro y encriptado
+                  Pago seguro con Mercado Pago
                 </p>
               </div>
             </div>

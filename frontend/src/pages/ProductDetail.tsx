@@ -152,7 +152,7 @@ export default function ProductDetail() {
     if (product.weight) rows.push({ label: 'Peso', value: `${product.weight} kg` });
     const dimensions = formatDimensions(product.dimensions);
     if (dimensions) rows.push({ label: 'Dimensiones', value: dimensions });
-    rows.push({ label: 'Despacho', value: '15-25 días hábiles a todo Chile' });
+    rows.push({ label: 'Despacho', value: 'Envíos a todo Chile' });
     return rows;
   }, [combination?.sku, engine.attributes, product, selection]);
 
@@ -427,15 +427,15 @@ export default function ProductDetail() {
             <ul className="grid gap-2.5 rounded-2xl border border-neutral-100 bg-white p-4 text-sm text-neutral-600 shadow-sm sm:p-5">
               <li className="flex items-start gap-3">
                 <Truck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" aria-hidden />
-                <span><b className="font-semibold text-neutral-800">Envío</b> 15-25 días hábiles a todo Chile.</span>
+                <span><b className="font-semibold text-neutral-800">Envíos a todo Chile.</b> Seguimiento disponible para tu pedido.</span>
               </li>
               <li className="flex items-start gap-3">
                 <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" aria-hidden />
-                <span><b className="font-semibold text-neutral-800">Garantía legal</b> 6 meses por falla de fábrica.</span>
+                <span><b className="font-semibold text-neutral-800">Compra con respaldo.</b> Garantía legal según la normativa vigente.</span>
               </li>
               <li className="flex items-start gap-3">
                 <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" aria-hidden />
-                <span><b className="font-semibold text-neutral-800">Pago seguro</b> con Mercado Pago.</span>
+                <span><b className="font-semibold text-neutral-800">Pago seguro con Mercado Pago.</b> Compra de forma rápida y protegida.</span>
               </li>
             </ul>
           </div>
@@ -490,11 +490,11 @@ export default function ProductDetail() {
               ) : null}
 
               <Accordion title="Envío y entrega">
-                <p>Despachamos a todo Chile en 15-25 días hábiles con seguimiento. El envío se calcula en el checkout y es gratis en compras sobre $50.000.</p>
+                <p>Envíos a todo Chile. Seguimiento disponible para tu pedido. El envío se calcula en el checkout y es gratis en compras sobre $50.000.</p>
               </Accordion>
 
               <Accordion title="Garantía y devoluciones">
-                <p>Cubrimos 6 meses de garantía legal por falla de fábrica (Ley 19.496) y aceptamos devoluciones dentro de los 10 días posteriores a la recepción si el producto llega con problemas.</p>
+                <p>Compra con respaldo: garantía legal según la normativa vigente. Aceptamos devoluciones dentro de los 10 días posteriores a la recepción si el producto llega con problemas.</p>
               </Accordion>
             </div>
           </section>
@@ -527,15 +527,15 @@ export default function ProductDetail() {
             ) : null}
 
             <section aria-labelledby="protected-title" className="rounded-[var(--radius-xl)] border border-neutral-100 bg-white p-5 shadow-sm">
-              <h2 id="protected-title" className="text-base font-bold tracking-tight text-neutral-900">Compra protegida</h2>
+              <h2 id="protected-title" className="text-base font-bold tracking-tight text-neutral-900">Compra con respaldo</h2>
               <ul className="mt-3 space-y-2.5 text-sm text-neutral-600">
                 <li className="flex items-start gap-2">
                   <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" aria-hidden />
-                  Pago procesado por Mercado Pago.
+                  Pago seguro con Mercado Pago.
                 </li>
                 <li className="flex items-start gap-2">
                   <Truck className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" aria-hidden />
-                  Seguimiento de tu pedido en cada etapa.
+                  Seguimiento disponible para tu pedido.
                 </li>
                 <li className="flex items-start gap-2">
                   <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-primary-700" aria-hidden />

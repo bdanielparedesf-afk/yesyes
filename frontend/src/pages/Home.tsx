@@ -208,8 +208,8 @@ export default function Home() {
                 <Truck className="w-6 h-6 text-primary-700" />
               </div>
               <div>
-                <p className="font-semibold text-neutral-900">Envío a todo Chile</p>
-                <p className="text-sm text-neutral-500">15-25 días hábiles, despacho CJ Dropshipping</p>
+                <p className="font-semibold text-neutral-900">Envíos a todo Chile</p>
+                <p className="text-sm text-neutral-500">Seguimiento disponible para tu pedido.</p>
               </div>
             </div>
             <div className="flex items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-neutral-100">
@@ -218,7 +218,7 @@ export default function Home() {
               </div>
               <div>
                 <p className="font-semibold text-neutral-900">Pago seguro con Mercado Pago</p>
-                <p className="text-sm text-neutral-500">Transacciones 100% protegidas</p>
+                <p className="text-sm text-neutral-500">Compra de forma rápida y protegida.</p>
               </div>
             </div>
             <div className="flex items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-neutral-100">
@@ -226,8 +226,8 @@ export default function Home() {
                 <Shield className="w-6 h-6 text-primary-700" />
               </div>
               <div>
-                <p className="font-semibold text-neutral-900">Garantía legal 6 meses</p>
-                <p className="text-sm text-neutral-500">Por falla de fábrica (Ley 19.496)</p>
+                <p className="font-semibold text-neutral-900">Compra con respaldo</p>
+                <p className="text-sm text-neutral-500">Garantía legal según la normativa vigente.</p>
               </div>
             </div>
           </div>
