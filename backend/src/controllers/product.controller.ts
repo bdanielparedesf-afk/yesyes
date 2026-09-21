@@ -237,18 +237,31 @@ async function fetchPublishedProducts(
   });
 }
 
-export const getHome = async (_req: Request, res: Response): Promise<void> => {
+export const getHome = async (req: Request, res: Response): Promise<void> => {
   try {
+    // ?lite=1 → solo categories + uncategorized ("Lo último"). El Home actual
+    // ya no renderiza Destacados/Ofertas/por-categoría, así que este modo evita
+    // ~5 consultas pesadas a Supabase. Sin el parámetro, respuesta completa
+    // (compatibilidad con tests y otros consumidores).
+    // Caché separada por modo para no mezclar payloads.
+    const lite = String(req.query?.lite ?? '') === '1';
+    const cacheKey = lite ? 'home:lite' : 'home:full';
+    const cached = homeDataCache[cacheKey];
     // Caché TTL corta en memoria: la home es lectura pública que cambia poco y
     // concentra ~10+ consultas. 60s es imperceptible para contenido nuevo y
     // reduce drásticamente la carga en Supabase/Vercel. NO se cachea carrito,
     // stock crítico, pagos ni datos privados.
-    if (homeDataCache && Date.now() - homeDataCache.at < HOME_CACHE_TTL_MS) {
-      res.json(homeDataCache.data);
+    if (cached && Date.now() - cached.at < HOME_CACHE_TTL_MS) {
+      // Permite que el CDN/navegador sirva el home 60s sin llegar a la function.
+      // s-maxage=60 (CDN) + stale-while-revalidate=300 (sirve stale mientras
+      // revalida en background). No rompe frescura: el dato cambia poco.
+      res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+      res.json(cached.data);
       return;
     }
-    const result = await buildHomeData(prisma);
-    homeDataCache = { at: Date.now(), data: result };
+    const result = await buildHomeData(prisma, lite);
+    homeDataCache[cacheKey] = { at: Date.now(), data: result };
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     res.json(result);
   } catch (error: any) {
     console.error('Error fetching home data:', error);
@@ -257,24 +270,29 @@ export const getHome = async (_req: Request, res: Response): Promise<void> => {
 };
 
 const HOME_CACHE_TTL_MS = 5 * 60_000; // 5 minutos: reduce drásticamente carga en BD/Supabase
-let homeDataCache: { at: number; data: unknown } | null = null;
+let homeDataCache: Record<string, { at: number; data: unknown }> = {};
 
 export function invalidateHomeCache(): void {
-  homeDataCache = null;
+  homeDataCache = {};
 }
 
-export async function buildHomeData(db: typeof prisma) {
-  // FASE 1: queries rapidas primero (no saturan el pool).
-  // categories + featured + latest + offers son findMany con filtros simples.
-  const [rows, featured, latest, offers] = await Promise.all([
-    db.category.findMany({
+export async function buildHomeData(db: typeof prisma, lite = false) {
+  // Modo lite: solo categories + uncategorized (lo que el Home renderiza).
+  // Evita featured/latest/offers + byCategory (~5 consultas pesadas).
+  const [rows, featured, latest, offers] = lite
+    ? [await db.category.findMany({
       where: { active: true },
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
-    }),
-    fetchPublishedProducts(db, { isFeatured: true }, 8, { createdAt: 'desc' }),
-    fetchPublishedProducts(db, {}, 12, { createdAt: 'desc' }),
-    fetchPublishedProducts(db, { isOffer: true }, 8, { createdAt: 'desc' }),
-  ]);
+    }), [], [], []]
+    : await Promise.all([
+      db.category.findMany({
+        where: { active: true },
+        orderBy: [{ order: 'asc' }, { name: 'asc' }],
+      }),
+      fetchPublishedProducts(db, { isFeatured: true }, 8, { createdAt: 'desc' }),
+      fetchPublishedProducts(db, {}, 12, { createdAt: 'desc' }),
+      fetchPublishedProducts(db, { isOffer: true }, 8, { createdAt: 'desc' }),
+    ]);
 
   // FASE 2: uncategorized (query rapida de productos sin coleccion).
   const uncategorized = await fetchPublishedProducts(
@@ -300,6 +318,48 @@ export async function buildHomeData(db: typeof prisma) {
     sports: ['deportes'],
     office: ['oficina'],
   };
+
+  // Modo lite: counts con 1 groupBy (rápido) y sin descargar productos por
+  // categoría — el Home ya no los renderiza. byCategory queda vacío.
+  if (lite) {
+    const ids = groups.flatMap((g) => g.categoryIds);
+    const countsByCategoryId: Record<string, number> = {};
+    if (ids.length > 0) {
+      try {
+        const grouped = await (db as any).product.groupBy({
+          by: ['categoryId'],
+          where: { status: 'PUBLISHED', hidden: false, categoryId: { in: ids } },
+          _count: { categoryId: true },
+        });
+        for (const g of grouped ?? []) {
+          if (g?.categoryId) countsByCategoryId[g.categoryId] = g._count?.categoryId ?? 0;
+        }
+      } catch {
+        for (const id of ids) {
+          const count = await (db as any).product.count({
+            where: { status: 'PUBLISHED', hidden: false, categoryId: id },
+          });
+          countsByCategoryId[id] = count;
+        }
+      }
+    }
+    for (const g of groups) {
+      let total = 0;
+      for (const id of g.categoryIds) total += countsByCategoryId[id] || 0;
+      if (total === 0) continue;
+      const canonical = (rows as any[]).find(
+        (r) => !isTechnicalAeSlug(r.slug) && r.slug === g.key,
+      );
+      categories.push({
+        id: canonical?.id || g.categoryIds[0],
+        name: canonical?.name || g.name,
+        slug: g.slug,
+        image: canonical?.image ?? g.image,
+        productCount: total,
+      });
+    }
+    return { categories, featured, latest, offers, byCategory, uncategorized };
+  }
 
   // Recolectar todos los categoryIds de todos los grupos (evita duplicados).
   const allCategoryIds: string[] = [];
@@ -339,13 +399,28 @@ export async function buildHomeData(db: typeof prisma) {
       if (grouped[cid]) grouped[cid] = grouped[cid].slice(0, MAX_PER_CATEGORY);
     }
 
-    // Counts: ejecucion secuencial para no saturar el pool de Prisma (connection_limit=1).
-    // Los COUNT son queries rapidos; en produccion con pool mayor se pueden paralelizar.
-    for (const id of allCategoryIds) {
-      const count = await (db as any).product.count({
-        where: { status: 'PUBLISHED', hidden: false, categoryId: id },
+    // Counts: 1 sola consulta agregada (groupBy) en vez de N counts
+    // secuenciales. Con connection_limit=1 en serverless, N counts
+    // secuenciales = N round-trips a Supabase = home lento / timeout.
+    // groupBy devuelve solo categorías con productos; el resto queda en 0.
+    try {
+      const grouped = await (db as any).product.groupBy({
+        by: ['categoryId'],
+        where: { status: 'PUBLISHED', hidden: false, categoryId: { in: allCategoryIds } },
+        _count: { categoryId: true },
       });
-      countsByCategoryId[id] = count;
+      for (const g of grouped ?? []) {
+        if (g?.categoryId) countsByCategoryId[g.categoryId] = g._count?.categoryId ?? 0;
+      }
+    } catch {
+      // Fallback: si el mock de tests no soporta groupBy, conteo secuencial.
+      // En producción Prisma sí soporta groupBy y nunca llega aquí.
+      for (const id of allCategoryIds) {
+        const count = await (db as any).product.count({
+          where: { status: 'PUBLISHED', hidden: false, categoryId: id },
+        });
+        countsByCategoryId[id] = count;
+      }
     }
 
     // Map ear: categoryId → slug del grupo.

@@ -123,14 +123,16 @@ function CategoryGrid({ categories }: { categories: HomeCategory[] }) {
 
 export default function Home() {
   // React Query maneja fetching, cache, background refetch.
-  // El Hero se renderiza inmediatamente sin esperar estos datos.
+  // El Hero + trust badges se renderizan inmediatamente sin esperar la API.
   // HOME SIMPLIFICADO: se muestra Hero + Categorías + "Lo último".
-  // Se eliminan Destacados/Ofertas/por-categoría. No se toca el endpoint.
-  const { data, isLoading, refetch } = useHomeData();
+  // useHomeData usa ?lite=1: el backend solo devuelve categories + uncategorized.
+  // isPlaceholderData = hay caché de visita anterior: se muestra al instante.
+  const { data, isLoading, isPlaceholderData, refetch } = useHomeData();
 
   // Cada sección se renderiza de forma independiente.
-  // Mientras isLoading sea true, cada sección muestra su propio skeleton.
-  // Una vez que isLoading es false, se muestran los datos reales o estado de error.
+  // - Si hay datos (incluida caché de visita anterior), se muestran al instante.
+  // - Solo el PRIMER fetch sin ningún dato muestra skeleton; nunca blanco total
+  //   porque Hero + trust badges + encabezados son estáticos y pintan de inmediato.
   const renderProductSection = (
     title: string,
     products: Product[] | undefined,
@@ -144,12 +146,12 @@ export default function Home() {
         <section className="py-10 border-t border-neutral-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <SectionHeading title={title} link={link} linkText={linkText} />
-            <ProductGrid products={products} />
+            <ProductGrid products={products} paginating={isPlaceholderData} />
           </div>
         </section>
       );
     }
-    // Primer fetch sin datos aún → skeleton
+    // Primer fetch sin datos aún → skeleton (limitado a esta sección).
     if (isLoading) {
       return (
         <section className="py-10 border-t border-neutral-200">

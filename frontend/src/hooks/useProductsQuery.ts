@@ -91,16 +91,22 @@ export function useProductsByCategory(
 }
 
 /**
- * Datos de la home page (categorías, destacados, novedades, ofertas, etc.).
- * El backend ya tiene un caché de 60s; el frontend complementa con staleTime.
- * Home usa 5min de staleTime porque los productos destacados/nuevos/ofertas
- * cambian poco en breve período y la caché reduce requests innecesarios.
+ * Datos de la home page. El Home actual solo renderiza categorías + "Lo último",
+ * por eso usa `lite=true`: el backend omite Destacados/Ofertas/por-categoría
+ * (ahorra ~5 consultas pesadas a Supabase). Sin el flag, respuesta completa
+ * (compatibilidad con otros consumidores).
+ * El backend ya tiene caché de 5min; el frontend complementa con staleTime.
+ * Home usa 5min de staleTime porque el contenido cambia poco en breve período
+ * y la caché reduce requests innecesarios.
  */
 export function useHomeData(options?: Parameters<typeof useQuery>[1]) {
   return useQuery({
-    queryKey: [QUERY_KEYS.home],
-    queryFn: () => getHomeData(),
-    staleTime: 5 * 60_000, // 5 minutos: productos destacados/nuevos/ofertas cambian poco
+    queryKey: [QUERY_KEYS.home, 'lite'],
+    queryFn: () => getHomeData(true),
+    staleTime: 5 * 60_000, // 5 minutos: el contenido del Home cambia poco
+    gcTime: 10 * 60_000, // 10 minutos: volver al Home muestra caché al instante
+    refetchOnWindowFocus: false, // no bloquear con refetch al volver a la pestaña
+    placeholderData: (prev: any) => prev, // nunca pantalla blanca si hay caché
     ...options,
   });
 }

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useCartStore } from '@/store/useCartStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import { getCategories } from '@/services/products';
+import { useHomeData } from '@/hooks/useProductsQuery';
 
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -16,10 +17,37 @@ export default function Header() {
   const totalItems = useCartStore((s) => s.totalItems());
   const { user, status, checkSession } = useAuthStore();
 
+  // checkSession tiene caché de 5min + dedupe: solo dispara 1 request.
+  // Se difiere a requestIdleCallback para NO competir con /products/home?lite=1
+  // en la carga inicial (el cuello de botella es connection_limit=1 a Supabase).
   useEffect(() => {
-    void checkSession();
+    const run = () => { void checkSession(); };
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(run, { timeout: 3000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(run, 0);
+    return () => window.clearTimeout(t);
+  }, [checkSession]);
+
+  // Las categorías del nav reutilizan la caché del Home (['home','lite']) si ya
+  // se cargó; si no, hace su propio fetch pero SIN bloquear el primer paint.
+  // NOTA: useHomeData tipa options como Parameters<typeof useQuery>[1]
+  // (= QueryClient en esta versión); se castea para pasar UseQueryOptions.
+  const { data: homeCached } = useHomeData({
+    staleTime: Infinity, refetchOnWindowFocus: false, refetchOnMount: false,
+  } as unknown as Parameters<typeof useHomeData>[0]);
+  useEffect(() => {
+    if (homeCached?.categories?.length) {
+      setCategories(homeCached.categories);
+      return;
+    }
     void loadCategories();
-  }, []);
+  }, [homeCached]);
 
   async function loadCategories() {
     try {

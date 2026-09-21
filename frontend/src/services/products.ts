@@ -296,8 +296,8 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
   return data.product ? mapProduct(data.product) : null;
 }
 
-export async function getHomeData(): Promise<{ categories: any[]; featured: Product[]; latest: Product[]; offers: Product[]; byCategory: Record<string, Product[]>; uncategorized: Product[] }> {
-  const { data } = await api.get('/products/home');
+export async function getHomeData(lite = false): Promise<{ categories: any[]; featured: Product[]; latest: Product[]; offers: Product[]; byCategory: Record<string, Product[]>; uncategorized: Product[] }> {
+  const { data } = await api.get('/products/home', { params: lite ? { lite: 1 } : {} });
   const mapArr = (arr: any[]) => (Array.isArray(arr) ? arr.map(mapProduct) : []);
   return {
     categories: data.categories || [],
