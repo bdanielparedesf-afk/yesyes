@@ -1,18 +1,9 @@
-import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Truck, Shield, RefreshCw, AlertCircle } from 'lucide-react';
 import { useHomeData } from '@/hooks/useProductsQuery';
 import ProductGrid from '@/components/ProductGrid';
 import type { Product } from '@/services/products';
-
-interface HomeCategory {
-  id: string;
-  name: string;
-  slug: string;
-  image?: string | null;
-  productCount: number;
-}
 
 function Hero() {
   return (
@@ -85,6 +76,14 @@ function SectionHeading({ title, link, linkText }: { title: string; link?: strin
   );
 }
 
+interface HomeCategory {
+  id: string;
+  name: string;
+  slug: string;
+  image?: string | null;
+  productCount: number;
+}
+
 function CategoryGrid({ categories }: { categories: HomeCategory[] }) {
   if (!categories.length) return null;
   return (
@@ -125,27 +124,9 @@ function CategoryGrid({ categories }: { categories: HomeCategory[] }) {
 export default function Home() {
   // React Query maneja fetching, cache, background refetch.
   // El Hero se renderiza inmediatamente sin esperar estos datos.
-  const { data, isLoading, error, refetch } = useHomeData();
-  const categoriesRef = useRef<HTMLDivElement>(null);
-  const [categoriesVisible, setCategoriesVisible] = useState(false);
-
-  // IntersectionObserver: las categorías se renderizan cuando el viewport
-  // llega a su región (ya pasado el Hero). Evita chequeo innecesario.
-  useEffect(() => {
-    const el = categoriesRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setCategoriesVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.1, rootMargin: '100px' },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+  // HOME SIMPLIFICADO: se muestra Hero + Categorías + "Lo último".
+  // Se eliminan Destacados/Ofertas/por-categoría. No se toca el endpoint.
+  const { data, isLoading, refetch } = useHomeData();
 
   // Cada sección se renderiza de forma independiente.
   // Mientras isLoading sea true, cada sección muestra su propio skeleton.
@@ -200,78 +181,17 @@ export default function Home() {
     );
   };
 
-  // Categorías: solo se muestran cuando el IntersectionObserver las activó
-  const categoriesEl = categoriesVisible ? (
-    <section className="py-10 border-t border-neutral-200" ref={categoriesRef}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <CategoryGrid categories={data?.categories ?? []} />
-      </div>
-    </section>
-  ) : null;
-
-  // El estado de error se maneja a nivel de cada sección de productos
-  // vía renderProductSection(). No hay error global que bloquee todo el Home.
+  // El estado de error se maneja a nivel de la sección "Lo último".
 
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* ── Hero: siempre visible, no espera la API ── */}
       <Hero />
 
-      {/* ── Categorías: se muestran cuando IntersectionObserver las activa ── */}
-      {categoriesEl}
+      {/* ── Categorías (navegación por categoría, no duplica productos) ── */}
+      <CategoryGrid categories={data?.categories ?? []} />
 
-      {/* ── Productos destacados ── */}
-      {renderProductSection(
-        'Productos destacados',
-        data?.featured,
-        '/productos',
-        'Ver todos',
-      )}
-
-      {/* ── Nuevos productos ── */}
-      {renderProductSection(
-        'Nuevos productos',
-        data?.latest,
-        '/productos',
-        'Ver nuevos',
-      )}
-
-      {/* ── Ofertas ── */}
-      {renderProductSection(
-        'Ofertas',
-        data?.offers,
-        '/ofertas',
-        'Ver ofertas',
-      )}
-
-      {/* ── Productos por categoría ── */}
-      {isLoading ? (
-        <section className="py-10 border-t border-neutral-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <SectionHeading title="Más categorías" />
-            <ProductGrid products={[]} loading />
-          </div>
-        </section>
-      ) : error ? null : data && Object.entries(data.byCategory ?? {}).length > 0 ? (
-        Object.entries(data.byCategory).map(([slug, products]) => {
-          if (!products?.length) return null;
-          const category = data?.categories?.find((c) => c.slug === slug);
-          return (
-            <section key={slug} className="py-10 border-t border-neutral-200">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <SectionHeading
-                  title={category?.name ?? slug}
-                  link={`/categoria/${slug}`}
-                  linkText="Ver categoría"
-                />
-                <ProductGrid products={products} />
-              </div>
-            </section>
-          );
-        })
-      ) : null}
-
-      {/* ── Productos sin categoría ── */}
+      {/* ── Lo último (sección existente, sin cambios de lógica/datos) ── */}
       {renderProductSection(
         'Lo último',
         data?.uncategorized,
