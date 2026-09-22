@@ -84,7 +84,7 @@ export async function runAliExpressSync(input: { limit?: number } = {},
   let cursor = settings.lastCursor ?? '';
   for (;;) {
     const batch = await db.product.findMany({
-      where: { aliexpressId: { not: null }, ...(cursor ? { id: { gt: cursor } } : {}) },
+      where: { aliexpressId: { not: null }, businessId: null, ...(cursor ? { id: { gt: cursor } } : {}) },
       orderBy: { id: 'asc' },
       take: Math.min(settings.batchSize, total - result.processed),
       select: { id: true },
@@ -127,8 +127,8 @@ export async function syncStats(db: typeof prisma = prisma) {
   const [affectedProducts, errors, noShippingQuote, totalImported] = await Promise.all([
     db.aliExpressSyncLog.count({ where: { createdAt: { gte: since }, status: 'CHANGED' } }),
     db.aliExpressSyncLog.count({ where: { createdAt: { gte: since }, status: 'ERROR' } }),
-    db.product.count({ where: { aliexpressId: { not: null }, aliexpressShippingUnknown: true } }),
-    db.product.count({ where: { aliexpressId: { not: null } } }),
+    db.product.count({ where: { aliexpressId: { not: null }, businessId: null, aliexpressShippingUnknown: true } }),
+    db.product.count({ where: { aliexpressId: { not: null }, businessId: null } }),
   ]);
   const counters = await recentChangeCounters(db, since);
   return {

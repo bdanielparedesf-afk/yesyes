@@ -21,9 +21,13 @@ import * as syncEngine from '../services/aliexpress-sync-engine.service';
 import { refreshAliexpressToken } from '../jobs/aliexpress-token-refresh';
 import aliexpressRoutes from './aliexpress.routes';
 
+import businessRoutes from './business.routes';
+import publicBusinessRoutes from './public-business.routes';
 const router = Router();
 
 router.use('/auth', authRoutes);
+router.use('/businesses', businessRoutes);
+router.use('/public/businesses', publicBusinessRoutes);
 router.use('/products', productRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/cart', cartRoutes);

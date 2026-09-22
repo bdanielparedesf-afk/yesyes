@@ -1236,13 +1236,15 @@ export async function getImportJobStatus(jobId: string, db: typeof prisma = pris
 export async function findAliExpressProductForSync(productId: string, db: typeof prisma = prisma) {
   const product = await db.product.findUnique({
     where: { id: productId },
-    select: { id: true, aliexpressId: true, supplierProductId: true, sourceId: true, sourceUrl: true,
+    select: { id: true, businessId: true, aliexpressId: true, supplierProductId: true, sourceId: true, sourceUrl: true,
       supplierUrl: true, aliexpressUrl: true, sourcePlatform: true, cjProductId: true,
       productCost: true, salePrice: true, margin: true, stock: true, status: true,
       totalCost: true, shippingCost: true, aliexpressMarginPercent: true,
       aliexpressShippingUsdCents: true, aliexpressSnapshot: true },
   });
   if (!product) throw new AliExpressDropshipError('INPUT');
+  // BUSINESS V3: productos de negocios nunca entran al sync dropshipping.
+  if ((product as any).businessId) throw new AliExpressDropshipError('INPUT');
   const aeId = [product.aliexpressId, product.supplierProductId, product.sourceId]
     .find(id => id && /^\d+$/.test(id));
   if (aeId && matchesAliExpressProduct(product, aeId)) return { product, aliexpressId: aeId };

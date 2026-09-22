@@ -12,9 +12,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="YESYES - Tu tienda ecommerce moderna" />
     <title>YESYES - Drop de Productos</title>
+    <style>
+      /* Splash crítico inline: evita pantalla blanca mientras descarga/parses el bundle.
+         React reemplaza el contenido de #root al hidratar, así que no interfiere. */
+      #boot { min-height: 100vh; background: #fafafa; display: flex; flex-direction: column; }
+      #boot .bar { height: 56px; background: #fff; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; padding: 0 16px; font-weight: 800; letter-spacing: -0.02em; }
+      #boot .hero { background: #171717; color: #fff; padding: 48px 16px; }
+      #boot .hero .t { max-width: 72rem; margin: 0 auto; font-size: 40px; font-weight: 900; }
+      #boot .hero .s { max-width: 72rem; margin: 8px auto 0; color: #d4d4d4; font-size: 16px; }
+      #boot .grid { max-width: 72rem; margin: 0 auto; padding: 24px 16px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      @media (min-width: 1024px) { #boot .grid { grid-template-columns: repeat(4, 1fr); } }
+      #boot .card { background: #fff; border: 1px solid #f0f0f0; border-radius: 24px; overflow: hidden; }
+      #boot .ph { aspect-ratio: 4/5; background: linear-gradient(100deg, #f1f1f1 40%, #e8e8e8 50%, #f1f1f1 60%); background-size: 200% 100%; animation: sh 1.2s infinite; }
+      @keyframes sh { to { background-position: -200% 0; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="boot" aria-hidden="true"><div class="bar">YESYES</div><div class="hero"><div class="t">YESYES</div><div class="s">Cargando tu marketplace…</div></div><div class="grid"><div class="card"><div class="ph"></div></div><div class="card"><div class="ph"></div></div><div class="card"><div class="ph"></div></div><div class="card"><div class="ph"></div></div></div></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

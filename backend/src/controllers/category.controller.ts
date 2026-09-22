@@ -33,6 +33,9 @@ export const getCategories = async (req: Request, res: Response): Promise<void> 
         };
       })
       .filter((c) => c.productCount > 0);
+    // Lectura pública que casi no cambia: el CDN puede servirla 5 min.
+    // stale-while-revalidate evita que el header espere al backend en frío.
+    res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
     res.json({ categories });
   } catch (error: any) {
     console.error('Error fetching categories:', error);

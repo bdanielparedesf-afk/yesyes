@@ -27,6 +27,7 @@ model User {
   cart          Cart?
   orders        Order[]
   verificationTokens VerificationToken[]
+  businesses Business[]
 
   @@map("users")
 }
@@ -164,6 +165,8 @@ model Product {
   orderItems        OrderItem[]      @relation("ProductOrderItems")
   category          Category         @relation(fields: [categoryId], references: [id])
   supplierRelation  Supplier?        @relation("ProductSupplier", fields: [supplierId], references: [id])
+  businessId      String?
+  @@index([businessId])
 
   @@map("products")
 }
@@ -644,6 +647,254 @@ model BackupLog {
 enum UserRole {
   CUSTOMER
   ADMIN
+  BUSINESS
+}
+
+enum BusinessStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+enum BusinessCategoryCode {
+  HAIR
+  BARBER
+  BAKERY
+  FLOWERS
+  FOOD
+  BOUTIQUE
+  FURNITURE
+  REAL_ESTATE
+  MECHANIC
+  PHONE
+  CLEANING
+  PHOTO
+  TUTORING
+  CONSTRUCTION
+  BEAUTY
+  PET
+  DETAILING
+}
+
+enum PropertyOperation {
+  VENTA
+  ARRIENDO
+}
+
+enum PropertyType {
+  CASA
+  DEPARTAMENTO
+  TERRENO
+  OFICINA
+  LOCAL
+  PARCELA
+  BODEGA
+}
+
+enum LeadType {
+  RESERVA
+  COTIZACION
+  CONSULTA
+  PEDIDO
+  PROPERTY_INQUIRY
+}
+
+model BusinessCategory {
+  id          String               @id @default(uuid())
+  code        BusinessCategoryCode @unique
+  name        String
+  description String?
+  icon        String?
+  active      Boolean              @default(true)
+  order       Int                  @default(0)
+
+  @@index([active])
+  @@index([order])
+  @@map("business_categories")
+}
+
+model BusinessTemplate {
+  id           String               @id @default(uuid())
+  category     BusinessCategoryCode
+  code         String               @unique
+  name         String
+  version      Int                  @default(1)
+  active       Boolean              @default(true)
+  previewUrl   String?
+  capabilities String[]
+  config       Json?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  businesses   Business[]
+
+  @@index([category])
+  @@index([active])
+  @@map("business_templates")
+}
+
+model Business {
+  id String @id @default(uuid())
+  ownerId String
+  owner User @relation(fields: [ownerId], references: [id])
+  name String
+  slug String @unique
+  category BusinessCategoryCode
+  templateId String?
+  template BusinessTemplate? @relation(fields: [templateId], references: [id])
+  status BusinessStatus @default(DRAFT)
+  logo String?
+  cover String?
+  description String? @db.Text
+  phone String?
+  whatsapp String?
+  email String?
+  address String?
+  city String?
+  region String?
+  mapsUrl String?
+  lat Float?
+  lng Float?
+  hours Json?
+  socials Json?
+  cta Json?
+  settings Json?
+  seoTitle String?
+  seoDescription String?
+  ogImage String?
+  canonical String?
+  publishedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  services BusinessService[]
+  properties Property[]
+  gallery BusinessGalleryImage[]
+  leads BusinessLead[]
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([status])
+  @@map("businesses")
+}
+
+model BusinessService {
+  id String @id @default(uuid())
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name String
+  description String? @db.Text
+  image String?
+  price Float?
+  durationMin Int?
+  featured Boolean @default(false)
+  active Boolean @default(true)
+  order Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, active])
+  @@map("business_services")
+}
+
+model Property {
+  id String @id @default(uuid())
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  title String
+  description String? @db.Text
+  price Float
+  currency String @default("CLP")
+  operation PropertyOperation
+  type PropertyType
+  address String?
+  city String?
+  region String?
+  bedrooms Int?
+  bathrooms Int?
+  parking Int?
+  areaBuilt Float?
+  areaTotal Float?
+  features String[]
+  lat Float?
+  lng Float?
+  agent String?
+  featured Boolean @default(false)
+  available Boolean @default(true)
+  published Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  images PropertyImage[]
+
+  @@index([businessId])
+  @@index([operation])
+  @@index([type])
+  @@index([city])
+  @@index([businessId, published])
+  @@map("properties")
+}
+
+model PropertyImage {
+  id String @id @default(uuid())
+  propertyId String
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  url String
+  position Int @default(0)
+
+  @@index([propertyId])
+  @@map("property_images")
+}
+
+model BusinessGalleryImage {
+  id String @id @default(uuid())
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  url String
+  position Int @default(0)
+  alt String?
+  createdAt DateTime @default(now())
+
+  @@index([businessId])
+  @@index([businessId, position])
+  @@map("business_gallery_images")
+}
+
+model BusinessLead {
+  id String @id @default(uuid())
+  businessId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type LeadType
+  name String?
+  phone String?
+  email String?
+  message String? @db.Text
+  payload Json?
+  waClick Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([businessId])
+  @@index([type])
+  @@index([businessId, createdAt])
+  @@map("business_leads")
+}
+
+model BusinessStatDaily {
+  id String @id @default(uuid())
+  businessId String
+  date DateTime @db.Date
+  pageViews Int @default(0)
+  waClicks Int @default(0)
+  phoneClicks Int @default(0)
+  emailClicks Int @default(0)
+  leads Int @default(0)
+  productViews Int @default(0)
+  propertyViews Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([businessId, date])
+  @@index([businessId])
+  @@map("business_stats_daily")
 }
 
 enum ProductStatus {

@@ -10,7 +10,6 @@
 import { prisma } from '../lib/prisma';
 import { resolveCJProductFromUrl, extractCJPrice } from '../controllers/cj.controller';
 import { getCJFreight } from '../lib/cj';
-
 const THRESHOLD_PCT = 0.1;
 
 interface SyncResult {
@@ -27,7 +26,7 @@ export async function runPriceSync(): Promise<SyncResult> {
 
   try {
     const products = await prisma.product.findMany({
-      where: { sourceUrl: { not: null }, sourcePlatform: 'CJ' },
+      where: { sourceUrl: { not: null }, sourcePlatform: 'CJ', businessId: null },
       select: {
         id: true, name: true, sourceUrl: true, sourceId: true, costUsd: true, cjProductId: true,
         hasAlert: true, alert: true,

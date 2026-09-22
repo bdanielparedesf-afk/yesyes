@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { roleUpdateSchema } from '../utils/business';
 
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -33,7 +34,12 @@ export const getUsers = async (req: Request, res: Response): Promise<void> => {
 export const updateUserRole = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { role } = req.body;
+    const parsed = roleUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Rol invalido. Use CUSTOMER, BUSINESS o ADMIN.' });
+      return;
+    }
+    const { role } = parsed.data;
     const user = await prisma.user.update({
       where: { id: String(id) },
       data: { role: role as any },

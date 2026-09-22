@@ -112,4 +112,39 @@ router.get('/users', getUsers);
 router.put('/users/:id/role', updateUserRole);
 router.put('/users/:id/active', toggleUserActive);
 
+router.get('/businesses', async (req, res) => {
+  try {
+    const businesses = await prisma.business.findMany({
+      orderBy: { updatedAt: 'desc' },
+      include: { template: true, owner: { select: { id: true, email: true, name: true } } },
+    });
+    res.json({ businesses });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error fetching businesses', error: error.message });
+  }
+});
+
+router.put('/businesses/:id/status', async (req, res) => {
+  try {
+    const allowed = ['DRAFT', 'PUBLISHED', 'PAUSED', 'ARCHIVED'];
+    const status = String((req.body as any)?.status || '');
+    if (!allowed.includes(status)) {
+      res.status(400).json({ message: 'Estado invalido' });
+      return;
+    }
+    const business = await prisma.business.update({
+      where: { id: String(req.params.id) },
+      data: { status: status as any, ...(status === 'PUBLISHED' ? { publishedAt: new Date() } : {}) },
+    });
+    res.json({ business });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Error updating business status', error: error.message });
+  }
+});
+
+router.get('/business-categories', async (_req, res) => {
+  const categories = await prisma.businessCategory.findMany({ where: { active: true }, orderBy: { order: 'asc' } });
+  res.json({ categories });
+});
+
 export default router;

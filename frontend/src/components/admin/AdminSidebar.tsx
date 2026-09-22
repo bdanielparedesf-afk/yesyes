@@ -17,6 +17,7 @@ const LINKS = [
   { href: '/admin/users', label: 'Usuarios', icon: Users },
   { href: '/admin/import-cj', label: 'Importar CJ', icon: Upload },
   { href: '/admin/aliexpress', label: 'AliExpress', icon: ShoppingBag },
+  { href: '/admin/negocios', label: 'Negocios', icon: LayoutDashboard },
   { href: '/admin/bulk', label: 'Importar Excel', icon: Upload },
 ] as const;
 

@@ -42,7 +42,8 @@ const PUBLIC_PRODUCT_SELECT = {
 export const getProducts = async (req: Request, res: Response): Promise<void> => {
   try {
     const { collection, search, category, limit = 50, offset = 0 } = req.query;
-    const where: any = { status: 'PUBLISHED', hidden: false };
+    // BUSINESS V3: la tienda YesYes solo vende productos propios (businessId NULL).
+    const where: any = { status: 'PUBLISHED', hidden: false, businessId: null };
 
     if (collection) {
       where.collection = { slug: collection };
@@ -173,8 +174,8 @@ export const getCollections = async (req: Request, res: Response): Promise<void>
     const collections = await prisma.collection.findMany({
       include: {
         products: {
-          // Filtra solo productos publicados
-          where: { status: 'PUBLISHED' },
+          // Filtra solo productos publicados de la tienda (no catálogos Business).
+          where: { status: 'PUBLISHED', businessId: null },
           // Se eliminó collection: true del include anidado: los productos ya
           // pertenecen a la colección consultada, incluirla de nuevo es redundanto.
           include: { productImages: { orderBy: { position: 'asc' } } },
@@ -228,8 +229,9 @@ async function fetchPublishedProducts(
   orderBy: any,
   select?: any,
 ) {
+  // BUSINESS V3: home/tienda excluyen catálogos de negocios.
   return db.product.findMany({
-    where: { status: 'PUBLISHED', hidden: false, ...whereExtra },
+    where: { status: 'PUBLISHED', hidden: false, businessId: null, ...whereExtra },
     take,
     // Prisma exige orderBy como array de objetos de un solo campo.
     orderBy: Array.isArray(orderBy) ? orderBy : [orderBy],
@@ -328,7 +330,7 @@ export async function buildHomeData(db: typeof prisma, lite = false) {
       try {
         const grouped = await (db as any).product.groupBy({
           by: ['categoryId'],
-          where: { status: 'PUBLISHED', hidden: false, categoryId: { in: ids } },
+          where: { status: 'PUBLISHED', hidden: false, businessId: null, categoryId: { in: ids } },
           _count: { categoryId: true },
         });
         for (const g of grouped ?? []) {
@@ -337,7 +339,7 @@ export async function buildHomeData(db: typeof prisma, lite = false) {
       } catch {
         for (const id of ids) {
           const count = await (db as any).product.count({
-            where: { status: 'PUBLISHED', hidden: false, categoryId: id },
+            where: { status: 'PUBLISHED', hidden: false, businessId: null, categoryId: id },
           });
           countsByCategoryId[id] = count;
         }
@@ -406,7 +408,7 @@ export async function buildHomeData(db: typeof prisma, lite = false) {
     try {
       const grouped = await (db as any).product.groupBy({
         by: ['categoryId'],
-        where: { status: 'PUBLISHED', hidden: false, categoryId: { in: allCategoryIds } },
+        where: { status: 'PUBLISHED', hidden: false, businessId: null, categoryId: { in: allCategoryIds } },
         _count: { categoryId: true },
       });
       for (const g of grouped ?? []) {
@@ -417,7 +419,7 @@ export async function buildHomeData(db: typeof prisma, lite = false) {
       // En producción Prisma sí soporta groupBy y nunca llega aquí.
       for (const id of allCategoryIds) {
         const count = await (db as any).product.count({
-          where: { status: 'PUBLISHED', hidden: false, categoryId: id },
+          where: { status: 'PUBLISHED', hidden: false, businessId: null, categoryId: id },
         });
         countsByCategoryId[id] = count;
       }
@@ -501,7 +503,7 @@ export const getCategoryProducts = async (req: Request, res: Response): Promise<
       image: resolved.group.image,
     };
 
-    const where: any = { status: 'PUBLISHED', hidden: false, categoryId: { in: resolved.ids } };
+    const where: any = { status: 'PUBLISHED', hidden: false, businessId: null, categoryId: { in: resolved.ids } };
     let searchOr: any = null;
     if (search) {
       const term = String(search).trim();

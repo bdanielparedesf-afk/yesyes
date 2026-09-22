@@ -1,27 +1,30 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '@/layouts/Layout';
+// Solo Home va eager: es la primera pantalla (LCP). Todo lo demás es lazy
+// para que el JS inicial sea mínimo y el primer paint llegue rápido.
+// React Router solo descarga el chunk de la ruta visitada.
 import Home from '@/pages/Home';
-import Products from '@/pages/Products';
-import ProductDetail from '@/pages/ProductDetail';
-import Category from '@/pages/Category';
-import Cart from '@/pages/Cart';
-import Login from '@/pages/Login';
-import Register from '@/pages/Register';
-import RecuperarPassword from '@/pages/RecuperarPassword';
-import VerificarEmail from '@/pages/VerificarEmail';
-import Profile from '@/pages/Profile';
-import Orders from '@/pages/Orders';
-import OrderDetail from '@/pages/OrderDetail';
-import Favorites from '@/pages/Favorites';
-import Contact from '@/pages/Contact';
-import FAQ from '@/pages/FAQ';
-import Legal from '@/pages/Legal';
-import NotFound from '@/pages/NotFound';
 import AdminLayout from '@/components/admin/AdminLayout';
 // Code splitting: páginas pesadas o de uso admin se cargan bajo demanda para
 // reducir el JS inicial de la tienda pública. Home/Catálogo/Producto/Carrito
 // permanecen en el bundle inicial (LCP sin cadenas de lazy).
+const Products = lazy(() => import('@/pages/Products'));
+const ProductDetail = lazy(() => import('@/pages/ProductDetail'));
+const Category = lazy(() => import('@/pages/Category'));
+const Cart = lazy(() => import('@/pages/Cart'));
+const Login = lazy(() => import('@/pages/Login'));
+const Register = lazy(() => import('@/pages/Register'));
+const RecuperarPassword = lazy(() => import('@/pages/RecuperarPassword'));
+const VerificarEmail = lazy(() => import('@/pages/VerificarEmail'));
+const Profile = lazy(() => import('@/pages/Profile'));
+const Orders = lazy(() => import('@/pages/Orders'));
+const OrderDetail = lazy(() => import('@/pages/OrderDetail'));
+const Favorites = lazy(() => import('@/pages/Favorites'));
+const Contact = lazy(() => import('@/pages/Contact'));
+const FAQ = lazy(() => import('@/pages/FAQ'));
+const Legal = lazy(() => import('@/pages/Legal'));
+const NotFound = lazy(() => import('@/pages/NotFound'));
 const Checkout = lazy(() => import('@/pages/Checkout'));
 const Admin = lazy(() => import('@/pages/Admin'));
 const AdminProducts = lazy(() => import('@/pages/AdminProducts'));
@@ -30,6 +33,10 @@ const AdminUsers = lazy(() => import('@/pages/AdminUsers'));
 const AdminImport = lazy(() => import('@/pages/AdminImport'));
 const AdminBulk = lazy(() => import('@/pages/AdminBulk'));
 const AdminAliExpress = lazy(() => import('@/pages/AdminAliExpress'));
+const AdminBusinesses = lazy(() => import('@/pages/AdminBusinesses'));
+const MiNegocio = lazy(() => import('@/pages/MiNegocio'));
+const BusinessDashboard = lazy(() => import('@/pages/BusinessDashboard'));
+const PropertyDetail = lazy(() => import('@/pages/PropertyDetail'));
 const PaymentResult = lazy(() => import('@/pages/PaymentResult'));
 
 function Ofertas() {
@@ -90,6 +97,11 @@ function App() {
       <Route path="/admin/import" element={<Navigate to="/admin/import-cj" replace />} />
       <Route path="/admin/bulk-import" element={<Navigate to="/admin/bulk" replace />} />
       <Route path="/admin/aliexpress" element={<AdminLayout><AdminAliExpress /></AdminLayout>} />
+      <Route path="/admin/negocios" element={<AdminLayout><AdminBusinesses /></AdminLayout>} />
+      <Route path="/mi-negocio/:slug" element={<MiNegocio />} />
+      <Route path="/mi-negocio/:slug/propiedad/:propertyId" element={<PropertyDetail />} />
+      <Route path="/negocio" element={<BusinessDashboard />} />
+      <Route path="/negocio/dashboard" element={<BusinessDashboard />} />
       <Route path="/admin/import-aliexpress" element={<Navigate to="/admin/aliexpress" replace />} />
     </Routes>
     </Suspense>
