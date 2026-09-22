@@ -4,6 +4,8 @@ import type { AuthRequest } from '../middlewares/auth';
 import { ownerWhere } from '../middlewares/businessAuth';
 import { businessUpsertSchema, cleanDescription } from '../utils/business';
 import { uniqueBusinessSlugFor } from '../services/business.service';
+import { deleteBusinessImages, storageConfigured } from '../lib/storage';
+import { logger } from '../utils/logger';
 
 export async function createBusiness(req: AuthRequest, res: Response): Promise<void> {
   const parsed = businessUpsertSchema.safeParse(req.body);
@@ -83,6 +85,22 @@ export async function updateBusiness(req: AuthRequest, res: Response): Promise<v
   });
   res.json({ business: updated });
 }
+/**
+ * Limpieza best-effort de las imagenes del negocio en Supabase Storage.
+ * No bloquea el borrado del negocio: si Storage falla se registra un warn
+ * (el objeto del bucket queda huerfano, igual que antes de FASE 1.5, pero
+ * el owner siempre puede eliminar su negocio).
+ */
+async function cleanupBusinessImages(businessId: string): Promise<void> {
+  if (!storageConfigured()) return;
+  try {
+    const removed = await deleteBusinessImages(businessId);
+    if (removed > 0) logger.info(`[business] imagenes eliminadas de storage: ${removed}`, { businessId });
+  } catch (error) {
+    logger.warn(`[business] no se pudieron limpiar las imagenes de storage: ${(error as Error).message}`, { businessId });
+  }
+}
+
 export async function archiveBusiness(req: AuthRequest, res: Response): Promise<void> {
   const existing = await prisma.business.findFirst({
     where: ownerWhere(req, String(req.params.id)),
@@ -93,9 +111,11 @@ export async function archiveBusiness(req: AuthRequest, res: Response): Promise<
   const hasRels = existing._count.services + existing._count.properties + existing._count.leads + existing._count.gallery + products > 0;
   if (!hasRels && existing.status === 'DRAFT') {
     await prisma.business.delete({ where: { id: existing.id } });
+    await cleanupBusinessImages(existing.id);
     res.json({ deleted: true, mode: 'HARD' });
     return;
   }
+  // Borrado logico (ARCHIVED): se conservan las imagenes para poder restaurar el negocio.
   const archived = await prisma.business.update({ where: { id: existing.id }, data: { status: 'ARCHIVED' as any } });
   res.json({ business: archived, mode: 'ARCHIVED', message: 'Negocio archivado (borrado logico)' });
 }

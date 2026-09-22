@@ -14,6 +14,6 @@ router.get('/search', getProducts);
 router.get('/category/:slug', getCategoryProducts);
 router.delete('/bulk-delete', authMiddleware, adminMiddleware, bulkDeleteProducts);
 router.get('/:id', getProductBySlug);
-router.put('/:id', updateProduct);
+router.put('/:id', authMiddleware, adminMiddleware, updateProduct);
 
 export default router;

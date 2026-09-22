@@ -134,3 +134,58 @@ export async function uploadBusinessImage(opts: { businessId: string; kind: stri
   const { data } = sb.storage.from(storageBucket()).getPublicUrl(path);
   return data.publicUrl;
 }
+
+/**
+ * API minima de Storage necesaria para la limpieza (inyectable en tests, mismo
+ * patron que AliExpressDropshipClient(fetchInjectado)).
+ */
+export interface StorageFolderApi {
+  list(prefix: string, options?: { limit?: number }): Promise<{ data: Array<{ name: string; id?: string | null }> | null; error: { message: string } | null }>;
+  remove(paths: string[]): Promise<{ error: { message: string } | null }>;
+}
+
+const REMOVE_BATCH = 100;
+
+/** Acumula recursivamente las rutas de archivo bajo un prefijo (las carpetas llegan sin id). */
+async function collectObjectPaths(api: StorageFolderApi, prefix: string, acc: string[], depth: number): Promise<void> {
+  if (depth > 5) return;
+  const { data, error } = await api.list(prefix, { limit: 1000 });
+  if (error) {
+    const err = new Error(`Error listando imagenes del negocio: ${error.message}`);
+    (err as any).status = 502;
+    throw err;
+  }
+  for (const entry of data ?? []) {
+    if (!entry || !entry.name || entry.name === '.emptyFolderPlaceholder') continue;
+    const full = `${prefix}/${entry.name}`;
+    if (entry.id) acc.push(full);
+    else await collectObjectPaths(api, full, acc, depth + 1);
+  }
+}
+
+/**
+ * Borra todos los objetos del negocio en el bucket (prefijo `{businessId}/`).
+ * Devuelve la cantidad de objetos eliminados. Nunca borra fuera del prefijo:
+ * las rutas se construyen siempre desde el businessId y se descarta cualquier
+ * businessId con separadores.
+ */
+export async function deleteBusinessImages(businessId: string, store?: StorageFolderApi): Promise<number> {
+  const id = String(businessId || '').trim();
+  if (!id || id.includes('/') || id.includes('\\') || id.includes('..')) return 0;
+  const api: StorageFolderApi = store ?? (getClient().storage.from(storageBucket()) as unknown as StorageFolderApi);
+  const paths: string[] = [];
+  await collectObjectPaths(api, id, paths, 0);
+  if (paths.length === 0) return 0;
+  let removed = 0;
+  for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
+    const chunk = paths.slice(i, i + REMOVE_BATCH);
+    const { error } = await api.remove(chunk);
+    if (error) {
+      const err = new Error(`Error eliminando imagenes del negocio: ${error.message}`);
+      (err as any).status = 502;
+      throw err;
+    }
+    removed += chunk.length;
+  }
+  return removed;
+}

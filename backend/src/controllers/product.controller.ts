@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { z } from 'zod';
 import { groupCategories, isTechnicalAeSlug, resolveGroupIds } from '../utils/category-groups';
 
 /** Garantiza una categoría válida (crea "General" si no existe). */
@@ -536,32 +537,73 @@ export const getCategoryProducts = async (req: Request, res: Response): Promise<
   }
 };
 
+const PRODUCT_ID_SCHEMA = z.string().uuid('ID de producto invalido');
+
+/** Status admitidos por el contrato de edicion de la tienda global. */
+const ProductStatusSchema = z.enum([
+  'DRAFT', 'PUBLISHED', 'PAUSED', 'OUT_OF_STOCK', 'NOT_PROFITABLE', 'ARCHIVED',
+]);
+
+/**
+ * Allowlist EXPLICITA de campos editables en PUT /api/products/:id (y /admin/products/:id).
+ * `.strict()` rechaza cualquier campo interno/prohibido (businessId, productCost,
+ * supplierId, importSource, costUsd, lastCheckedAt, fuentes, secretos, etc.).
+ */
+const productUpdateSchema = z.object({
+  name: z.string().min(1, 'Nombre requerido').optional(),
+  description: z.string().optional(),
+    salePrice: z.coerce.number({ invalid_type_error: 'salePrice invalido' }).refine((n) => !Number.isNaN(n), { message: 'salePrice invalido' }).optional(),
+  status: ProductStatusSchema.optional(),
+  categoryId: z.string().min(1, 'categoryId invalido').optional(),
+  collectionId: z.string().min(1, 'collectionId invalido').optional(),
+    stock: z.coerce.number({ invalid_type_error: 'stock invalido' }).refine((n) => !Number.isNaN(n), { message: 'stock invalido' }).optional(),
+  tags: z.array(z.string()).optional(),
+  sku: z.string().min(1, 'sku invalido').optional(),
+}).strict();
+
 export const updateProduct = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const { name, salePrice, description, status, categoryId, collectionId, stock, tags, sku } = req.body;
+  const id = String(req.params.id || '');
+  if (!PRODUCT_ID_SCHEMA.safeParse(id).success) {
+    res.status(400).json({ message: 'ID de producto invalido' });
+    return;
+  }
 
-    const resolvedCategoryId = await resolveCategoryId(categoryId);
+  const parsed = productUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Datos invalidos', errors: parsed.error.flatten() });
+    return;
+  }
+  const data = parsed.data;
 
+  const resolvedCategoryId = data.categoryId ? await resolveCategoryId(data.categoryId) : undefined;
+
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.description !== undefined) updateData.description = data.description;
+  if (data.salePrice !== undefined) updateData.salePrice = data.salePrice;
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.categoryId !== undefined) updateData.categoryId = resolvedCategoryId;
+  if (data.collectionId !== undefined) updateData.collectionId = data.collectionId || undefined;
+  if (data.stock !== undefined) updateData.stock = data.stock;
+  if (data.tags !== undefined) updateData.tags = data.tags;
+  if (data.sku !== undefined) updateData.sku = data.sku;
+
+    try {
+    // businessId: null limita la operacion a productos GLOBALES de la tienda YesYes.
+    // Los productos Business permanecen aislados bajo /api/businesses/:id/products.
     const product = await prisma.product.update({
-      where: { id: String(id) },
-      data: {
-        name,
-        salePrice: Number(salePrice),
-        description,
-        status: status as any,
-        categoryId: resolvedCategoryId,
-        collectionId: collectionId || undefined,
-        stock: Number(stock) || 0,
-        tags: tags || [],
-        sku,
-      },
+      where: { id, businessId: null },
+      data: updateData,
       include: { productImages: { orderBy: { position: 'asc' } }, collection: true, category: true },
     });
-
     invalidateHomeCache();
-    res.json({ product });
+    res.status(200).json({ product });
   } catch (error: any) {
+    // P2025 = id inexistente O producto perteneciente a un Business (businessId != null).
+    if (error?.code === 'P2025') {
+      res.status(404).json({ message: 'Producto no encontrado' });
+      return;
+    }
     console.error('Error updating product:', error);
     res.status(500).json({ message: 'Error updating product', error: error.message });
   }
