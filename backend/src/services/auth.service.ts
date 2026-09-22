@@ -135,7 +135,7 @@ export const loginUser = async (email: string, password: string): Promise<{
     where: { email: normalizedEmail },
   });
 
-  if (!user || !user.password) {
+  if (!user) {
     throw new Error('Credenciales inválidas');
   }
 
@@ -143,8 +143,15 @@ export const loginUser = async (email: string, password: string): Promise<{
     throw new Error('Cuenta desactivada');
   }
 
+  // Cuenta creada/vinculada vía Google sin contraseña local: no puede entrar
+  // con email+contraseña hasta definir una. Mensaje específico (antes el
+  // `!user.password` inicial lo tapaba con "Credenciales inválidas").
   if (user.googleId && !user.password) {
     throw new Error('Esta cuenta está registrada con Google. Inicia sesión con Google.');
+  }
+
+  if (!user.password) {
+    throw new Error('Credenciales inválidas');
   }
 
   const isValid = await comparePasswords(password, user.password);

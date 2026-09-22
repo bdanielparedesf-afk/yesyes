@@ -32,8 +32,26 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // El interceptor global solo limpia la sesión cuando la request YA llevaba
+    // un Bearer token inválido/expirado. Antes limpiaba en CUALQUIER 401,
+    // incluido el /auth/session sin cookie (visitante anónimo) o un login con
+    // credenciales erróneas: borraba el token recién guardado en el store
+    // persistido (zustand) y el usuario quedaba deslogueado tras loguearse.
+    // Google no se toca: usa cookie de sesión, no Bearer.
     if (error.response?.status === 401) {
-      useAuthStore.getState().setUser(null);
+      const hadBearer = Boolean(
+        error.config?.headers?.Authorization ||
+          (error.config?.headers as any)?.authorization,
+      );
+      const url = String(error.config?.url || '');
+      const isAuthFlow = url.includes('/auth/login') || url.includes('/auth/session');
+      if (hadBearer && !isAuthFlow) {
+        try {
+          useAuthStore.getState().setUser(null);
+        } catch {
+          // store no listo → ignorar
+        }
+      }
     }
     return Promise.reject(error);
   }
