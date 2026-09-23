@@ -17,6 +17,46 @@ router.get('/', async (req: AuthRequest, res) => {
 });
 
 router.post('/', createBusiness);
+
+// Listado de plantillas activas para el picker del dashboard.
+// IMPORTANTE: debe ir ANTES de GET /:id, si no '/templates' se captura como id.
+router.get('/templates', async (req: AuthRequest, res) => {
+  const category = req.query.category ? String(req.query.category) : undefined;
+  const templates = await prisma.businessTemplate.findMany({
+    where: { active: true, ...(category ? { category: category as any } : {}) },
+    orderBy: { code: 'asc' },
+    select: { id: true, code: true, name: true, category: true, capabilities: true },
+  });
+  res.json({ templates });
+});
+
+// Vista previa autenticada: solo owner (via ownerWhere) o ADMIN.
+// Devuelve el negocio en CUALQUIER estado (DRAFT/PAUSED/ARCHIVED) con su
+// contenido, para que el owner pueda previsualizar antes de publicar.
+// Nunca es publica: no existe counterpart en public-business.routes.
+router.get('/preview/:slug', async (req: AuthRequest, res) => {
+  const slug = String(req.params.slug);
+  // Ownership por slug: ADMIN ve cualquiera; el owner solo los suyos.
+  const where = req.user!.role === 'ADMIN' ? { slug } : { slug, ownerId: req.user!.id };
+  const b = await prisma.business.findFirst({
+    where,
+    include: {
+      template: { select: { code: true, name: true, category: true, capabilities: true } },
+      services: { orderBy: { order: 'asc' } },
+      gallery: { orderBy: { position: 'asc' } },
+      properties: { include: { images: { orderBy: { position: 'asc' } } }, orderBy: { createdAt: 'desc' } },
+    },
+  });
+  if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const products = await prisma.product.findMany({
+    where: { businessId: b.id, status: 'PUBLISHED' },
+    orderBy: { createdAt: 'desc' }, take: 100,
+  });
+  const { ownerId: _ownerId, ...publicShape } = b as any;
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ business: publicShape, services: b.services, products, properties: b.properties, gallery: b.gallery });
+});
+
 router.get('/:id', requireBusinessOwner, async (req: AuthRequest, res) => {
   const b = await prisma.business.findFirst({
     where: ownerWhere(req, String(req.params.id)),
@@ -154,6 +194,25 @@ router.put('/:businessId/products/:productId', requireBusinessOwner, async (req:
   const updated = await prisma.product.update({ where: { id: existing.id }, data: allowed });
   res.json({ product: updated });
 });
+
+// DELETE de producto Business. Si existe integridad referencial (ordenes),
+// cae a borrado logico (ARCHIVED + hidden) para no romper la tienda.
+router.delete('/:businessId/products/:productId', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  const b = await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } });
+  if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const where = { id: String(req.params.productId), businessId };
+  try {
+    const r = await prisma.product.deleteMany({ where });
+    if (!r.count) { res.status(404).json({ message: 'Producto no encontrado' }); return; }
+    res.json({ deleted: true, mode: 'HARD' });
+  } catch {
+    const u = await prisma.product.updateMany({ where, data: { status: 'ARCHIVED' as any, hidden: true } });
+    if (!u.count) { res.status(404).json({ message: 'Producto no encontrado' }); return; }
+    res.json({ deleted: true, mode: 'ARCHIVED' });
+  }
+});
+
 router.get('/:businessId/properties', requireBusinessOwner, async (req: AuthRequest, res) => {
   const businessId = String(req.params.businessId);
   const b = await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } });

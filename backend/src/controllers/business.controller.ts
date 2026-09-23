@@ -51,8 +51,24 @@ export async function updateBusiness(req: AuthRequest, res: Response): Promise<v
   const status = (req.body as any).status;
   const allowed = ['DRAFT', 'PUBLISHED', 'PAUSED', 'ARCHIVED'];
   const nextStatus = status && allowed.includes(String(status)) ? String(status) : undefined;
-  if (nextStatus === 'PUBLISHED' && (!((data.name ?? existing.name)) || !slug)) {
-    res.status(400).json({ message: 'Para publicar se requiere nombre, categoria y slug' }); return;
+  if (nextStatus === 'PUBLISHED') {
+    // Publicacion solo con negocio completo: nombre, categoria, slug,
+    // descripcion y al menos un canal de contacto.
+    const nameOk = Boolean(data.name ?? existing.name);
+    const categoryOk = Boolean(data.category ?? existing.category);
+    const slugOk = Boolean(slug);
+    const descOk = Boolean(data.description !== undefined ? data.description : existing.description);
+    const contactOk = Boolean(
+      (data.whatsapp !== undefined ? data.whatsapp : existing.whatsapp) ||
+      (data.phone !== undefined ? data.phone : existing.phone) ||
+      (data.email !== undefined ? data.email : existing.email),
+    );
+    if (!nameOk || !categoryOk || !slugOk || !descOk || !contactOk) {
+      res.status(400).json({
+        message: 'Para publicar se requiere nombre, categoria, slug, descripcion y al menos un contacto (telefono, WhatsApp o email)',
+      });
+      return;
+    }
   }
   const updated = await prisma.business.update({
     where: { id: existing.id },

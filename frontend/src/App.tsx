@@ -102,6 +102,12 @@ function App() {
       <Route path="/mi-negocio/:slug/propiedad/:propertyId" element={<PropertyDetail />} />
       <Route path="/negocio" element={<BusinessDashboard />} />
       <Route path="/negocio/dashboard" element={<BusinessDashboard />} />
+      <Route path="/negocio/configuracion" element={<BusinessDashboard section="configuracion" />} />
+      <Route path="/negocio/servicios" element={<BusinessDashboard section="servicios" />} />
+      <Route path="/negocio/productos" element={<BusinessDashboard section="productos" />} />
+      <Route path="/negocio/propiedades" element={<BusinessDashboard section="propiedades" />} />
+      <Route path="/negocio/galeria" element={<BusinessDashboard section="galeria" />} />
+      <Route path="/negocio/leads" element={<BusinessDashboard section="leads" />} />
       <Route path="/admin/import-aliexpress" element={<Navigate to="/admin/aliexpress" replace />} />
     </Routes>
     </Suspense>

@@ -56,6 +56,27 @@ router.get('/:slug/properties', async (req, res) => {
   if (q.operation) where.operation = String(q.operation);
   if (q.type) where.type = String(q.type);
   if (q.city) where.city = { contains: String(q.city), mode: 'insensitive' };
+  // Filtros numericos opcionales (precio, dormitorios, banos, estacionamientos, superficie).
+  const num = (v: unknown): number | null => {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const price: any = {};
+  const minPrice = num(q.minPrice);
+  const maxPrice = num(q.maxPrice);
+  if (minPrice != null) price.gte = minPrice;
+  if (maxPrice != null) price.lte = maxPrice;
+  if (Object.keys(price).length) where.price = price;
+  const bedrooms = num(q.bedrooms);
+  if (bedrooms != null) where.bedrooms = { gte: bedrooms };
+  const bathrooms = num(q.bathrooms);
+  if (bathrooms != null) where.bathrooms = { gte: bathrooms };
+  const parking = num(q.parking);
+  if (parking != null) where.parking = { gte: parking };
+  const minArea = num(q.minArea);
+  if (minArea != null) where.areaTotal = { gte: minArea };
+  if (q.featured === '1' || q.featured === 'true') where.featured = true;
   const properties = await prisma.property.findMany({ where, include: { images: { orderBy: { position: 'asc' } } }, take: 100 });
   res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
   res.json({ properties });

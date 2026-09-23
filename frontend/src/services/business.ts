@@ -7,6 +7,7 @@ export interface Business {
   address?: string | null; city?: string | null; region?: string | null; mapsUrl?: string | null;
   hours?: any; socials?: any; cta?: any; settings?: any;
   seoTitle?: string | null; seoDescription?: string | null; ogImage?: string | null;
+  canonical?: string | null;
   template?: { code: string; name: string; category: string; capabilities: string[] } | null;
 }
 
@@ -87,4 +88,102 @@ export async function uploadBusinessImage(businessId: string, kind: UploadKind, 
 export async function getPublicProperty(slug: string, propertyId: string) {
   const { data } = await api.get(`/public/businesses/${slug}/properties/${propertyId}`);
   return data.property as any;
+}
+
+/* ============================ Dashboard Business ============================ */
+
+/** Plantillas activas (opcionalmente filtradas por categoria) para el picker. */
+export async function getTemplates(category?: string) {
+  const { data } = await api.get('/businesses/templates', { params: category ? { category } : {} });
+  return data.templates as { id: string; code: string; name: string; category: string; capabilities: string[] }[];
+}
+
+/**
+ * Vista previa autenticada (?preview=true). El backend exige ser owner o ADMIN
+ * y devuelve el negocio en cualquier estado (DRAFT/PAUSED/ARCHIVED/PUBLISHED).
+ */
+export async function getPreviewBusiness(slug: string) {
+  const { data } = await api.get(`/businesses/preview/${encodeURIComponent(slug)}`);
+  return data as {
+    business: Business;
+    services: any[];
+    products: any[];
+    properties: any[];
+    gallery: any[];
+  };
+}
+
+export async function deleteBusiness(id: string) {
+  const { data } = await api.delete(`/businesses/${id}`);
+  return data as { deleted?: boolean; mode?: 'HARD' | 'ARCHIVED' };
+}
+
+/* ------------------------------ Servicios ------------------------------ */
+export async function listServices(businessId: string) {
+  const { data } = await api.get(`/businesses/${businessId}/services`);
+  return data.services as any[];
+}
+export async function createService(businessId: string, payload: any) {
+  const { data } = await api.post(`/businesses/${businessId}/services`, payload);
+  return data.service as any;
+}
+export async function updateService(businessId: string, serviceId: string, payload: any) {
+  const { data } = await api.put(`/businesses/${businessId}/services/${serviceId}`, payload);
+  return data.service as any;
+}
+export async function deleteService(businessId: string, serviceId: string) {
+  const { data } = await api.delete(`/businesses/${businessId}/services/${serviceId}`);
+  return data as { deleted: boolean };
+}
+
+/* ------------------------------ Productos ------------------------------ */
+export async function listBusinessProducts(businessId: string) {
+  const { data } = await api.get(`/businesses/${businessId}/products`);
+  return data.products as any[];
+}
+export async function createBusinessProduct(businessId: string, payload: any) {
+  const { data } = await api.post(`/businesses/${businessId}/products`, payload);
+  return data.product as any;
+}
+export async function updateBusinessProduct(businessId: string, productId: string, payload: any) {
+  const { data } = await api.put(`/businesses/${businessId}/products/${productId}`, payload);
+  return data.product as any;
+}
+export async function deleteBusinessProduct(businessId: string, productId: string) {
+  const { data } = await api.delete(`/businesses/${businessId}/products/${productId}`);
+  return data as { deleted: boolean; mode?: 'HARD' | 'ARCHIVED' };
+}
+
+/* ------------------------------ Propiedades ------------------------------ */
+export async function listProperties(businessId: string) {
+  const { data } = await api.get(`/businesses/${businessId}/properties`);
+  return data.properties as any[];
+}
+export async function createProperty(businessId: string, payload: any) {
+  const { data } = await api.post(`/businesses/${businessId}/properties`, payload);
+  return data.property as any;
+}
+export async function updateProperty(businessId: string, propertyId: string, payload: any) {
+  const { data } = await api.put(`/businesses/${businessId}/properties/${propertyId}`, payload);
+  return data.property as any;
+}
+export async function deleteProperty(businessId: string, propertyId: string) {
+  const { data } = await api.delete(`/businesses/${businessId}/properties/${propertyId}`);
+  return data as { deleted: boolean };
+}
+
+/* -------------------------- Leads y analytics -------------------------- */
+export async function getBusinessLeads(businessId: string) {
+  const { data } = await api.get(`/businesses/${businessId}/leads`);
+  return data.leads as any[];
+}
+export async function getBusinessStats(businessId: string) {
+  const { data } = await api.get(`/businesses/${businessId}/stats`);
+  return data as {
+    stats: any[];
+    totals: {
+      pageViews: number; waClicks: number; phoneClicks: number; emailClicks: number;
+      leads: number; productViews: number; propertyViews: number;
+    };
+  };
 }

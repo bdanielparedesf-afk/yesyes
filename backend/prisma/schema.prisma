@@ -10,24 +10,24 @@ datasource db {
 }
 
 model User {
-  id            String     @id @default(uuid())
-  email         String     @unique
-  password      String?
-  name          String
-  lastName      String
-  phone         String?
-  emailVerified Boolean    @default(false)
-  googleId      String?    @unique
-  avatar        String?
-  role          UserRole   @default(CUSTOMER)
-  isActive      Boolean    @default(true)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  auditLogs     AuditLog[]
-  cart          Cart?
-  orders        Order[]
-  verificationTokens VerificationToken[]
-  businesses Business[]
+  id                      String                    @id @default(uuid())
+  email                   String                    @unique
+  password                String?
+  name                    String
+  lastName                String
+  phone                   String?
+  emailVerified           Boolean                   @default(false)
+  googleId                String?                   @unique
+  avatar                  String?
+  role                    UserRole                  @default(CUSTOMER)
+  isActive                Boolean                   @default(true)
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  auditLogs               AuditLog[]
+  cart                    Cart?
+  orders                  Order[]
+  verificationTokens      VerificationToken[]
+  businesses              Business[]
   MercadoPagoOAuthAttempt MercadoPagoOAuthAttempt[]
 
   @@map("users")
@@ -104,71 +104,71 @@ model Collection {
 }
 
 model Product {
-  id                String           @id @default(uuid())
-  name              String
-  slug              String           @unique
-  description       String
-  images            Json
-  video             String?
-  categoryId        String
-  tags              String[]
-  sku               String?
-  supplier          ProductSupplier  @default(ALIEXPRESS)
-  supplierProductId String?
-  supplierUrl       String?
-  variants          Json
-  stock             Int              @default(0)
-  productCost       Float
-  shippingCost      Float            @default(0)
-  totalCost         Float
-  salePrice         Float
-  margin            Float
-  weight            Float?
-  dimensions        Json?
-  status            ProductStatus    @default(DRAFT)
-  seoTitle          String?
-  seoDescription    String?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  aliexpressId      String?
-  aliexpressUrl     String?
-  dserStatus        String           @default("draft")
-  importSource      String           @default("DSERS")
-  isFeatured        Boolean          @default(false)
-  isOffer           Boolean          @default(false)
-  profitMargin      Int              @default(60)
-  shippingCostExtra Float?           @default(0)
-  supplierId        String?
-  supplierPrice     Float?
-  cjProductId       String?
-  cjVariants        Json?
-  sourceUrl         String?
-  sourcePlatform    String?
-  sourceId          String?
-  costUsd           Float?
-  lastCheckedAt     DateTime?
-  hasAlert          Boolean            @default(false)
-  alert             String?
-  alertLevel        String             @default("info")
-  hidden            Boolean            @default(false)
-  collectionId      String?
-  collection        Collection?      @relation(fields: [collectionId], references: [id])
+  id                         String           @id @default(uuid())
+  name                       String
+  slug                       String           @unique
+  description                String
+  images                     Json
+  video                      String?
+  categoryId                 String
+  tags                       String[]
+  sku                        String?
+  supplier                   ProductSupplier  @default(ALIEXPRESS)
+  supplierProductId          String?
+  supplierUrl                String?
+  variants                   Json
+  stock                      Int              @default(0)
+  productCost                Float
+  shippingCost               Float            @default(0)
+  totalCost                  Float
+  salePrice                  Float
+  margin                     Float
+  weight                     Float?
+  dimensions                 Json?
+  status                     ProductStatus    @default(DRAFT)
+  seoTitle                   String?
+  seoDescription             String?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  aliexpressId               String?
+  aliexpressUrl              String?
+  dserStatus                 String           @default("draft")
+  importSource               String           @default("DSERS")
+  isFeatured                 Boolean          @default(false)
+  isOffer                    Boolean          @default(false)
+  profitMargin               Int              @default(60)
+  shippingCostExtra          Float?           @default(0)
+  supplierId                 String?
+  supplierPrice              Float?
+  cjProductId                String?
+  cjVariants                 Json?
+  sourceUrl                  String?
+  sourcePlatform             String?
+  sourceId                   String?
+  costUsd                    Float?
+  lastCheckedAt              DateTime?
+  hasAlert                   Boolean          @default(false)
+  alert                      String?
+  alertLevel                 String           @default("info")
+  hidden                     Boolean          @default(false)
+  collectionId               String?
+  collection                 Collection?      @relation(fields: [collectionId], references: [id])
   aliexpressMarginPercent    Int?
   aliexpressShippingUsdCents Int?
-  aliexpressShippingUnknown  Boolean   @default(false)
+  aliexpressShippingUnknown  Boolean          @default(false)
   aliexpressSyncedAt         DateTime?
   aliexpressSnapshot         Json?
-  productInventory  Inventory[]      @relation("ProductInventory")
-  productImages     ProductImage[]   @relation("ProductImages")
-  productReviews    ProductReview[]  @relation("ProductReviews")
-  productVariants   ProductVariant[] @relation("ProductVariants")
-  cartItems         CartItem[]
-  orderItems        OrderItem[]      @relation("ProductOrderItems")
-  category          Category         @relation(fields: [categoryId], references: [id])
-  supplierRelation  Supplier?        @relation("ProductSupplier", fields: [supplierId], references: [id])
-  businessId      String?
-  @@index([businessId])
+  productInventory           Inventory[]      @relation("ProductInventory")
+  productImages              ProductImage[]   @relation("ProductImages")
+  productReviews             ProductReview[]  @relation("ProductReviews")
+  productVariants            ProductVariant[] @relation("ProductVariants")
+  cartItems                  CartItem[]
+  orderItems                 OrderItem[]      @relation("ProductOrderItems")
+  category                   Category         @relation(fields: [categoryId], references: [id])
+  supplierRelation           Supplier?        @relation("ProductSupplier", fields: [supplierId], references: [id])
+  businessId                 String?
 
+  @@index([businessId])
   @@map("products")
 }
 
@@ -206,6 +206,8 @@ model Order {
   id              String               @id @default(uuid())
   orderNumber     String               @unique
   userId          String?
+  businessId      String?
+  business        Business?            @relation(fields: [businessId], references: [id])
   status          OrderStatus          @default(PENDING_PAYMENT)
   items           Json
   subtotal        Float
@@ -227,6 +229,7 @@ model Order {
   orderItems      OrderItem[]          @relation("OrderItems")
   user            User?                @relation(fields: [userId], references: [id])
 
+  @@index([businessId])
   @@map("orders")
 }
 
@@ -273,13 +276,13 @@ model CouponUsage {
 }
 
 model ProductVariant {
-  id        String   @id @default(uuid())
-  productId String
-  sku       String   @unique
-  size      String?
-  color     String?
-  price     Decimal
-  stock     Int      @default(0)
+  id                  String   @id @default(uuid())
+  productId           String
+  sku                 String   @unique
+  size                String?
+  color               String?
+  price               Decimal
+  stock               Int      @default(0)
   supplierVariantId   String?
   supplierAttributes  Json?
   supplierImage       String?
@@ -287,9 +290,9 @@ model ProductVariant {
   supplierShippingUsd Float?
   /// null means the provider did not report stock; never coerced to 0.
   supplierStock       Int?
-  supplierStockKnown  Boolean @default(false)
-  createdAt DateTime @default(now())
-  product   Product  @relation("ProductVariants", fields: [productId], references: [id], onDelete: Cascade)
+  supplierStockKnown  Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  product             Product  @relation("ProductVariants", fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId, supplierVariantId])
 }
@@ -366,6 +369,8 @@ model PaymentProvider {
 model Payment {
   id           String          @id @default(cuid())
   orderId      String
+  businessId   String?
+  business     Business?       @relation(fields: [businessId], references: [id])
   providerId   String
   amount       Decimal
   currency     String          @default("CLP")
@@ -378,6 +383,9 @@ model Payment {
   order        Order           @relation(fields: [orderId], references: [id])
   provider     PaymentProvider @relation(fields: [providerId], references: [id])
   events       PaymentEvent[]
+
+  @@index([businessId])
+  @@map("payments")
 }
 
 model PaymentEvent {
@@ -522,16 +530,15 @@ model AliExpressOAuthAttempt {
   @@map("aliexpress_oauth_attempts")
 }
 
-
 model AliexpressToken {
-  id               String @id @default(uuid())
-  account          String @unique
-  sellerId         String? @map("seller_id")
-  accessToken      String @map("access_token")
-  refreshToken     String @map("refresh_token")
+  id               String   @id @default(uuid())
+  account          String   @unique
+  sellerId         String?  @map("seller_id")
+  accessToken      String   @map("access_token")
+  refreshToken     String   @map("refresh_token")
   expiresAt        DateTime @map("expires_at")
   refreshExpiresAt DateTime @map("refresh_expires_at")
-  isActive         Boolean @default(true) @map("is_active")
+  isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -541,34 +548,34 @@ model AliexpressToken {
 /// Bulk import queue. One row per requested AliExpress URL; items are processed
 /// sequentially so a single failure never blocks the rest of the queue.
 model AliExpressImportJob {
-  id            String   @id @default(uuid())
-  status        String   @default("PENDING")
-  total         Int      @default(0)
-  processed     Int      @default(0)
-  succeeded     Int      @default(0)
-  failed        Int      @default(0)
-  marginPercent Int      @default(100)
-  shippingMode  String   @default("PROVIDER")
+  id            String                    @id @default(uuid())
+  status        String                    @default("PENDING")
+  total         Int                       @default(0)
+  processed     Int                       @default(0)
+  succeeded     Int                       @default(0)
+  failed        Int                       @default(0)
+  marginPercent Int                       @default(100)
+  shippingMode  String                    @default("PROVIDER")
   categoryId    String?
   createdBy     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
   items         AliExpressImportJobItem[]
 
   @@map("aliexpress_import_jobs")
 }
 
 model AliExpressImportJobItem {
-  id               String   @id @default(uuid())
+  id               String              @id @default(uuid())
   jobId            String
   sourceUrl        String
   aliexpressId     String?
-  status           String   @default("PENDING")
-  attempts         Int      @default(0)
+  status           String              @default("PENDING")
+  attempts         Int                 @default(0)
   error            String?
   createdProductId String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
   job              AliExpressImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@index([jobId, status])
@@ -602,20 +609,20 @@ model AliExpressSyncLog {
 /// Singleton configuration of the AliExpress Sync Engine. Additive-only; a
 /// missing row means defaults (enabled, hourly, AUTO_UPDATE, block on unknown cost).
 model AliExpressSyncSettings {
-  id               String   @id @default("singleton")
-  enabled          Boolean  @default(true)
+  id               String    @id @default("singleton")
+  enabled          Boolean   @default(true)
   /// Minutes between automatic runs. Allowed: 30, 60, 360, 720, 1440.
-  intervalMinutes  Int      @default(60) @map("interval_minutes")
+  intervalMinutes  Int       @default(60) @map("interval_minutes")
   /// What to do when the provider price changed since the last sync at order time.
-  stalePricePolicy String   @default("AUTO_UPDATE")
+  stalePricePolicy String    @default("AUTO_UPDATE")
   /// What to do when the total cost cannot be calculated with certainty.
-  noQuotePolicy    String   @default("BLOCK")
+  noQuotePolicy    String    @default("BLOCK")
   /// Products processed per batch; batches run sequentially (rate-limit friendly).
-  batchSize        Int      @default(10)
+  batchSize        Int       @default(10)
   lastRunAt        DateTime? @map("last_run_at")
-  lastCursor       String?  @map("last_cursor")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  lastCursor       String?   @map("last_cursor")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   @@map("aliexpress_sync_settings")
 }
@@ -742,43 +749,45 @@ model BusinessTemplate {
 }
 
 model Business {
-  id String @id @default(uuid())
-  ownerId String
-  owner User @relation(fields: [ownerId], references: [id])
-  name String
-  slug String @unique
-  category BusinessCategoryCode
-  templateId String?
-  template BusinessTemplate? @relation(fields: [templateId], references: [id])
-  status BusinessStatus @default(DRAFT)
-  logo String?
-  cover String?
-  description String? @db.Text
-  phone String?
-  whatsapp String?
-  email String?
-  address String?
-  city String?
-  region String?
-  mapsUrl String?
-  lat Float?
-  lng Float?
-  hours Json?
-  socials Json?
-  cta Json?
-  settings Json?
-  seoTitle String?
-  seoDescription String?
-  ogImage String?
-  canonical String?
-  publishedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  services BusinessService[]
-  properties Property[]
-  gallery BusinessGalleryImage[]
-  leads BusinessLead[]
-  mercadoPago BusinessMercadoPago?
+  id                      String                    @id @default(uuid())
+  ownerId                 String
+  owner                   User                      @relation(fields: [ownerId], references: [id])
+  name                    String
+  slug                    String                    @unique
+  category                BusinessCategoryCode
+  templateId              String?
+  template                BusinessTemplate?         @relation(fields: [templateId], references: [id])
+  status                  BusinessStatus            @default(DRAFT)
+  logo                    String?
+  cover                   String?
+  description             String?                   @db.Text
+  phone                   String?
+  whatsapp                String?
+  email                   String?
+  address                 String?
+  city                    String?
+  region                  String?
+  mapsUrl                 String?
+  lat                     Float?
+  lng                     Float?
+  hours                   Json?
+  socials                 Json?
+  cta                     Json?
+  settings                Json?
+  seoTitle                String?
+  seoDescription          String?
+  ogImage                 String?
+  canonical               String?
+  publishedAt             DateTime?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  services                BusinessService[]
+  properties              Property[]
+  gallery                 BusinessGalleryImage[]
+  leads                   BusinessLead[]
+  orders                  Order[]
+  payments                Payment[]
+  mercadoPago             BusinessMercadoPago?
   MercadoPagoOAuthAttempt MercadoPagoOAuthAttempt[]
 
   @@index([ownerId])
@@ -788,40 +797,40 @@ model Business {
 }
 
 model BusinessMercadoPago {
-  id String @id @default(uuid())
-  businessId String @unique
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  mpUserId String? @map("mp_user_id")
-  accessTokenEncrypted String? @map("access_token_encrypted")
-  refreshTokenEncrypted String? @map("refresh_token_encrypted")
-  publicKey String? @map("public_key")
-  connectionStatus ConnectionStatus @default(NOT_CONNECTED) @map("connection_status")
-  connectedAt DateTime? @map("connected_at")
-  lastVerifiedAt DateTime? @map("last_verified_at")
-  expiresAt DateTime? @map("expires_at")
-  sandbox Boolean @default(true) @map("sandbox")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                    String           @id @default(uuid())
+  businessId            String           @unique
+  business              Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  mpUserId              String?          @map("mp_user_id")
+  accessTokenEncrypted  String?          @map("access_token_encrypted")
+  refreshTokenEncrypted String?          @map("refresh_token_encrypted")
+  publicKey             String?          @map("public_key")
+  connectionStatus      ConnectionStatus @default(NOT_CONNECTED) @map("connection_status")
+  connectedAt           DateTime?        @map("connected_at")
+  lastVerifiedAt        DateTime?        @map("last_verified_at")
+  expiresAt             DateTime?        @map("expires_at")
+  sandbox               Boolean          @default(true) @map("sandbox")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
 
   @@index([businessId])
   @@map("business_mercado_pago")
 }
 
 model MercadoPagoOAuthAttempt {
-  id String @id @default(uuid())
-  stateHash String @unique @map("state_hash")
-  businessId String @map("business_id")
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  userId String @map("user_id")
-  user User @relation(fields: [userId], references: [id])
-  codeVerifierHash String? @map("code_verifier_hash")
-  codeVerifierEncrypted String? @map("code_verifier_encrypted")
-  expiresAt DateTime @map("expires_at")
-  consumedAt DateTime? @map("consumed_at")
-  success Boolean @default(false)
-  mpUserId String? @map("mp_user_id")
-  error String? @map("error")
-  createdAt DateTime @default(now()) @map("created_at")
+  id                   String    @id @default(uuid())
+  stateHash            String    @unique @map("state_hash")
+  businessId           String    @map("business_id")
+  business             Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId               String    @map("user_id")
+  user                 User      @relation(fields: [userId], references: [id])
+  codeVerifierHash     String?   @map("code_verifier_hash")
+  codeVerifierEncrypted String?  @map("code_verifier_encrypted")
+  expiresAt            DateTime  @map("expires_at")
+  consumedAt           DateTime? @map("consumed_at")
+  success              Boolean   @default(false)
+  mpUserId             String?   @map("mp_user_id")
+  error                String?   @map("error")
+  createdAt            DateTime  @default(now()) @map("created_at")
 
   @@index([stateHash])
   @@index([businessId])
@@ -830,19 +839,19 @@ model MercadoPagoOAuthAttempt {
 }
 
 model BusinessService {
-  id String @id @default(uuid())
-  businessId String
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name String
-  description String? @db.Text
-  image String?
-  price Float?
+  id          String   @id @default(uuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  description String?  @db.Text
+  image       String?
+  price       Float?
   durationMin Int?
-  featured Boolean @default(false)
-  active Boolean @default(true)
-  order Int @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  featured    Boolean  @default(false)
+  active      Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([businessId])
   @@index([businessId, active])
@@ -850,33 +859,33 @@ model BusinessService {
 }
 
 model Property {
-  id String @id @default(uuid())
-  businessId String
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  title String
-  description String? @db.Text
-  price Float
-  currency String @default("CLP")
-  operation PropertyOperation
-  type PropertyType
-  address String?
-  city String?
-  region String?
-  bedrooms Int?
-  bathrooms Int?
-  parking Int?
-  areaBuilt Float?
-  areaTotal Float?
-  features String[]
-  lat Float?
-  lng Float?
-  agent String?
-  featured Boolean @default(false)
-  available Boolean @default(true)
-  published Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  images PropertyImage[]
+  id          String            @id @default(uuid())
+  businessId  String
+  business    Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  title       String
+  description String?           @db.Text
+  price       Float
+  currency    String            @default("CLP")
+  operation   PropertyOperation
+  type        PropertyType
+  address     String?
+  city        String?
+  region      String?
+  bedrooms    Int?
+  bathrooms   Int?
+  parking     Int?
+  areaBuilt   Float?
+  areaTotal   Float?
+  features    String[]
+  lat         Float?
+  lng         Float?
+  agent       String?
+  featured    Boolean           @default(false)
+  available   Boolean           @default(true)
+  published   Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  images      PropertyImage[]
 
   @@index([businessId])
   @@index([operation])
@@ -887,24 +896,24 @@ model Property {
 }
 
 model PropertyImage {
-  id String @id @default(uuid())
+  id         String   @id @default(uuid())
   propertyId String
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  url String
-  position Int @default(0)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  url        String
+  position   Int      @default(0)
 
   @@index([propertyId])
   @@map("property_images")
 }
 
 model BusinessGalleryImage {
-  id String @id @default(uuid())
+  id         String   @id @default(uuid())
   businessId String
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  url String
-  position Int @default(0)
-  alt String?
-  createdAt DateTime @default(now())
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  url        String
+  position   Int      @default(0)
+  alt        String?
+  createdAt  DateTime @default(now())
 
   @@index([businessId])
   @@index([businessId, position])
@@ -912,17 +921,17 @@ model BusinessGalleryImage {
 }
 
 model BusinessLead {
-  id String @id @default(uuid())
+  id         String   @id @default(uuid())
   businessId String
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  type LeadType
-  name String?
-  phone String?
-  email String?
-  message String? @db.Text
-  payload Json?
-  waClick Boolean @default(false)
-  createdAt DateTime @default(now())
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type       LeadType
+  name       String?
+  phone      String?
+  email      String?
+  message    String?  @db.Text
+  payload    Json?
+  waClick    Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
   @@index([businessId])
   @@index([type])
@@ -931,18 +940,18 @@ model BusinessLead {
 }
 
 model BusinessStatDaily {
-  id String @id @default(uuid())
-  businessId String
-  date DateTime @db.Date
-  pageViews Int @default(0)
-  waClicks Int @default(0)
-  phoneClicks Int @default(0)
-  emailClicks Int @default(0)
-  leads Int @default(0)
-  productViews Int @default(0)
-  propertyViews Int @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(uuid())
+  businessId    String
+  date          DateTime @db.Date
+  pageViews     Int      @default(0)
+  waClicks      Int      @default(0)
+  phoneClicks   Int      @default(0)
+  emailClicks   Int      @default(0)
+  leads         Int      @default(0)
+  productViews  Int      @default(0)
+  propertyViews Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@unique([businessId, date])
   @@index([businessId])

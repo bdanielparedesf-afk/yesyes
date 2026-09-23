@@ -5,7 +5,7 @@ import BusinessLayout from '@/business/shared/BusinessLayout';
 import SeoHead from '@/business/shared/SeoHead';
 import WhatsAppButton from '@/business/shared/WhatsAppButton';
 import { clp } from '@/business/shared/templateUtils';
-import { getPublicBusiness, getPublicProperty, trackEvent, buildWaLink } from '@/services/business';
+import { getPublicBusiness, getPublicProperty, createLead, trackEvent, buildWaLink } from '@/services/business';
 
 /** Detalle de propiedad: /mi-negocio/:slug/propiedad/:propertyId */
 export default function PropertyDetail() {
@@ -14,6 +14,8 @@ export default function PropertyDetail() {
   const [property, setProperty] = useState<any>(null);
   const [error, setError] = useState('');
   const [imgIdx, setImgIdx] = useState(0);
+  const [leadForm, setLeadForm] = useState({ name: '', phone: '', message: '' });
+  const [leadSent, setLeadSent] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -129,6 +131,43 @@ export default function PropertyDetail() {
           <p className="text-neutral-600 whitespace-pre-line leading-relaxed">{property.description}</p>
         </section>
       )}
+
+      {/* Lead de tipo PROPERTY_INQUIRY: consulta de propiedad por el formulario. */}
+      <section className="mt-8 bg-white border rounded-2xl p-5 max-w-xl">
+        <h2 className="text-lg font-bold mb-1">Dejar contacto</h2>
+        <p className="text-sm text-neutral-500 mb-3">Te contactaremos sobre «{property.title}».</p>
+        {leadSent ? (
+          <p className="text-green-700 text-sm">¡Gracias! Te contactaremos pronto.</p>
+        ) : (
+          <form
+            className="grid gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                await createLead(slug, {
+                  type: 'PROPERTY_INQUIRY',
+                  name: leadForm.name,
+                  phone: leadForm.phone,
+                  message: leadForm.message || `Me interesa la propiedad: ${property.title}`,
+                  payload: { propertyId: property.id, propertyTitle: property.title },
+                });
+                setLeadSent(true);
+                trackEvent(slug, 'LEAD_CREATED');
+              } catch {
+                setLeadSent(false);
+              }
+            }}
+          >
+            <input className="border rounded-lg px-3 py-2" placeholder="Nombre" required
+              value={leadForm.name} onChange={(e) => setLeadForm({ ...leadForm, name: e.target.value })} />
+            <input className="border rounded-lg px-3 py-2" placeholder="Teléfono" required
+              value={leadForm.phone} onChange={(e) => setLeadForm({ ...leadForm, phone: e.target.value })} />
+            <textarea className="border rounded-lg px-3 py-2" rows={3} placeholder="Mensaje (opcional)"
+              value={leadForm.message} onChange={(e) => setLeadForm({ ...leadForm, message: e.target.value })} />
+            <button className="bg-black text-white rounded-lg px-4 py-2" type="submit">Consultar propiedad</button>
+          </form>
+        )}
+      </section>
 
       {!!property.features?.length && (
         <section className="mt-6">
