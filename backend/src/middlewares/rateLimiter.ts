@@ -31,12 +31,24 @@ export const rateLimiter = rateLimit({
 
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isServerless ? 100 : 20,  // Más permisivo en serverless (cold starts reinician el contador)
+  max: isServerless ? 100 : 20,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: clientKeyGenerator,
   message: {
     status: 'error',
     message: 'Demasiados intentos de inicio de sesión. Intenta de nuevo en 15 minutos.',
+  },
+});
+
+export const oauthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isServerless ? 30 : 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientKeyGenerator,
+  message: {
+    status: 'error',
+    message: 'Demasiados intentos de conexión. Intenta de nuevo en 15 minutos.',
   },
 });

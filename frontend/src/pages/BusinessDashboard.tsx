@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { myBusinesses, createBusiness, getBusiness, updateBusiness, uploadBusinessImage, saveGallery as persistGallery, type UploadKind } from '@/services/business';
+import { getMercadoPagoStatus, startMercadoPagoConnection, disconnectMercadoPago, type MercadoPagoStatus } from '@/services/mercadoPago';
 
 const CATS = ['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING'];
 
@@ -18,7 +19,25 @@ export default function BusinessDashboard() {
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [busy, setBusy] = useState(false);
 
+  const [mpStatus, setMpStatus] = useState<MercadoPagoStatus | null>(null);
+  const [mpLoading, setMpLoading] = useState(false);
+  const [mpMsg, setMpMsg] = useState('');
+
   useEffect(() => { myBusinesses().then(setList).catch(() => setMsg('Inicia sesión para ver tus negocios')); }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mpConnected = params.get('mp_connected');
+    const mpError = params.get('mp_error');
+    if (mpConnected || mpError) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      if (selectedId) {
+        refreshMpStatus(selectedId);
+        if (mpConnected === 'true') setMpMsg('Mercado Pago conectado correctamente');
+        else if (mpError) setMpMsg(`Error de conexión: ${decodeURIComponent(mpError)}`);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedId) { setDetail(null); return; }
@@ -31,15 +50,53 @@ export default function BusinessDashboard() {
       setGallery(Array.isArray(b.gallery) ? b.gallery : []);
       setMsg('');
     }).catch(() => setMsg('No se pudo cargar el negocio'));
+    refreshMpStatus(selectedId);
   }, [selectedId]);
+
+  const refreshMpStatus = async (businessId: string) => {
+    try {
+      const status = await getMercadoPagoStatus(businessId);
+      setMpStatus(status);
+      setMpMsg('');
+    } catch {
+      setMpStatus(null);
+    }
+  };
+
+  const handleConnect = async () => {
+    if (!selectedId) return;
+    setMpLoading(true);
+    setMpMsg('');
+    try {
+      const { authorizationUrl } = await startMercadoPagoConnection(selectedId);
+      window.location.href = authorizationUrl;
+    } catch (e: any) {
+      setMpMsg(e?.response?.data?.message || 'Error al iniciar conexión');
+    } finally {
+      setMpLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!selectedId) return;
+    setMpLoading(true);
+    setMpMsg('');
+    try {
+      await disconnectMercadoPago(selectedId);
+      setMpStatus({ connected: false, status: 'NOT_CONNECTED' });
+      setMpMsg('Mercado Pago desconectado');
+    } catch (e: any) {
+      setMpMsg(e?.response?.data?.message || 'Error al desconectar');
+    } finally {
+      setMpLoading(false);
+    }
+  };
 
   const saveGallery = async (next: GalleryItem[]) => {
     if (!selectedId) return;
     setGallery(next);
     setBusy(true);
     try {
-      // La galería usa su endpoint propio (PUT /:businessId/gallery + gallerySchema);
-      // updateBusiness aplica businessUpsertSchema.strict() que no acepta `gallery`.
       await persistGallery(selectedId, next.map((g) => ({ url: g.url, alt: g.alt ?? null })));
       setMsg('Galería guardada');
     } catch {
@@ -114,6 +171,8 @@ export default function BusinessDashboard() {
 
   if (!token) return <div className="p-8">Debes iniciar sesión.</div>;
 
+  const mpConnected = mpStatus?.connected === true;
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold">Mis negocios</h1>
@@ -171,8 +230,48 @@ export default function BusinessDashboard() {
               {detail.status === 'PAUSED' && (
                 <button type="button" disabled={busy} onClick={() => setStatus('PUBLISHED')} className="bg-green-600 hover:bg-green-700 text-white rounded-lg px-3 py-1.5 disabled:opacity-50">Reanudar</button>
               )}
-              <button type="button" className="underline" onClick={() => { setSelectedId(null); setDetail(null); setMsg(''); }}>Cerrar</button>
+              <button type="button" className="underline" onClick={() => { setSelectedId(null); setDetail(null); setMsg(''); setMpStatus(null); }}>Cerrar</button>
             </div>
+          </div>
+
+          {mpMsg && (
+            <p className={`text-sm ${mpMsg.includes('Error') || mpMsg.includes('error') ? 'text-red-600' : 'text-green-700'}`}>{mpMsg}</p>
+          )}
+
+          <div className="bg-neutral-50 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Mercado Pago</h3>
+              {mpConnected ? (
+                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Conectado</span>
+              ) : (
+                <span className="text-xs bg-neutral-200 text-neutral-600 px-2 py-1 rounded-full">No conectado</span>
+              )}
+            </div>
+            {mpConnected && mpStatus?.mpUserId && (
+              <p className="text-xs text-neutral-500">ID de cuenta: {mpStatus.mpUserId}</p>
+            )}
+            {mpConnected && mpStatus?.expiresAt && (
+              <p className="text-xs text-neutral-500">Expira: {new Date(mpStatus.expiresAt).toLocaleDateString()}</p>
+            )}
+            {mpConnected ? (
+              <button
+                type="button"
+                disabled={mpLoading}
+                onClick={handleDisconnect}
+                className="bg-red-100 hover:bg-red-200 text-red-700 text-sm rounded-lg px-3 py-1.5 disabled:opacity-50"
+              >
+                {mpLoading ? 'Desconectando…' : 'Desconectar Mercado Pago'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={mpLoading}
+                onClick={handleConnect}
+                className="bg-black hover:bg-neutral-800 text-white text-sm rounded-lg px-3 py-1.5 disabled:opacity-50"
+              >
+                {mpLoading ? 'Conectando…' : 'Conectar Mercado Pago'}
+              </button>
+            )}
           </div>
 
           <ul className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
@@ -235,4 +334,3 @@ export default function BusinessDashboard() {
     </div>
   );
 }
-

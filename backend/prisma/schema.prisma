@@ -28,6 +28,7 @@ model User {
   orders        Order[]
   verificationTokens VerificationToken[]
   businesses Business[]
+  MercadoPagoOAuthAttempt MercadoPagoOAuthAttempt[]
 
   @@map("users")
 }
@@ -657,6 +658,13 @@ enum BusinessStatus {
   ARCHIVED
 }
 
+enum ConnectionStatus {
+  NOT_CONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
 enum BusinessCategoryCode {
   HAIR
   BARBER
@@ -770,11 +778,55 @@ model Business {
   properties Property[]
   gallery BusinessGalleryImage[]
   leads BusinessLead[]
+  mercadoPago BusinessMercadoPago?
+  MercadoPagoOAuthAttempt MercadoPagoOAuthAttempt[]
 
   @@index([ownerId])
   @@index([category])
   @@index([status])
   @@map("businesses")
+}
+
+model BusinessMercadoPago {
+  id String @id @default(uuid())
+  businessId String @unique
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  mpUserId String? @map("mp_user_id")
+  accessTokenEncrypted String? @map("access_token_encrypted")
+  refreshTokenEncrypted String? @map("refresh_token_encrypted")
+  publicKey String? @map("public_key")
+  connectionStatus ConnectionStatus @default(NOT_CONNECTED) @map("connection_status")
+  connectedAt DateTime? @map("connected_at")
+  lastVerifiedAt DateTime? @map("last_verified_at")
+  expiresAt DateTime? @map("expires_at")
+  sandbox Boolean @default(true) @map("sandbox")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([businessId])
+  @@map("business_mercado_pago")
+}
+
+model MercadoPagoOAuthAttempt {
+  id String @id @default(uuid())
+  stateHash String @unique @map("state_hash")
+  businessId String @map("business_id")
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id])
+  codeVerifierHash String? @map("code_verifier_hash")
+  codeVerifierEncrypted String? @map("code_verifier_encrypted")
+  expiresAt DateTime @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  success Boolean @default(false)
+  mpUserId String? @map("mp_user_id")
+  error String? @map("error")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([stateHash])
+  @@index([businessId])
+  @@index([userId])
+  @@map("mercadopago_oauth_attempts")
 }
 
 model BusinessService {
