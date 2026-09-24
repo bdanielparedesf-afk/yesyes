@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { prisma } from '../lib/prisma';
-import { leadSchema } from '../utils/business';
+import { leadSchema, bookingCreateSchema } from '../utils/business';
 import { checkSpam } from '../utils/business-antispam';
 import { validatePreviewToken } from '../services/business-preview.service';
 
@@ -33,15 +33,20 @@ async function previewPayload(businessId: string) {
       services: { orderBy: { order: 'asc' } },
       gallery: { orderBy: { position: 'asc' } },
       properties: { include: { images: { orderBy: { position: 'asc' } } }, orderBy: { createdAt: 'desc' } },
+      testimonials: { where: { active: true }, orderBy: { order: 'asc' } },
+      faqs: { where: { active: true }, orderBy: { order: 'asc' } },
+      promotions: { where: { active: true }, orderBy: { order: 'asc' } },
+      teamMembers: { where: { active: true }, orderBy: { order: 'asc' } },
+      bookingSlots: { where: { active: true }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] },
     },
   });
   if (!b) return null;
-  const products = await prisma.product.findMany({
-    where: { businessId: b.id, status: 'PUBLISHED' },
-    orderBy: { createdAt: 'desc' },
+  const products = await prisma.businessCatalogItem.findMany({
+    where: { businessId: b.id, active: true },
+    orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
     take: 100,
   });
-  return { business: b, services: b.services, products, properties: b.properties, gallery: b.gallery };
+  return { business: b, services: b.services, products, properties: b.properties, gallery: b.gallery, testimonials: b.testimonials, faqs: b.faqs, promotions: b.promotions, team: b.teamMembers, bookingSlots: b.bookingSlots };
 }
 router.get('/:slug/preview', async (req, res) => {
   const token = String(req.query.token || '');
@@ -63,6 +68,21 @@ router.get('/:slug', async (req, res) => {
   res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
   res.json({ business: b });
 });
+router.get('/:slug/content', async (req, res) => {
+  const b = await publishedBySlug(String(req.params.slug));
+  if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const now = new Date();
+  const [testimonials, faqs, promotions, team, bookingSlots] = await Promise.all([
+    prisma.businessTestimonial.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } }),
+    prisma.businessFaq.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } }),
+    prisma.businessPromotion.findMany({ where: { businessId: b.id, active: true, AND: [{ OR: [{ startAt: null }, { startAt: { lte: now } }] }, { OR: [{ endAt: null }, { endAt: { gte: now } }] }] }, orderBy: { order: 'asc' } }),
+    prisma.businessTeamMember.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } }),
+    prisma.bookingSlot.findMany({ where: { businessId: b.id, active: true }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] }),
+  ]);
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+  res.json({ testimonials, faqs, promotions, team, bookingSlots });
+});
+
 router.get('/:slug/services', async (req, res) => {
   const b = await publishedBySlug(String(req.params.slug));
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
@@ -73,10 +93,10 @@ router.get('/:slug/services', async (req, res) => {
 router.get('/:slug/products', async (req, res) => {
   const b = await publishedBySlug(String(req.params.slug));
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const products = await prisma.product.findMany({
-    where: { businessId: b.id, status: 'PUBLISHED' },
-    select: { id: true, name: true, slug: true, description: true, images: true, salePrice: true, stock: true },
-    orderBy: { createdAt: 'desc' }, take: 100,
+  const products = await prisma.businessCatalogItem.findMany({
+    where: { businessId: b.id, active: true },
+    select: { id: true, name: true, slug: true, shortDescription: true, description: true, price: true, compareAtPrice: true, currency: true, image: true, additionalImages: true, category: true, featured: true, sortOrder: true, cta: true },
+    orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }], take: 100,
   });
   res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
   res.json({ products });
@@ -132,6 +152,25 @@ router.get('/:slug/properties/:propertyId', async (req, res) => {
   res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
   res.json({ property });
 });
+router.post('/:slug/bookings', leadLimiter, async (req, res) => {
+  const b = await publishedBySlug(String(req.params.slug));
+  if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const body = (req.body && typeof req.body === 'object') ? req.body as Record<string, unknown> : {};
+  const spam = checkSpam(body, { name: typeof body.name === 'string' ? body.name : null, email: typeof body.email === 'string' ? body.email : null, phone: typeof body.phone === 'string' ? body.phone : null, message: typeof body.message === 'string' ? body.message : null, honeypot: typeof body.website === 'string' ? body.website : null });
+  if (spam.spam) { res.status(202).json({ accepted: true }); return; }
+  const parsed = bookingCreateSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: 'Datos de reserva inválidos' }); return; }
+  const data = parsed.data;
+  if (data.date.getTime() < Date.now() - 24 * 60 * 60 * 1000) { res.status(400).json({ message: 'La fecha de reserva no puede estar en el pasado' }); return; }
+  if (data.serviceId) {
+    const service = await prisma.businessService.findFirst({ where: { id: data.serviceId, businessId: b.id, active: true }, select: { name: true } });
+    if (!service) { res.status(400).json({ message: 'Servicio inválido' }); return; }
+    data.serviceName = service.name;
+  }
+  const booking = await prisma.booking.create({ data: { businessId: b.id, serviceId: data.serviceId || null, serviceName: data.serviceName || null, date: data.date, time: data.time, name: data.name, phone: data.phone || null, email: data.email || null, message: data.message || null } });
+  res.status(201).json({ booking: { id: booking.id, status: booking.status } });
+});
+
 router.post('/:slug/leads', leadLimiter, async (req, res) => {
   const b = await publishedBySlug(String(req.params.slug));
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }

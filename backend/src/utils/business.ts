@@ -59,12 +59,36 @@ export const businessUpsertSchema = z.object({
   socials: z.any().nullable().optional(),
   cta: z.any().nullable().optional(),
   settings: z.any().nullable().optional(),
+  visual: z.record(z.unknown()).nullable().optional(),
   logo: z.string().url().nullable().optional(),
   cover: z.string().url().nullable().optional(),
   seoTitle: z.string().max(160).nullable().optional(),
   seoDescription: z.string().max(320).nullable().optional(),
   ogImage: z.string().url().nullable().optional(),
   canonical: z.string().url().nullable().optional(),
+}).strict();
+
+export const safeUrlSchema = z.string().url().max(2048).refine(
+  (value) => ['http:', 'https:'].includes(new URL(value).protocol),
+  { message: 'URL inválida: solo se permiten http(s)' },
+);
+
+export const catalogItemSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  slug: z.string().trim().min(1).max(100).optional(),
+  shortDescription: z.string().max(500).nullable().optional(),
+  description: z.string().max(20000).nullable().optional(),
+  price: z.number().nonnegative(),
+  compareAtPrice: z.number().nonnegative().nullable().optional(),
+  currency: z.string().trim().min(1).max(8).optional(),
+  image: safeUrlSchema.nullable().optional(),
+  additionalImages: z.array(safeUrlSchema).max(12).optional(),
+  category: z.string().trim().max(80).nullable().optional(),
+  featured: z.boolean().optional(),
+  active: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(100000).optional(),
+  cta: z.string().trim().max(80).nullable().optional(),
+  metadata: z.record(z.unknown()).nullable().optional(),
 }).strict();
 
 export const serviceSchema = z.object({
@@ -131,16 +155,6 @@ export const gallerySchema = z.object({
 
 const optionalUrl = z.string().url().max(2048).nullable().optional();
 const optionalText = (max = 4000) => z.string().max(max).nullable().optional();
-
-/** URLs seguras: nunca `javascript:`, `data:` ni esquemas raros. */
-export const safeUrlSchema = z.string().max(2048).refine((value) => {
-  try {
-    const u = new URL(value);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}, { message: 'URL inválida: solo se permiten http(s)' });
 
 export const teamMemberSchema = z.object({
   name: z.string().min(1).max(160),

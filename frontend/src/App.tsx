@@ -109,6 +109,9 @@ function App() {
       <Route path="/negocio/productos" element={<BusinessDashboard section="productos" />} />
       <Route path="/negocio/propiedades" element={<BusinessDashboard section="propiedades" />} />
       <Route path="/negocio/galeria" element={<BusinessDashboard section="galeria" />} />
+      <Route path="/negocio/diseno" element={<BusinessDashboard section="diseno" />} />
+      <Route path="/negocio/contenido" element={<BusinessDashboard section="contenido" />} />
+      <Route path="/negocio/reservas" element={<BusinessDashboard section="reservas" />} />
       <Route path="/negocio/leads" element={<BusinessDashboard section="leads" />} />
       <Route path="/admin/import-aliexpress" element={<Navigate to="/admin/aliexpress" replace />} />
     </Routes>

@@ -1,8 +1,9 @@
 ﻿import { Router, raw } from 'express';
+import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { authenticate, requireAdmin, AuthRequest } from '../middlewares/auth';
 import { requireBusinessOwner, ownerWhere } from '../middlewares/businessAuth';
-import { businessUpsertSchema, serviceSchema, propertySchema, gallerySchema, cleanDescription } from '../utils/business';
+import { businessUpsertSchema, cleanDescription, serviceSchema, propertySchema, gallerySchema, catalogItemSchema, teamMemberSchema, testimonialSchema, faqSchema, promotionSchema, bookingSlotSchema, bookingStatusSchema } from '../utils/business';
 import { uniqueBusinessSlugFor, businessCompleteness } from '../services/business.service';
 import { createBusiness, updateBusiness } from '../controllers/business.controller';
 import { uploadBusinessImage, MAX_UPLOAD_BYTES } from '../lib/storage';
@@ -54,16 +55,22 @@ router.get('/preview/:slug', async (req: AuthRequest, res) => {
       services: { orderBy: { order: 'asc' } },
       gallery: { orderBy: { position: 'asc' } },
       properties: { include: { images: { orderBy: { position: 'asc' } } }, orderBy: { createdAt: 'desc' } },
+      testimonials: { where: { active: true }, orderBy: { order: 'asc' } },
+      faqs: { where: { active: true }, orderBy: { order: 'asc' } },
+      promotions: { where: { active: true }, orderBy: { order: 'asc' } },
+      teamMembers: { where: { active: true }, orderBy: { order: 'asc' } },
+      bookingSlots: { where: { active: true }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] },
     },
   });
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const products = await prisma.product.findMany({
-    where: { businessId: b.id, status: 'PUBLISHED' },
-    orderBy: { createdAt: 'desc' }, take: 100,
+  const products = await prisma.businessCatalogItem.findMany({
+    where: { businessId: b.id, active: true },
+    orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
+    take: 100,
   });
   const { ownerId: _ownerId, ...publicShape } = b as any;
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ business: publicShape, services: b.services, products, properties: b.properties, gallery: b.gallery });
+  res.json({ business: publicShape, services: b.services, products, properties: b.properties, gallery: b.gallery, testimonials: b.testimonials, faqs: b.faqs, promotions: b.promotions, team: b.teamMembers, bookingSlots: b.bookingSlots });
 });
 
 router.post('/:id/publish', requireBusinessOwner, async (req: AuthRequest, res) => {
@@ -204,11 +211,12 @@ router.delete('/:businessId/services/:serviceId', requireBusinessOwner, async (r
   await prisma.businessService.deleteMany({ where: { id: String(req.params.serviceId), businessId } });
   res.json({ deleted: true });
 });
+// Catálogo propio del Business: nunca consulta Product, Category ni Store.
 router.get('/:businessId/products', requireBusinessOwner, async (req: AuthRequest, res) => {
   const businessId = String(req.params.businessId);
   const b = await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } });
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const products = await prisma.product.findMany({ where: { businessId }, orderBy: { createdAt: 'desc' }, take: 100 });
+  const products = await prisma.businessCatalogItem.findMany({ where: { businessId }, orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }], take: 100 });
   res.json({ products });
 });
 
@@ -216,73 +224,121 @@ router.post('/:businessId/products', requireBusinessOwner, async (req: AuthReque
   const businessId = String(req.params.businessId);
   const b = await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } });
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const { name, salePrice, stock, images, description } = (req.body || {}) as any;
-  if (!name || salePrice == null) { res.status(400).json({ message: 'name y salePrice requeridos' }); return; }
+  const parsed = catalogItemSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: 'Datos de producto inválidos' }); return; }
+  const body = parsed.data as Record<string, any>;
   const { slugify } = await import('../utils/business');
-  let candidate = slugify(String((req.body as any).slug || name));
-  let n = 0;
-  for (;;) {
-    const s = n === 0 ? candidate : `${candidate}-${n}`;
-    const exists = await prisma.product.findUnique({ where: { slug: s } });
-    if (!exists) { candidate = s; break; }
-    n += 1;
-  }
-  let categoryId = (req.body as any).categoryId;
-  if (!categoryId) {
-    const general = await prisma.category.findFirst({ where: { slug: 'general' } });
-    categoryId = general?.id || (await prisma.category.create({ data: { name: 'General', slug: `general-${Date.now()}` } })).id;
-  }
-  const created = await prisma.product.create({
-    data: {
-      name: String(name), slug: candidate,
-      description: cleanDescription(description) || String(name),
-      images: Array.isArray(images) ? images : [],
-      categoryId, variants: [],
-      stock: Number(stock) || 0,
-      productCost: Number((req.body as any).productCost) || Number(salePrice) || 0,
-      totalCost: Number((req.body as any).totalCost) || Number(salePrice) || 0,
-      salePrice: Number(salePrice), margin: 0,
-      status: 'PUBLISHED' as any, businessId,
-    } as any,
-  });
+  const base = slugify(body.slug || body.name);
+  let slug = base;
+  for (let suffix = 0; await prisma.businessCatalogItem.findFirst({ where: { businessId, slug } }); suffix += 1) slug = `${base}-${suffix + 1}`;
+  const created = await prisma.businessCatalogItem.create({ data: {
+    businessId, name: body.name, slug,
+    description: cleanDescription(body.description) ?? null,
+    shortDescription: cleanDescription(body.shortDescription) ?? null,
+    price: body.price, compareAtPrice: body.compareAtPrice ?? null,
+    currency: body.currency || 'CLP', image: body.image || null,
+    additionalImages: body.additionalImages || [],
+    category: body.category || null, featured: body.featured ?? false, active: body.active !== false,
+    sortOrder: body.sortOrder ?? 0, cta: body.cta || null, metadata: body.metadata ? body.metadata as any : undefined,
+  } });
   res.status(201).json({ product: created });
 });
 
 router.put('/:businessId/products/:productId', requireBusinessOwner, async (req: AuthRequest, res) => {
   const businessId = String(req.params.businessId);
+  const productId = String(req.params.productId);
   const b = await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } });
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const existing = await prisma.product.findFirst({ where: { id: String(req.params.productId), businessId } });
+  const existing = await prisma.businessCatalogItem.findFirst({ where: { id: productId, businessId } });
   if (!existing) { res.status(404).json({ message: 'Producto no encontrado' }); return; }
-  const allowed: any = {};
-  for (const k of ['name', 'description', 'salePrice', 'stock', 'images', 'status']) {
-    if ((req.body as any)[k] !== undefined) allowed[k] = (req.body as any)[k];
-  }
-  if (allowed.description) allowed.description = cleanDescription(allowed.description);
-  const updated = await prisma.product.update({ where: { id: existing.id }, data: allowed });
+  const partial = catalogItemSchema.partial().safeParse(req.body);
+  if (!partial.success) { res.status(400).json({ message: 'Datos de producto inválidos' }); return; }
+  const body = partial.data as Record<string, any>;
+  const data: any = {};
+  for (const key of ['name', 'image', 'category', 'cta', 'currency']) if (body[key] !== undefined) data[key] = body[key] || null;
+  for (const key of ['description', 'shortDescription']) if (body[key] !== undefined) data[key] = cleanDescription(body[key]) || null;
+  for (const key of ['price', 'compareAtPrice', 'sortOrder']) if (body[key] !== undefined) data[key] = body[key];
+  for (const key of ['featured', 'active']) if (body[key] !== undefined) data[key] = body[key];
+  if (body.additionalImages !== undefined) data.additionalImages = body.additionalImages;
+  if (body.metadata !== undefined) data.metadata = body.metadata ? body.metadata as any : undefined;
+  const updated = await prisma.businessCatalogItem.update({ where: { id: existing.id }, data });
   res.json({ product: updated });
 });
 
-// DELETE de producto Business. Si existe integridad referencial (ordenes),
-// cae a borrado logico (ARCHIVED + hidden) para no romper la tienda.
+router.post('/:businessId/products/:productId/duplicate', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  const source = await prisma.businessCatalogItem.findFirst({ where: { id: String(req.params.productId), businessId } });
+  if (!source) { res.status(404).json({ message: 'Producto no encontrado' }); return; }
+  const { slugify } = await import('../utils/business');
+  const base = `${source.slug}-copia`; let slug = base;
+  for (let i = 0; await prisma.businessCatalogItem.findFirst({ where: { businessId, slug } }); i += 1) slug = `${base}-${i + 1}`;
+  const { id, createdAt, updatedAt, metadata: _metadata, ...rest } = source;
+  res.status(201).json({ product: await prisma.businessCatalogItem.create({ data: { ...rest, slug, name: `${source.name} (copia)`, featured: false } }) });
+});
+
 router.delete('/:businessId/products/:productId', requireBusinessOwner, async (req: AuthRequest, res) => {
   const businessId = String(req.params.businessId);
-  const b = await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } });
-  if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const where = { id: String(req.params.productId), businessId };
-  try {
-    const r = await prisma.product.deleteMany({ where });
-    if (!r.count) { res.status(404).json({ message: 'Producto no encontrado' }); return; }
-    res.json({ deleted: true, mode: 'HARD' });
-  } catch {
-    const u = await prisma.product.updateMany({ where, data: { status: 'ARCHIVED' as any, hidden: true } });
-    if (!u.count) { res.status(404).json({ message: 'Producto no encontrado' }); return; }
-    res.json({ deleted: true, mode: 'ARCHIVED' });
-  }
+  const r = await prisma.businessCatalogItem.deleteMany({ where: { id: String(req.params.productId), businessId } });
+  if (!r.count) { res.status(404).json({ message: 'Producto no encontrado' }); return; }
+  res.json({ deleted: true, mode: 'HARD' });
 });
+
+router.get('/:businessId/content', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  if (!(await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } }))) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const [testimonials, faqs, promotions, team] = await Promise.all([
+    prisma.businessTestimonial.findMany({ where: { businessId }, orderBy: { order: 'asc' } }),
+    prisma.businessFaq.findMany({ where: { businessId }, orderBy: { order: 'asc' } }),
+    prisma.businessPromotion.findMany({ where: { businessId }, orderBy: { order: 'asc' } }),
+    prisma.businessTeamMember.findMany({ where: { businessId }, orderBy: { order: 'asc' } }),
+  ]);
+  res.json({ testimonials, faqs, promotions, team });
+});
+
+router.post('/:businessId/content/:section', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  if (!(await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } }))) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const section = String(req.params.section);
+  const schema = section === 'testimonials' ? testimonialSchema : section === 'faqs' ? faqSchema : section === 'promotions' ? promotionSchema : section === 'team' ? teamMemberSchema : null;
+  if (!schema) { res.status(404).json({ message: 'Tipo de contenido inválido' }); return; }
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: 'Contenido inválido' }); return; }
+  const data = parsed.data as Record<string, any>;
+  const model = section === 'testimonials' ? prisma.businessTestimonial : section === 'faqs' ? prisma.businessFaq : section === 'promotions' ? prisma.businessPromotion : prisma.businessTeamMember;
+  const item = await (model as any).create({ data: { businessId, ...data, socials: data.socials ? data.socials as any : undefined } });
+  res.status(201).json({ item });
+});
+
 
 router.get('/:businessId/properties', requireBusinessOwner, async (req: AuthRequest, res) => {
   const businessId = String(req.params.businessId);
+router.put('/:businessId/content/:section/:itemId', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  const section = String(req.params.section);
+  const itemId = String(req.params.itemId);
+  const schema = section === 'testimonials' ? testimonialSchema : section === 'faqs' ? faqSchema : section === 'promotions' ? promotionSchema : section === 'team' ? teamMemberSchema : null;
+  if (!schema) { res.status(404).json({ message: 'Tipo de contenido inválido' }); return; }
+  const parsed = schema.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: 'Contenido inválido' }); return; }
+  const model = section === 'testimonials' ? prisma.businessTestimonial : section === 'faqs' ? prisma.businessFaq : section === 'promotions' ? prisma.businessPromotion : prisma.businessTeamMember;
+  const existing = await (model as any).findFirst({ where: { id: itemId, businessId } });
+  if (!existing) { res.status(404).json({ message: 'Contenido no encontrado' }); return; }
+  const data = parsed.data as Record<string, any>;
+  const item = await (model as any).update({ where: { id: itemId }, data: { ...data, socials: data.socials === undefined ? undefined : data.socials as any } });
+  res.json({ item });
+});
+
+router.delete('/:businessId/content/:section/:itemId', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  const section = String(req.params.section);
+  if (!['testimonials', 'faqs', 'promotions', 'team'].includes(section)) { res.status(404).json({ message: 'Tipo de contenido inválido' }); return; }
+  const model = section === 'testimonials' ? prisma.businessTestimonial : section === 'faqs' ? prisma.businessFaq : section === 'promotions' ? prisma.businessPromotion : prisma.businessTeamMember;
+  const result = await (model as any).deleteMany({ where: { id: String(req.params.itemId), businessId } });
+  if (!result.count) { res.status(404).json({ message: 'Contenido no encontrado' }); return; }
+  res.json({ deleted: true });
+});
+
+
   const b = await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } });
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   const properties = await prisma.property.findMany({ where: { businessId }, include: { images: { orderBy: { position: 'asc' } } }, orderBy: { createdAt: 'desc' } });
@@ -291,6 +347,42 @@ router.get('/:businessId/properties', requireBusinessOwner, async (req: AuthRequ
 
 router.post('/:businessId/properties', requireBusinessOwner, async (req: AuthRequest, res) => {
   const businessId = String(req.params.businessId);
+router.get('/:businessId/bookings', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  if (!(await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } }))) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  res.json({ bookings: await prisma.booking.findMany({ where: { businessId }, orderBy: [{ date: 'desc' }, { time: 'desc' }], take: 300 }) });
+});
+
+router.put('/:businessId/bookings/:bookingId', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  const bookingId = String(req.params.bookingId);
+  if (!(await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } }))) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const parsed = bookingStatusSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: 'Estado de reserva inválido' }); return; }
+  const result = await prisma.booking.updateMany({ where: { id: bookingId, businessId }, data: { status: parsed.data.status } });
+  if (!result.count) { res.status(404).json({ message: 'Reserva no encontrada' }); return; }
+  res.json({ booking: await prisma.booking.findFirst({ where: { id: bookingId, businessId } }) });
+});
+
+router.get('/:businessId/booking-slots', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  if (!(await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } }))) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  res.json({ slots: await prisma.bookingSlot.findMany({ where: { businessId }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] }) });
+});
+
+router.put('/:businessId/booking-slots', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.businessId);
+  if (!(await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } }))) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const parsed = z.array(bookingSlotSchema).max(80).safeParse(req.body?.slots);
+  if (!parsed.success) { res.status(400).json({ message: 'Horarios inválidos' }); return; }
+  await prisma.$transaction(async (tx) => {
+    await tx.bookingSlot.deleteMany({ where: { businessId } });
+    if (parsed.data.length) await tx.bookingSlot.createMany({ data: parsed.data.map((slot) => ({ businessId, ...slot })) });
+  });
+  res.json({ slots: await prisma.bookingSlot.findMany({ where: { businessId }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] }) });
+});
+
+
   const b = await prisma.business.findFirst({ where: ownerWhere(req, businessId), select: { id: true } });
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   const parsed = propertySchema.safeParse(req.body);

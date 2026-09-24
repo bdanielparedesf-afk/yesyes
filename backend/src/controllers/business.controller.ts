@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import type { AuthRequest } from '../middlewares/auth';
 import { ownerWhere } from '../middlewares/businessAuth';
 import { businessUpsertSchema, cleanDescription } from '../utils/business';
+import { sanitizeVisualConfig } from '../utils/business-visual';
 import { uniqueBusinessSlugFor } from '../services/business.service';
 import { deleteBusinessImages, storageConfigured } from '../lib/storage';
 import { logger } from '../utils/logger';
@@ -31,6 +32,14 @@ export async function createBusiness(req: AuthRequest, res: Response): Promise<v
     if (req.user!.role === 'CUSTOMER') {
       await tx.user.update({ where: { id: req.user!.id }, data: { role: 'BUSINESS' as any } });
     }
+    const demoLabel = 'Contenido de ejemplo';
+    const productCategories = new Set(['BAKERY', 'FLOWERS', 'FOOD', 'BOUTIQUE', 'FURNITURE', 'PHONE']);
+    if (productCategories.has(String(data.category))) {
+      await tx.businessCatalogItem.create({ data: { businessId: b.id, name: `${demoLabel}: producto editable`, slug: 'contenido-de-ejemplo-producto', shortDescription: 'Reemplaza esta descripción por la información real de tu negocio.', price: 0, currency: 'CLP', active: true, metadata: { demo: true } } });
+    } else {
+      await tx.businessService.create({ data: { businessId: b.id, name: `${demoLabel}: servicio editable`, description: 'Reemplaza este servicio, su precio y duración por los datos reales de tu negocio.', price: 0, active: true } });
+    }
+    await tx.businessFaq.create({ data: { businessId: b.id, question: 'Este es un ejemplo de pregunta frecuente', answer: 'Contenido de ejemplo. Edítalo o elimínalo antes de publicar.', active: true } });
     return b;
   });
   res.status(201).json({ business });
@@ -55,6 +64,13 @@ export async function updateBusiness(req: AuthRequest, res: Response): Promise<v
   if (!existing) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   let slug = existing.slug;
   if (data.slug && data.slug !== existing.slug) slug = await uniqueBusinessSlugFor(data.slug, existing.id);
+  if (data.templateId) {
+    const template = await prisma.businessTemplate.findFirst({ where: { id: data.templateId, active: true }, select: { category: true } });
+    if (!template || template.category !== (data.category || existing.category)) {
+      res.status(400).json({ message: 'Plantilla invalida o incompatible con la categoria' });
+      return;
+    }
+  }
   const updated = await prisma.business.update({
     where: { id: existing.id },
     data: {
@@ -81,6 +97,14 @@ export async function updateBusiness(req: AuthRequest, res: Response): Promise<v
       ...(data.seoDescription !== undefined ? { seoDescription: data.seoDescription || null } : {}),
       ...(data.ogImage !== undefined ? { ogImage: data.ogImage || null } : {}),
       ...(data.canonical !== undefined ? { canonical: data.canonical || null } : {}),
+      ...(data.visual !== undefined ? {
+        visual: {
+          ...sanitizeVisualConfig(data.visual, sanitizeVisualConfig(existing.visual)) as any,
+          ...(existing.visual && typeof existing.visual === 'object' && Array.isArray((existing.visual as any).sections)
+            ? { sections: (existing.visual as any).sections }
+            : {}),
+        },
+      } : {}),
     },
   });
   res.json({ business: updated });
@@ -107,8 +131,8 @@ export async function archiveBusiness(req: AuthRequest, res: Response): Promise<
     include: { _count: { select: { services: true, properties: true, leads: true, gallery: true } } },
   });
   if (!existing) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const products = await prisma.product.count({ where: { businessId: existing.id } });
-  const hasRels = existing._count.services + existing._count.properties + existing._count.leads + existing._count.gallery + products > 0;
+  const catalogItems = await prisma.businessCatalogItem.count({ where: { businessId: existing.id } });
+  const hasRels = existing._count.services + existing._count.properties + existing._count.leads + existing._count.gallery + catalogItems > 0;
   // DELETE siempre es archivado lógico. Aunque el negocio no tenga contenido,
   // se preservan la identidad, suscripción, historial y auditoría.
   const archived = await prisma.business.update({ where: { id: existing.id }, data: { status: 'ARCHIVED' as any } });

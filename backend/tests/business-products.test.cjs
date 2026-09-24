@@ -6,25 +6,28 @@ const routes = fs.readFileSync(__dirname + '/../src/routes/business.routes.ts', 
 const pub = fs.readFileSync(__dirname + '/../src/routes/public-business.routes.ts', 'utf8');
 const productCtrl = fs.readFileSync(__dirname + '/../src/controllers/product.controller.ts', 'utf8');
 
-test('products: el create Business fija businessId (nunca null)', () => {
-  assert.ok(routes.includes("status: 'PUBLISHED' as any, businessId,"), 'create de producto business debe fijar businessId');
+test('products: el catálogo Business usa su propia entidad y nunca Product', () => {
+  assert.ok(routes.includes('prisma.businessCatalogItem.create'), 'create debe usar BusinessCatalogItem');
+  assert.ok(routes.includes('prisma.businessCatalogItem.findMany'), 'listado debe usar BusinessCatalogItem');
+  assert.ok(!routes.includes('prisma.product.create'), 'catálogo Business no crea Product');
 });
 
-test('products: PUT con allow-list estricta que excluye businessId/categoryId', () => {
-  assert.ok(routes.includes("for (const k of ['name', 'description', 'salePrice', 'stock', 'images', 'status'])"));
+test('products: PUT mantiene allow-list y scoping por businessId', () => {
+  assert.ok(routes.includes("for (const key of ['name', 'image', 'category', 'cta', 'currency'])"));
   const putSection = routes.slice(routes.indexOf("router.put('/:businessId/products/:productId'"));
-  assert.ok(!putSection.split('router.')[0].includes('categoryId'), 'PUT no debe permitir cambiar categoria');
+  assert.ok(!putSection.split('router.')[0].includes('businessId, data'), 'no actualiza ownership desde payload');
 });
 
-test('products: DELETE business existe con scoping y fallback logico (ARCHIVED)', () => {
+test('products: DELETE business es físico y aislado por businessId', () => {
   assert.ok(routes.includes("router.delete('/:businessId/products/:productId', requireBusinessOwner"));
-  assert.ok(routes.includes("mode: 'ARCHIVED'"), 'fallback de borrado logico ausente');
-  assert.ok(routes.includes("status: 'ARCHIVED' as any, hidden: true"));
+  assert.ok(routes.includes('prisma.businessCatalogItem.deleteMany'));
+  assert.ok(routes.includes("mode: 'HARD'"));
 });
 
-test('products: el listado publico del negocio filtra businessId + PUBLISHED', () => {
-  assert.ok(pub.includes('businessId: b.id'));
-  assert.ok(pub.includes("status: 'PUBLISHED'"));
+test('products: el listado publico filtra BusinessCatalogItem activo', () => {
+  assert.ok(pub.includes('prisma.businessCatalogItem.findMany'));
+  assert.ok(pub.includes('businessId: b.id, active: true'));
+  assert.ok(!pub.includes('prisma.product.findMany'));
 });
 
 test('products: la tienda global solo ve productos con businessId NULL', () => {

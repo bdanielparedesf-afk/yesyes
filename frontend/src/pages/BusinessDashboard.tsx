@@ -9,7 +9,10 @@ import ServicesSection from '@/business/dashboard/ServicesSection';
 import ProductsSection from '@/business/dashboard/ProductsSection';
 import PropertiesSection from '@/business/dashboard/PropertiesSection';
 import GallerySection from '@/business/dashboard/GallerySection';
+import DesignSection from '@/business/dashboard/DesignSection';
 import LeadsSection from '@/business/dashboard/LeadsSection';
+import ContentSection from '@/business/dashboard/ContentSection';
+import BookingsSection from '@/business/dashboard/BookingsSection';
 
 const STATUS_STYLE: Record<string, string> = {
   DRAFT: 'bg-neutral-100 text-neutral-600',
@@ -25,7 +28,7 @@ const STATUS_STYLE: Record<string, string> = {
  * El negocio activo se mantiene en ?id=.
  */
 export default function BusinessDashboard({ section = 'inicio' }: { section?: DashboardSection }) {
-  const { token } = useAuthStore();
+  const { status, checkSession } = useAuthStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedId = searchParams.get('id');
@@ -40,13 +43,20 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!token) { setLoadingList(false); return; }
+    void checkSession();
+  }, [checkSession]);
+
+  useEffect(() => {
+    if (status !== 'authenticated') {
+      setLoadingList(false);
+      return;
+    }
     setLoadingList(true);
     myBusinesses()
       .then(setList)
       .catch(() => setMsg('No se pudieron cargar tus negocios'))
       .finally(() => setLoadingList(false));
-  }, [token]);
+  }, [status]);
 
   // Callback de Mercado Pago: limpia los query params y muestra el resultado.
   useEffect(() => {
@@ -64,13 +74,17 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
   }, []);
 
   useEffect(() => {
+    if (status !== 'authenticated') {
+      setDetail(null);
+      return;
+    }
     if (!selectedId) { setDetail(null); return; }
     let alive = true;
     getBusiness(selectedId)
       .then((b) => { if (alive) setDetail(b); })
       .catch(() => { if (alive) setMsg('No se pudo cargar el negocio'); });
     return () => { alive = false; };
-  }, [selectedId]);
+  }, [selectedId, status]);
 
   const selectBusiness = (id: string, target?: string) => {
     navigate(`${target || '/negocio/configuracion'}?id=${id}`);
@@ -107,7 +121,12 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
       setBusy(false);
     }
   };
-  if (!token) return <div className="p-8 text-center text-neutral-600">Debes iniciar sesión para gestionar tus negocios.</div>;
+  if (status === 'loading') {
+    return <div className="p-8 text-center text-neutral-600">Cargando sesión…</div>;
+  }
+  if (status === 'unauthenticated') {
+    return <div className="p-8 text-center text-neutral-600">Debes iniciar sesión para gestionar tus negocios.</div>;
+  }
 
   const renderList = (compact = false) => (
     loadingList ? (
@@ -207,6 +226,9 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
           {section === 'productos' && <ProductsSection businessId={selectedId} />}
           {section === 'propiedades' && <PropertiesSection businessId={selectedId} />}
           {section === 'galeria' && <GallerySection businessId={selectedId} />}
+          {section === 'diseno' && <DesignSection businessId={selectedId} detail={detail} onSaved={(u) => setDetail((d: any) => ({ ...d, ...u }))} />}
+          {section === 'contenido' && <ContentSection businessId={selectedId} />}
+          {section === 'reservas' && <BookingsSection businessId={selectedId} />}
           {section === 'leads' && <LeadsSection businessId={selectedId} />}
         </>
       ) : (

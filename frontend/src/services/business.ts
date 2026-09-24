@@ -45,6 +45,10 @@ export async function getPublicGallery(slug: string) {
   const { data } = await api.get(`/public/businesses/${slug}/gallery`);
   return data.gallery as any[];
 }
+export async function getPublicContent(slug: string) {
+  const { data } = await api.get(`/public/businesses/${slug}/content`);
+  return data as { testimonials: any[]; faqs: any[]; promotions: any[]; team: any[]; bookingSlots: any[] };
+}
 export async function createLead(slug: string, payload: any) {
   const { data } = await api.post(`/public/businesses/${slug}/leads`, payload);
   return data;
@@ -116,20 +120,14 @@ export async function getPreviewBusiness(slug: string, token?: string | null) {
   if (token && token !== 'true') {
     const { data } = await api.get(`/public/businesses/${encodeURIComponent(slug)}/preview`, { params: { token } });
     return data as {
-      business: Business;
-      services: any[];
-      products: any[];
-      properties: any[];
-      gallery: any[];
+      business: Business; services: any[]; products: any[]; properties: any[]; gallery: any[];
+      testimonials: any[]; faqs: any[]; promotions: any[]; team: any[]; bookingSlots: any[];
     };
   }
   const { data } = await api.get(`/businesses/preview/${encodeURIComponent(slug)}`);
   return data as {
-    business: Business;
-    services: any[];
-    products: any[];
-    properties: any[];
-    gallery: any[];
+    business: Business; services: any[]; products: any[]; properties: any[]; gallery: any[];
+    testimonials: any[]; faqs: any[]; promotions: any[]; team: any[]; bookingSlots: any[];
   };
 }
 
@@ -156,7 +154,7 @@ export async function deleteService(businessId: string, serviceId: string) {
   return data as { deleted: boolean };
 }
 
-/* ------------------------------ Productos ------------------------------ */
+// Catálogo propio del Business. No usa Product, Category ni carrito de la tienda.
 export async function listBusinessProducts(businessId: string) {
   const { data } = await api.get(`/businesses/${businessId}/products`);
   return data.products as any[];
@@ -172,6 +170,34 @@ export async function updateBusinessProduct(businessId: string, productId: strin
 export async function deleteBusinessProduct(businessId: string, productId: string) {
   const { data } = await api.delete(`/businesses/${businessId}/products/${productId}`);
   return data as { deleted: boolean; mode?: 'HARD' | 'ARCHIVED' };
+}
+export async function duplicateBusinessProduct(businessId: string, productId: string) {
+  const { data } = await api.post(`/businesses/${businessId}/products/${productId}/duplicate`);
+  return data.product as any;
+}
+export async function getBusinessContent(businessId: string) {
+  const { data } = await api.get(`/businesses/${businessId}/content`);
+  return data as { testimonials: any[]; faqs: any[]; promotions: any[]; team: any[] };
+}
+export async function createBusinessContent(businessId: string, section: 'testimonials' | 'faqs' | 'promotions' | 'team', payload: any) {
+  const { data } = await api.post(`/businesses/${businessId}/content/${section}`, payload);
+  return data.item as any;
+}
+export async function updateBusinessContent(businessId: string, section: 'testimonials' | 'faqs' | 'promotions' | 'team', itemId: string, payload: any) {
+  const { data } = await api.put(`/businesses/${businessId}/content/${section}/${itemId}`, payload);
+  return data.item as any;
+}
+export async function deleteBusinessContent(businessId: string, section: 'testimonials' | 'faqs' | 'promotions' | 'team', itemId: string) {
+  const { data } = await api.delete(`/businesses/${businessId}/content/${section}/${itemId}`);
+  return data as { deleted: boolean };
+}
+export async function getBusinessBookings(businessId: string) {
+  const { data } = await api.get(`/businesses/${businessId}/bookings`);
+  return data.bookings as any[];
+}
+export async function updateBusinessBooking(businessId: string, bookingId: string, status: string) {
+  const { data } = await api.put(`/businesses/${businessId}/bookings/${bookingId}`, { status });
+  return data.booking as any;
 }
 
 /* ------------------------------ Propiedades ------------------------------ */

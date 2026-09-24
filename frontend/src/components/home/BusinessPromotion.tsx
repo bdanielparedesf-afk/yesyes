@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Check, Eye, Sparkles } from 'lucide-react';
-import { useAuthStore } from '@/store/useAuthStore';
 
 const BENEFITS = [
   'Página profesional para tu rubro',
@@ -53,9 +52,10 @@ function BusinessVisual() {
 
 
 export default function BusinessPromotion() {
-  const token = useAuthStore((state) => state.token);
-  const authStatus = useAuthStore((state) => state.status);
-  const target = token || authStatus === 'authenticated' ? '/negocio' : '/login?returnTo=%2Fnegocio';
+  // La ruta de negocio autentica con la sesión Auth.js (cookie de Google)
+  // o con el JWT de email/password dentro de BusinessDashboard. No se decide
+  // aquí con `token`, porque Google no genera ese JWT.
+  const target = '/negocio';
 
   return (
     <section id="yesyes-business" className="overflow-hidden bg-neutral-950 py-16 sm:py-20" aria-labelledby="business-title">

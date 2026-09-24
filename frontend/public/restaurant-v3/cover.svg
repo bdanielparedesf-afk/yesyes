@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">Casa Sabores</title><desc id="desc">Mesa de restaurante contemporáneo con platos frescos</desc>
+  <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#1c1917"/><stop offset="1" stop-color="#78716c"/></linearGradient><radialGradient id="glow"><stop stop-color="#fbbf24" stop-opacity=".9"/><stop offset="1" stop-color="#fbbf24" stop-opacity="0"/></radialGradient></defs>
+  <rect width="1200" height="800" fill="url(#bg)"/><circle cx="930" cy="180" r="360" fill="url(#glow)"/><rect y="510" width="1200" height="290" fill="#292524"/>
+  <ellipse cx="350" cy="560" rx="240" ry="105" fill="#e7e5e4"/><ellipse cx="350" cy="550" rx="190" ry="78" fill="#fafaf9"/><circle cx="285" cy="525" r="65" fill="#b45309"/><circle cx="365" cy="520" r="58" fill="#65a30d"/><path d="M250 545Q320 430 420 555" fill="none" stroke="#fef3c7" stroke-width="18" stroke-linecap="round"/>
+  <ellipse cx="810" cy="585" rx="235" ry="98" fill="#e7e5e4"/><ellipse cx="810" cy="570" rx="190" ry="74" fill="#fff"/><circle cx="745" cy="548" r="72" fill="#b91c1c"/><circle cx="840" cy="540" r="60" fill="#facc15"/><path d="M720 575Q810 470 900 580" fill="none" stroke="#166534" stroke-width="20" stroke-linecap="round"/>
+  <path d="M515 80Q550 35 585 80" fill="none" stroke="#fbbf24" stroke-width="9" stroke-linecap="round"/><path d="M525 112Q550 75 575 112" fill="none" stroke="#fbbf24" stroke-width="7" stroke-linecap="round"/>
+  <text x="600" y="710" text-anchor="middle" font-family="Georgia,serif" font-size="54" font-weight="bold" fill="#fafaf9">CASA SABORES</text><text x="600" y="752" text-anchor="middle" font-family="Arial,sans-serif" font-size="21" letter-spacing="8" fill="#fcd34d">COCINA CASERA · TEMUCO</text>
+</svg>

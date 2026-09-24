@@ -42,6 +42,15 @@ const TEMPLATES: { code: string; category: any; name: string; capabilities: stri
   { code: 'REAL_ESTATE_02', category: 'REAL_ESTATE', name: 'Inmobiliaria Destacadas', capabilities: ['PROPERTIES', 'TEAM', 'MAP', 'CONTACT', 'WHATSAPP', 'SOCIALS'] },
   { code: 'REAL_ESTATE_03', category: 'REAL_ESTATE', name: 'Inmobiliaria Mapa', capabilities: ['PROPERTIES', 'TEAM', 'MAP', 'CONTACT', 'WHATSAPP', 'SOCIALS'] },
   { code: 'REAL_ESTATE_04', category: 'REAL_ESTATE', name: 'Inmobiliaria Premium', capabilities: ['PROPERTIES', 'TEAM', 'MAP', 'CONTACT', 'WHATSAPP', 'SOCIALS'] },
+  { code: 'FOOD_01', category: 'FOOD', name: 'Restaurante Editorial', capabilities: ['PRODUCTS', 'CATALOG', 'GALLERY', 'PROMOTIONS', 'OPENING_HOURS', 'MAP', 'CONTACT', 'WHATSAPP'] },
+  { code: 'BOUTIQUE_01', category: 'BOUTIQUE', name: 'Boutique Premium', capabilities: ['PRODUCTS', 'CATALOG', 'GALLERY', 'PROMOTIONS', 'CONTACT', 'WHATSAPP', 'SOCIALS'] },
+  { code: 'PHOTO_01', category: 'PHOTO', name: 'Fotografía Portfolio', capabilities: ['PORTFOLIO', 'GALLERY', 'SERVICES', 'TESTIMONIALS', 'BOOKING', 'CONTACT', 'WHATSAPP'] },
+  { code: 'BEAUTY_01', category: 'BEAUTY', name: 'Belleza Serena', capabilities: ['SERVICES', 'PRICING', 'TEAM', 'GALLERY', 'TESTIMONIALS', 'PROMOTIONS', 'BOOKING', 'CONTACT', 'WHATSAPP'] },
+  { code: 'DETAILING_01', category: 'DETAILING', name: 'Detailing Studio', capabilities: ['SERVICES', 'PRICING', 'BEFORE_AFTER', 'GALLERY', 'TESTIMONIALS', 'BOOKING', 'CONTACT', 'WHATSAPP'] },
+  { code: 'CLEANING_01', category: 'CLEANING', name: 'Servicios Profesionales', capabilities: ['SERVICES', 'FEATURES', 'TEAM', 'TESTIMONIALS', 'FAQ', 'BOOKING', 'CONTACT', 'WHATSAPP'] },
+  { code: 'MECHANIC_01', category: 'MECHANIC', name: 'Mecánica Profesional', capabilities: ['SERVICES', 'BEFORE_AFTER', 'GALLERY', 'TESTIMONIALS', 'BOOKING', 'CONTACT', 'WHATSAPP'] },
+  { code: 'TUTORING_01', category: 'TUTORING', name: 'Profesionales', capabilities: ['SERVICES', 'TEAM', 'FEATURES', 'FAQ', 'BOOKING', 'CONTACT', 'WHATSAPP'] },
+  { code: 'CONSTRUCTION_01', category: 'CONSTRUCTION', name: 'Proyectos Profesionales', capabilities: ['SERVICES', 'PORTFOLIO', 'GALLERY', 'TEAM', 'TESTIMONIALS', 'CONTACT', 'WHATSAPP'] },
 ];
 
 async function main() {
@@ -55,7 +64,7 @@ async function main() {
       create: { code: t.code, name: t.name, category: t.category, capabilities: t.capabilities, active: true },
     });
   }
-  console.log('Business seed OK: 17 categorias, 16 templates');
+  console.log('Business seed OK: 17 categorias, 25 templates');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());

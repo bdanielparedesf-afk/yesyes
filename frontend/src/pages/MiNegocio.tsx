@@ -4,7 +4,7 @@ import BusinessLayout from '@/business/shared/BusinessLayout';
 import BusinessPageRenderer from '@/business/BusinessPageRenderer';
 import SeoHead from '@/business/shared/SeoHead';
 import WhatsAppButton from '@/business/shared/WhatsAppButton';
-import { getPublicBusiness, getPublicServices, getPublicProducts, getPublicProperties, getPublicGallery, getPreviewBusiness, createLead, trackEvent, buildWaLink, type Business } from '@/services/business';
+import { getPublicBusiness, getPublicServices, getPublicProducts, getPublicProperties, getPublicGallery, getPublicContent, getPreviewBusiness, createLead, trackEvent, buildWaLink, type Business } from '@/services/business';
 
 const LEAD_TYPES = [
   { value: 'CONSULTA', label: 'Consulta general' },
@@ -24,6 +24,7 @@ export default function MiNegocio() {
   const [products, setProducts] = useState<any[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
   const [gallery, setGallery] = useState<any[]>([]);
+  const [content, setContent] = useState<{ testimonials: any[]; faqs: any[]; promotions: any[]; team: any[]; bookingSlots: any[] }>({ testimonials: [], faqs: [], promotions: [], team: [], bookingSlots: [] });
   const [error, setError] = useState('');
   const [form, setForm] = useState({ name: '', phone: '', message: '', type: 'CONSULTA' as string });
   const [sent, setSent] = useState(false);
@@ -38,23 +39,25 @@ export default function MiNegocio() {
           if (!alive) return;
           setBusiness(data.business);
           setServices(data.services);
-          setProducts(data.products);
+          setProducts(data.products.map((item: any) => ({ ...item, salePrice: item.price, images: item.image ? [item.image] : [], status: item.active ? 'PUBLISHED' : 'PAUSED' })));
           setProperties(data.properties);
           setGallery(data.gallery);
+          if (data.testimonials) setContent(data);
           return;
         }
         const b = await getPublicBusiness(slug);
         if (!alive) return;
         setBusiness(b);
         trackEvent(slug, 'PAGE_VIEW');
-        const [s, p, pr, g] = await Promise.all([
+        const [s, p, pr, g, c] = await Promise.all([
           getPublicServices(slug).catch(() => []),
           getPublicProducts(slug).catch(() => []),
           getPublicProperties(slug).catch(() => []),
           getPublicGallery(slug).catch(() => []),
+          getPublicContent(slug).catch(() => ({ testimonials: [], faqs: [], promotions: [], team: [], bookingSlots: [] })),
         ]);
         if (!alive) return;
-        setServices(s); setProducts(p); setProperties(pr); setGallery(g);
+        setServices(s); setProducts(p.map((item: any) => ({ ...item, salePrice: item.price, images: item.image ? [item.image] : [], status: item.active ? 'PUBLISHED' : 'PAUSED' }))); setProperties(pr); setGallery(g); setContent(c);
       } catch {
         if (alive) setError(preview ? 'No tienes acceso a esta vista previa (inicia sesión como propietario o admin).' : 'Negocio no encontrado');
       }
@@ -93,7 +96,7 @@ export default function MiNegocio() {
           </div>
         }
       >
-        <BusinessPageRenderer business={business} services={services} products={products} properties={properties} gallery={gallery} />
+        <BusinessPageRenderer business={business} services={services} products={products} properties={properties} gallery={gallery} {...content} />
       </Suspense>
       <section className="bg-white rounded-xl border p-4">
         <h2 className="text-xl font-bold">Escríbenos</h2>

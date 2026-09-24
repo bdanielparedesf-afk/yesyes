@@ -7,6 +7,9 @@ export type DashboardSection =
   | 'productos'
   | 'propiedades'
   | 'galeria'
+  | 'diseno'
+  | 'contenido'
+  | 'reservas'
   | 'leads';
 
 const ITEMS: { key: DashboardSection; label: string; path: string }[] = [
@@ -16,6 +19,9 @@ const ITEMS: { key: DashboardSection; label: string; path: string }[] = [
   { key: 'productos', label: 'Productos', path: '/negocio/productos' },
   { key: 'propiedades', label: 'Propiedades', path: '/negocio/propiedades' },
   { key: 'galeria', label: 'Galería', path: '/negocio/galeria' },
+  { key: 'diseno', label: 'Diseño', path: '/negocio/diseno' },
+  { key: 'contenido', label: 'Contenido', path: '/negocio/contenido' },
+  { key: 'reservas', label: 'Reservas', path: '/negocio/reservas' },
   { key: 'leads', label: 'Leads', path: '/negocio/leads' },
 ];
 

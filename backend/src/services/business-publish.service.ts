@@ -117,8 +117,8 @@ export async function businessPublishContext(businessId: string) {
   if (!business) return null;
 
   const [services, products, properties, gallery, subscription, category] = await Promise.all([
-    prisma.businessService.count({ where: { businessId, active: true } }),
-    prisma.product.count({ where: { businessId, status: 'PUBLISHED' } }),
+    prisma.businessService.count({ where: { businessId, active: true, NOT: { name: { startsWith: 'Contenido de ejemplo' } } } }),
+    prisma.businessCatalogItem.count({ where: { businessId, active: true, NOT: { OR: [{ metadata: { path: ['demo'], equals: true } }, { name: { startsWith: 'Contenido de ejemplo' } }] } } }),
     prisma.property.count({ where: { businessId, published: true } }),
     prisma.businessGalleryImage.count({ where: { businessId } }),
     getSubscriptionForBusiness(businessId),

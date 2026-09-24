@@ -1,6 +1,6 @@
 import { lazy, type ComponentType } from 'react';
 
-export type TemplateProps = { business: any; services: any[]; products: any[]; properties: any[]; gallery: any[] };
+export type TemplateProps = { business: any; services: any[]; products: any[]; properties: any[]; gallery: any[]; testimonials?: any[]; faqs?: any[]; promotions?: any[]; team?: any[]; bookingSlots?: any[] };
 
 function Generic({ business, services, products, properties, gallery }: TemplateProps) {
   return (
@@ -34,10 +34,10 @@ function Generic({ business, services, products, properties, gallery }: Template
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {products.map((p: any) => (
               <div key={p.id} className="bg-white rounded-xl border overflow-hidden">
-                {Array.isArray(p.images) && p.images[0] && <img src={p.images[0]} alt={p.name} className="w-full h-36 object-cover" loading="lazy" />}
+                {p.image && <img src={p.image} alt={p.name} className="w-full h-36 object-cover" loading="lazy" />}
                 <div className="p-3">
                   <p className="text-sm font-semibold line-clamp-2">{p.name}</p>
-                  <p className="font-bold mt-1">${Number(p.salePrice).toLocaleString('es-CL')}</p>
+                  <p className="font-bold mt-1">${Number(p.price || 0).toLocaleString('es-CL')}</p>
                 </div>
               </div>
             ))}
@@ -100,18 +100,55 @@ const REAL_ESTATE_01 = lazy(() => import('./realestate/RealEstate01'));
 const REAL_ESTATE_02 = lazy(() => import('./realestate/RealEstate02'));
 const REAL_ESTATE_03 = lazy(() => import('./realestate/RealEstate03'));
 const REAL_ESTATE_04 = lazy(() => import('./realestate/RealEstate04'));
+const VITRINE_TEMPLATES = lazy(() => import('./VitrineTemplates'));
 
-const comps: Record<string, AnyTemplate> = {
-  HAIR_01, HAIR_02, HAIR_03,
-  BARBER_01,
-  BAKERY_01, BAKERY_02, BAKERY_03, BAKERY_04,
-  FLOWERS_01, FLOWERS_02, FLOWERS_03, FLOWERS_04,
-  REAL_ESTATE_01, REAL_ESTATE_02, REAL_ESTATE_03, REAL_ESTATE_04,
-};
+const DEDICATED_TEMPLATE_CODES = new Set([
+  'HAIR_01', 'HAIR_02', 'HAIR_03', 'BARBER_01',
+  'BAKERY_01', 'BAKERY_02', 'BAKERY_03', 'BAKERY_04',
+  'FLOWERS_01', 'FLOWERS_02', 'FLOWERS_03', 'FLOWERS_04',
+  'REAL_ESTATE_01', 'REAL_ESTATE_02', 'REAL_ESTATE_03', 'REAL_ESTATE_04',
+  'FOOD_01', 'BOUTIQUE_01', 'PHOTO_01', 'BEAUTY_01', 'DETAILING_01',
+  'CLEANING_01', 'MECHANIC_01', 'TUTORING_01', 'CONSTRUCTION_01',
+]);
+
+const TEMPLATE_ALIASES: Record<string, string> = { FLORES_01: 'FLOWERS_01' };
+
+function normalizeTemplateCode(code?: string | null): string { return String(code || '').trim().toUpperCase(); }
+export function getNormalizedTemplateCode(code?: string | null): string { return TEMPLATE_ALIASES[normalizeTemplateCode(code)] || normalizeTemplateCode(code); }
+
+export function hasDedicatedTemplate(code?: string | null): boolean {
+  return DEDICATED_TEMPLATE_CODES.has(getNormalizedTemplateCode(code));
+}
 
 export function resolveTemplate(code?: string | null): AnyTemplate {
-  if (code && comps[code]) return comps[code];
-  return Generic;
+  switch (getNormalizedTemplateCode(code)) {
+    case 'HAIR_01': return HAIR_01;
+    case 'HAIR_02': return HAIR_02;
+    case 'HAIR_03': return HAIR_03;
+    case 'BARBER_01': return BARBER_01;
+    case 'BAKERY_01': return BAKERY_01;
+    case 'BAKERY_02': return BAKERY_02;
+    case 'BAKERY_03': return BAKERY_03;
+    case 'BAKERY_04': return BAKERY_04;
+    case 'FLOWERS_01': return FLOWERS_01;
+    case 'FLOWERS_02': return FLOWERS_02;
+    case 'FLOWERS_03': return FLOWERS_03;
+    case 'FLOWERS_04': return FLOWERS_04;
+    case 'REAL_ESTATE_01': return REAL_ESTATE_01;
+    case 'REAL_ESTATE_02': return REAL_ESTATE_02;
+    case 'REAL_ESTATE_03': return REAL_ESTATE_03;
+    case 'REAL_ESTATE_04': return REAL_ESTATE_04;
+    case 'FOOD_01':
+    case 'BOUTIQUE_01':
+    case 'PHOTO_01':
+    case 'BEAUTY_01':
+    case 'DETAILING_01':
+    case 'CLEANING_01':
+    case 'MECHANIC_01':
+    case 'TUTORING_01':
+    case 'CONSTRUCTION_01': return VITRINE_TEMPLATES;
+    default: return Generic;
+  }
 }
 
 export function hasRenderableSection(business: any, id: string): boolean {

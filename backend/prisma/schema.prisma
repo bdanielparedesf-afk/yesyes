@@ -847,6 +847,7 @@ model Business {
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
   services                BusinessService[]
+  catalogItems            BusinessCatalogItem[]
   properties              Property[]
   gallery                 BusinessGalleryImage[]
   leads                   BusinessLead[]
@@ -933,6 +934,34 @@ model BusinessService {
   @@index([businessId])
   @@index([businessId, active])
   @@map("business_services")
+}
+
+model BusinessCatalogItem {
+  id                 String    @id @default(uuid())
+  businessId         String
+  business           Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name               String
+  slug               String
+  shortDescription   String?
+  description        String?   @db.Text
+  price              Float
+  compareAtPrice     Float?
+  currency           String    @default("CLP")
+  image              String?
+  additionalImages   String[]  @default([])
+  category           String?
+  featured           Boolean   @default(false)
+  active             Boolean   @default(true)
+  sortOrder          Int       @default(0)
+  cta                String?
+  metadata           Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([businessId, slug])
+  @@index([businessId, active, sortOrder])
+  @@index([businessId, featured])
+  @@map("business_catalog_items")
 }
 
 model Property {

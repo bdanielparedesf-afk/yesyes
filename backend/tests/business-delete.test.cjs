@@ -17,9 +17,9 @@ test('delete logico: negocio con contenido pasa a ARCHIVED (nunca borrado fisico
   assert.ok(ctrl.includes('borrado logico'));
 });
 
-test('delete logico: el conteo de relaciones incluye servicios, propiedades, leads, galeria y productos', () => {
+test('delete logico: el conteo de relaciones incluye servicios, propiedades, leads, galeria y catálogo', () => {
   assert.ok(ctrl.includes('select: { services: true, properties: true, leads: true, gallery: true }'));
-  assert.ok(ctrl.includes('product.count({ where: { businessId: existing.id } })'));
+  assert.ok(ctrl.includes('businessCatalogItem.count({ where: { businessId: existing.id } })'));
 });
 
 test('delete logico: DELETE /businesses/:id delega en archiveBusiness', () => {
@@ -27,8 +27,9 @@ test('delete logico: DELETE /businesses/:id delega en archiveBusiness', () => {
   assert.ok(routes.includes('archiveBusiness(req, res)'));
 });
 
-test('delete logico: producto business con ordenes cae a ARCHIVED+hidden', () => {
-  assert.ok(routes.includes("status: 'ARCHIVED' as any, hidden: true"));
+test('delete logico: el catálogo Business se elimina físico y queda aislado de Product', () => {
+  assert.ok(routes.includes('prisma.businessCatalogItem.deleteMany'));
+  assert.ok(routes.includes("mode: 'HARD'"));
 });
 
 test('delete logico: el endpoint exige ownership antes de archivar', () => {
