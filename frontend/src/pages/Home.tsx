@@ -4,6 +4,8 @@ import { Truck, Shield, RefreshCw, AlertCircle } from 'lucide-react';
 import { useHomeData } from '@/hooks/useProductsQuery';
 import ProductGrid from '@/components/ProductGrid';
 import type { Product } from '@/services/products';
+import StorePromotion from '@/components/home/StorePromotion';
+import BusinessPromotion from '@/components/home/BusinessPromotion';
 
 function Hero() {
   return (
@@ -235,6 +237,10 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Campañas al final del contenido: la tienda conserva la prioridad. */}
+      <StorePromotion products={data?.uncategorized ?? []} loading={isLoading} />
+      <BusinessPromotion />
     </div>
   );
 }

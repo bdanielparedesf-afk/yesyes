@@ -12,6 +12,12 @@ function isAdminEmail(email?: string): boolean {
   return email?.toLowerCase() === ADMIN_EMAIL;
 }
 
+function safeReturnTo(value: string | null | undefined): string {
+  return value && value.startsWith('/') && !value.startsWith('//') && !value.startsWith('/admin')
+    ? value
+    : '/';
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const { login, status, checkSession, user } = useAuthStore();
@@ -19,6 +25,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const returnTo = safeReturnTo(searchParams.get('returnTo'));
 
   useEffect(() => {
     checkSession();
@@ -37,13 +44,9 @@ export default function Login() {
 
   useEffect(() => {
     if (status === 'authenticated') {
-      if (isAdminEmail(user?.email)) {
-        navigate('/admin', { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
+      navigate(isAdminEmail(user?.email) ? '/admin' : returnTo, { replace: true });
     }
-  }, [status, navigate, user]);
+  }, [status, navigate, user, returnTo]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +57,7 @@ export default function Login() {
       if (isAdminEmail(form.email)) {
         navigate('/admin', { replace: true });
       } else {
-        navigate('/', { replace: true });
+        navigate(returnTo, { replace: true });
       }
     } catch (error: any) {
       const message = error.response?.data?.message;
@@ -151,10 +154,11 @@ export default function Login() {
             onClick={() => {
               try {
                 sessionStorage.setItem('yesyes_post_login', '1');
+                sessionStorage.setItem('yesyes_post_login_return', returnTo);
               } catch {
                 /* sessionStorage no disponible */
               }
-              signIn('google', '/');
+              signIn('google', returnTo);
             }}
             className="w-full flex items-center justify-center space-x-3 px-4 py-3 border border-[#FAD3E7] rounded-full hover:bg-[#FFF8FA] transition-colors"
           >

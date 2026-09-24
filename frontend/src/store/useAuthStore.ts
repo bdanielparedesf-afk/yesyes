@@ -24,7 +24,12 @@ function consumePostLoginRedirect(user: { email?: string; role?: string } | null
     sessionStorage.removeItem('yesyes_post_login');
     const isAdmin =
       user?.email?.toLowerCase().trim() === ADMIN_EMAIL || user?.role === 'ADMIN';
-    const target = isAdmin ? '/admin' : '/';
+    const requested = sessionStorage.getItem('yesyes_post_login_return');
+    sessionStorage.removeItem('yesyes_post_login_return');
+    const safeReturn = requested && requested.startsWith('/') && !requested.startsWith('//') && !requested.startsWith('/admin')
+      ? requested
+      : '/';
+    const target = isAdmin ? '/admin' : safeReturn;
     if (window.location.pathname !== target) {
       window.location.assign(target);
     }
