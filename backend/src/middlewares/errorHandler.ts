@@ -11,10 +11,11 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
     ip: req.ip,
   });
 
+  const safeClientMessage = statusCode >= 400 && statusCode < 500;
   res.status(statusCode).json({
     status: 'error',
     statusCode,
-    message: err.message || 'Internal Server Error',
+    message: safeClientMessage ? err.message || 'Invalid request' : 'Internal Server Error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };

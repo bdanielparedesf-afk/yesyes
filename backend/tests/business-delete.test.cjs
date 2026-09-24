@@ -5,10 +5,10 @@ const fs = require('fs');
 const ctrl = fs.readFileSync(__dirname + '/../src/controllers/business.controller.ts', 'utf8');
 const routes = fs.readFileSync(__dirname + '/../src/routes/business.routes.ts', 'utf8');
 
-test('delete logico: negocio vacio en DRAFT se borra HARD + limpia storage', () => {
-  assert.ok(ctrl.includes("existing.status === 'DRAFT'"));
-  assert.ok(ctrl.includes("mode: 'HARD'"));
-  assert.ok(ctrl.includes('await cleanupBusinessImages(existing.id)'));
+test('delete: negocio—even vacío—se archiva y conserva el historial', () => {
+  assert.ok(ctrl.includes("status: 'ARCHIVED' as any"));
+  assert.ok(ctrl.includes("mode: 'ARCHIVED'"));
+  assert.ok(ctrl.includes('borrado logico'));
 });
 
 test('delete logico: negocio con contenido pasa a ARCHIVED (nunca borrado fisico)', () => {

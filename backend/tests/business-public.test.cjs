@@ -21,9 +21,10 @@ test('public: PUBLIC_SELECT no expone datos internos', () => {
   }
 });
 
-test('public: leads validados con Zod y rate limit', () => {
+test('public: leads validados con Zod, rate limit y antispam', () => {
   assert.ok(src.includes('leadLimiter'), 'sin rate limit en leads/track');
   assert.ok(src.includes('leadSchema.safeParse'), 'sin validacion Zod en leads');
+  assert.ok(src.includes('checkSpam'), 'sin antispam en leads');
   assert.ok(src.includes('15 * 60 * 1000'), 'ventana de rate limit');
 });
 

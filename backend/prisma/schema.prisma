@@ -660,6 +660,8 @@ enum UserRole {
 
 enum BusinessStatus {
   DRAFT
+  PREVIEW
+  PAYMENT_PENDING
   PUBLISHED
   PAUSED
   ARCHIVED
@@ -715,6 +717,60 @@ enum LeadType {
   PROPERTY_INQUIRY
 }
 
+/// Ciclo de vida administrativo de un lead del negocio.
+enum LeadStatus {
+  NEW
+  CONTACTED
+  IN_PROGRESS
+  CLOSED
+  SPAM
+}
+
+/// Estado de la suscripcion que paga el negocio a YesYes. Es INDEPENDIENTE
+/// de Business.status: una pagina puede estar PAUSED con suscripcion ACTIVE
+/// o PUBLISHED con suscripcion en GRACE_PERIOD (periodo de gracia).
+enum SubscriptionStatus {
+  NONE
+  PENDING
+  ACTIVE
+  PAST_DUE
+  GRACE_PERIOD
+  PAUSED
+  CANCELLED
+  EXPIRED
+}
+
+enum SubscriptionFrequency {
+  MONTH
+  YEAR
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum PromotionDiscountType {
+  PERCENTAGE
+  FIXED
+  TEXT_ONLY
+}
+
+enum BusinessReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BlogPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 model BusinessCategory {
   id          String               @id @default(uuid())
   code        BusinessCategoryCode @unique
@@ -723,6 +779,9 @@ model BusinessCategory {
   icon        String?
   active      Boolean              @default(true)
   order       Int                  @default(0)
+  /// Matriz de capacidades por rubro (seed). ADMIN puede modificarla:
+  /// es el default de referencia, nunca un limite duro.
+  defaultCapabilities String[]     @default([])
 
   @@index([active])
   @@index([order])
@@ -734,9 +793,12 @@ model BusinessTemplate {
   category     BusinessCategoryCode
   code         String               @unique
   name         String
+  description  String?
   version      Int                  @default(1)
   active       Boolean              @default(true)
   previewUrl   String?
+  previewImage String?
+  sortOrder    Int                  @default(0)
   capabilities String[]
   config       Json?
   createdAt    DateTime             @default(now())
@@ -774,6 +836,9 @@ model Business {
   socials                 Json?
   cta                     Json?
   settings                Json?
+  /// Configuracion visual tipada y saneada (colores, tipografias, radios,
+  /// tema, orden de secciones). Nunca se aplica sin pasar por el sanitizador.
+  visual                  Json?
   seoTitle                String?
   seoDescription          String?
   ogImage                 String?
@@ -789,6 +854,18 @@ model Business {
   payments                Payment[]
   mercadoPago             BusinessMercadoPago?
   MercadoPagoOAuthAttempt MercadoPagoOAuthAttempt[]
+  teamMembers             BusinessTeamMember[]
+  testimonials            BusinessTestimonial[]
+  faqs                    BusinessFaq[]
+  promotions              BusinessPromotion[]
+  bookings                Booking[]
+  bookingSlots            BookingSlot[]
+  reviews                 BusinessReview[]
+  blogPosts               BusinessBlogPost[]
+  events                  BusinessEvent[]
+  subscription            BusinessSubscription?
+  paymentEvents           BusinessPaymentEvent[]
+  previewTokens           BusinessPreviewToken[]
 
   @@index([ownerId])
   @@index([category])
@@ -900,6 +977,7 @@ model PropertyImage {
   propertyId String
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   url        String
+  alt        String?
   position   Int      @default(0)
 
   @@index([propertyId])
@@ -907,13 +985,16 @@ model PropertyImage {
 }
 
 model BusinessGalleryImage {
-  id         String   @id @default(uuid())
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  url        String
-  position   Int      @default(0)
-  alt        String?
-  createdAt  DateTime @default(now())
+  id          String   @id @default(uuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  url         String
+  alt         String?
+  title       String?
+  description String?
+  category    String?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
 
   @@index([businessId])
   @@index([businessId, position])
@@ -921,20 +1002,25 @@ model BusinessGalleryImage {
 }
 
 model BusinessLead {
-  id         String   @id @default(uuid())
+  id         String     @id @default(uuid())
   businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
   type       LeadType
+  status     LeadStatus @default(NEW)
   name       String?
   phone      String?
   email      String?
-  message    String?  @db.Text
+  message    String?    @db.Text
   payload    Json?
-  waClick    Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  /// Origen del lead para auditoria (public_form, whatsapp, booking, etc).
+  source     String?
+  waClick    Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @default(now()) @updatedAt
 
   @@index([businessId])
   @@index([type])
+  @@index([status])
   @@index([businessId, createdAt])
   @@map("business_leads")
 }
@@ -956,6 +1042,309 @@ model BusinessStatDaily {
   @@unique([businessId, date])
   @@index([businessId])
   @@map("business_stats_daily")
+}
+
+/// Catalogo de capacidades (modulos) que una plantilla/negocio puede activar.
+/// Es data, no codigo: permite agregar modulos futuros sin migrar el modelo.
+model BusinessCapability {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  group       String?
+  /// Capacidades "core" no se pueden desactivar desde el panel del cliente.
+  core        Boolean  @default(false)
+  active      Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+  @@index([order])
+  @@map("business_capabilities")
+}
+
+/// Plan comercial de YesYes Business. El precio vive AQUI (nunca hardcodeado),
+/// y ADMIN puede editarlo sin tocar codigo.
+model BusinessPlan {
+  id            String                @id @default(uuid())
+  code          String                @unique
+  name          String
+  description   String?
+  amount        Float
+  currency      String                @default("CLP")
+  frequency     Int                   @default(1)
+  frequencyType SubscriptionFrequency @default(MONTH)
+  /// Caracteristicas mostradas en la pagina de pago (copy del plan).
+  features      String[]              @default([])
+  trialDays     Int                   @default(0)
+  active        Boolean               @default(true)
+  order         Int                   @default(0)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  subscriptions BusinessSubscription[]
+
+  @@index([active])
+  @@map("business_plans")
+}
+
+/// Suscripcion mensual del negocio a YesYes (proveedor: Mercado Pago).
+/// Una sola suscripcion por negocio: evita duplicados por webhooks repetidos.
+model BusinessSubscription {
+  id                     String                @id @default(uuid())
+  businessId             String                @unique
+  business               Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  planId                 String
+  plan                   BusinessPlan          @relation(fields: [planId], references: [id])
+  provider               String                @default("MERCADOPAGO")
+  providerSubscriptionId String?               @unique
+  providerPlanId         String?
+  status                 SubscriptionStatus    @default(NONE)
+  amount                 Float
+  currency               String                @default("CLP")
+  frequency              Int                   @default(1)
+  frequencyType          SubscriptionFrequency @default(MONTH)
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  nextPaymentAt          DateTime?
+  graceUntil             DateTime?
+  cancelAtPeriodEnd      Boolean               @default(false)
+  activatedAt            DateTime?
+  cancelledAt            DateTime?
+  lastPaymentAt          DateTime?
+  lastEventAt            DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  paymentEvents          BusinessPaymentEvent[]
+
+  @@index([businessId])
+  @@index([providerSubscriptionId])
+  @@index([status])
+  @@index([nextPaymentAt])
+  @@map("business_subscriptions")
+}
+
+/// Auditoria + idempotencia de eventos de pago de Mercado Pago (Business).
+/// La clave unica (provider, providerEventId) impide procesar dos veces el
+/// mismo webhook: nunca duplica suscripciones, pagos ni publicaciones.
+model BusinessPaymentEvent {
+  id              String                @id @default(uuid())
+  businessId      String
+  business        Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscriptionId  String?
+  subscription    BusinessSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  provider        String                @default("MERCADOPAGO")
+  providerEventId String
+  eventType       String
+  status          String
+  amount          Float?
+  currency        String?
+  payload         Json?
+  processedAt     DateTime?
+  createdAt       DateTime              @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([businessId])
+  @@index([subscriptionId])
+  @@index([createdAt])
+  @@map("business_payment_events")
+}
+
+/// Token de vista previa (aleatorio, expirable y revocable). Se guarda solo
+/// el hash: el valor en claro nunca toca la base de datos ni los logs.
+model BusinessPreviewToken {
+  id         String    @id @default(uuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  createdBy  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([businessId])
+  @@index([expiresAt])
+  @@map("business_preview_tokens")
+}
+
+model BusinessTeamMember {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  role       String?
+  bio        String?  @db.Text
+  photo      String?
+  phone      String?
+  email      String?
+  socials    Json?
+  active     Boolean  @default(true)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, active])
+  @@map("business_team_members")
+}
+
+model BusinessTestimonial {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  role       String?
+  content    String   @db.Text
+  rating     Int?
+  photo      String?
+  active     Boolean  @default(true)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, active])
+  @@map("business_testimonials")
+}
+
+model BusinessFaq {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  question   String
+  answer     String   @db.Text
+  active     Boolean  @default(true)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, active])
+  @@map("business_faqs")
+}
+
+model BusinessPromotion {
+  id            String                @id @default(uuid())
+  businessId    String
+  business      Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?               @db.Text
+  image         String?
+  discountType  PromotionDiscountType @default(TEXT_ONLY)
+  discountValue Float?
+  startAt       DateTime?
+  endAt         DateTime?
+  active        Boolean               @default(true)
+  order         Int                   @default(0)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, active])
+  @@map("business_promotions")
+}
+
+/// Disponibilidad configurable (v1: ventana por dia de la semana).
+model BookingSlot {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// 0 = domingo ... 6 = sabado (mismo criterio que Date.getDay()).
+  weekday    Int
+  startTime  String
+  endTime    String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, weekday])
+  @@map("business_booking_slots")
+}
+
+model Booking {
+  id          String        @id @default(uuid())
+  businessId  String
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  serviceId   String?
+  serviceName String?
+  date        DateTime
+  time        String
+  name        String
+  phone       String?
+  email       String?
+  message     String?       @db.Text
+  status      BookingStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, date])
+  @@index([status])
+  @@map("business_bookings")
+}
+
+/// Resenas del negocio: separadas de ProductReview (nunca se mezclan).
+/// Entran como PENDING y solo se publican tras moderacion del owner/ADMIN.
+model BusinessReview {
+  id         String               @id @default(uuid())
+  businessId String
+  business   Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  email      String?
+  rating     Int
+  content    String               @db.Text
+  status     BusinessReviewStatus @default(PENDING)
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, status])
+  @@map("business_reviews")
+}
+
+/// Blog del negocio: arquitectura lista y funcional en su version minima.
+model BusinessBlogPost {
+  id             String         @id @default(uuid())
+  businessId     String
+  business       Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  title          String
+  slug           String
+  excerpt        String?
+  content        String         @db.Text
+  cover          String?
+  status         BlogPostStatus @default(DRAFT)
+  publishedAt    DateTime?
+  seoTitle       String?
+  seoDescription String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([businessId, slug])
+  @@index([businessId])
+  @@index([businessId, status])
+  @@map("business_blog_posts")
+}
+
+/// Eventos del negocio (talleres, ferias, fechas especiales, etc).
+model BusinessEvent {
+  id          String    @id @default(uuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  title       String
+  description String?   @db.Text
+  cover       String?
+  startAt     DateTime
+  endAt       DateTime?
+  location    String?
+  url         String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, startAt])
+  @@map("business_events")
 }
 
 enum ProductStatus {

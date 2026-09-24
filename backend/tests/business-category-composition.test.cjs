@@ -1,0 +1,13 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const registry = fs.readFileSync(path.join(__dirname, '../../frontend/src/business/categoryRegistry.ts'), 'utf8');
+const renderer = fs.readFileSync(path.join(__dirname, '../../frontend/src/business/BusinessPageRenderer.tsx'), 'utf8');
+const seed = fs.readFileSync(path.join(__dirname, '../prisma/seed-business.ts'), 'utf8');
+const categories = ['FOOD','BOUTIQUE','FURNITURE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING'];
+const legacyTemplates = ['HAIR_01','HAIR_02','HAIR_03','BARBER_01','BAKERY_01','BAKERY_02','BAKERY_03','BAKERY_04','FLOWERS_01','FLOWERS_02','FLOWERS_03','FLOWERS_04','REAL_ESTATE_01','REAL_ESTATE_02','REAL_ESTATE_03','REAL_ESTATE_04'];
+test('12 former generic categories have composition, CTA and supported capabilities', () => { for (const category of categories) { assert.match(registry, new RegExp(`${category}: \\{ label:`)); assert.match(registry, new RegExp(`${category}:[\\s\\S]*?cta:`)); assert.match(registry, new RegExp(`${category}:[\\s\\S]*?supportedCapabilities:`)); } });
+test('order, enable/disable, compatibility and HERO protection are centralized', () => { const source = registry.slice(registry.indexOf('export function resolveOrderedSections')); assert.match(source, /\.sort\(\(a, b\) => a\.order - b\.order/); assert.match(source, /enabled: raw\?\.enabled !== false/); assert.match(source, /if \(supported\.includes\('HERO'\)/); assert.match(source, /allowed\.has\(id\)/); assert.match(renderer, /data-business-sections/); });
+test('registry and seed preserve the 16 existing template ids', () => { const frontendRegistry = fs.readFileSync(path.join(__dirname, '../../frontend/src/business/registry.tsx'), 'utf8'); for (const code of legacyTemplates) { assert.ok(frontendRegistry.includes(code)); assert.ok(seed.includes(`'${code}'`)); } assert.equal(legacyTemplates.length, 16); });
+test('renderer uses category composition before generic fallback', () => { assert.match(renderer, /isSpecializedCategory\(props\.business\?\.category\)/); assert.match(renderer, /CategoryComposition/); assert.match(renderer, /resolveOrderedSections/); });

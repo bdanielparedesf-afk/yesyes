@@ -1,4 +1,4 @@
-import { Router, raw } from 'express';
+﻿import { Router, raw } from 'express';
 import { prisma } from '../lib/prisma';
 import { authenticate, requireAdmin, AuthRequest } from '../middlewares/auth';
 import { requireBusinessOwner, ownerWhere } from '../middlewares/businessAuth';
@@ -6,6 +6,16 @@ import { businessUpsertSchema, serviceSchema, propertySchema, gallerySchema, cle
 import { uniqueBusinessSlugFor, businessCompleteness } from '../services/business.service';
 import { createBusiness, updateBusiness } from '../controllers/business.controller';
 import { uploadBusinessImage, MAX_UPLOAD_BYTES } from '../lib/storage';
+import {
+  publishBusiness,
+  pauseBusiness,
+  archiveBusinessSoft,
+  businessBillingOverview,
+} from '../services/business-publish.service';
+import { createPreviewToken } from '../services/business-preview.service';
+import { toSubscriptionDTO } from '../services/business-subscription.service';
+import { isCapabilityCode, normalizeSections, resolveCapabilities, CAPABILITY_CATALOG } from '../utils/business-capabilities';
+
 const router = Router();
 
 router.use(authenticate);
@@ -15,7 +25,6 @@ router.get('/', async (req: AuthRequest, res) => {
   const businesses = await prisma.business.findMany({ where, orderBy: { updatedAt: 'desc' }, include: { template: true } });
   res.json({ businesses });
 });
-
 router.post('/', createBusiness);
 
 // Listado de plantillas activas para el picker del dashboard.
@@ -55,6 +64,65 @@ router.get('/preview/:slug', async (req: AuthRequest, res) => {
   const { ownerId: _ownerId, ...publicShape } = b as any;
   res.setHeader('Cache-Control', 'no-store');
   res.json({ business: publicShape, services: b.services, products, properties: b.properties, gallery: b.gallery });
+});
+
+router.post('/:id/publish', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const result = await publishBusiness({ businessId: String(req.params.id), userId: req.user!.id, ip: req.ip });
+  if (!result.ok) {
+    res.status(result.error.status).json({ code: result.error.code, message: result.error.message, checklist: result.checklist });
+    return;
+  }
+  res.json({ business: result.business, checklist: result.checklist, subscription: result.subscription ? toSubscriptionDTO(result.subscription, result.business.id) : null });
+});
+
+router.post('/:id/pause', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const business = await pauseBusiness({ businessId: String(req.params.id), userId: req.user!.id, ip: req.ip, reason: String((req.body as any)?.reason || 'owner') });
+  res.json({ business });
+});
+
+router.post('/:id/archive', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const business = await archiveBusinessSoft({ businessId: String(req.params.id), userId: req.user!.id, ip: req.ip });
+  res.json({ business, archived: true });
+});
+
+router.post('/:id/preview', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const preview = await createPreviewToken({ businessId: String(req.params.id), createdBy: req.user!.id });
+  const business = await prisma.business.findUnique({ where: { id: String(req.params.id) }, select: { slug: true } });
+  res.json({ ...preview, url: business ? `/mi-negocio/${business.slug}?preview=${encodeURIComponent(preview.token)}` : undefined });
+});
+
+router.get('/:id/capabilities', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const business = await prisma.business.findFirst({
+    where: ownerWhere(req, String(req.params.id)),
+    include: { template: { select: { capabilities: true } } },
+  });
+  if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const category = await prisma.businessCategory.findUnique({ where: { code: business.category }, select: { defaultCapabilities: true } });
+  const resolved = resolveCapabilities({ templateCapabilities: business.template?.capabilities, categoryDefaults: category?.defaultCapabilities, savedSections: (business.visual as any)?.sections });
+  res.json({ ...resolved, catalog: CAPABILITY_CATALOG });
+});
+
+router.put('/:id/capabilities', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const business = await prisma.business.findFirst({
+    where: ownerWhere(req, String(req.params.id)),
+    include: { template: { select: { capabilities: true } } },
+  });
+  if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const category = await prisma.businessCategory.findUnique({ where: { code: business.category }, select: { defaultCapabilities: true } });
+  const available = resolveCapabilities({ templateCapabilities: business.template?.capabilities, categoryDefaults: category?.defaultCapabilities }).available;
+  const raw = (req.body as any)?.sections;
+  if (!Array.isArray(raw)) { res.status(400).json({ message: 'sections debe ser un arreglo' }); return; }
+  if (raw.some((s: any) => s && (typeof s.id !== 'string' || !isCapabilityCode(s.id)))) { res.status(400).json({ message: 'Capability invalida' }); return; }
+  if (raw.some((s: any) => s && (!Number.isInteger(Number(s.order)) || Number(s.order) < 1 || Number(s.order) > 10000))) { res.status(400).json({ message: 'Orden invalido' }); return; }
+  const sections = normalizeSections(raw, available).map(({ id, enabled, order }) => ({ id, enabled, order }));
+  const visual = (business.visual && typeof business.visual === 'object' ? business.visual : {}) as Record<string, unknown>;
+  const updated = await prisma.business.update({ where: { id: business.id }, data: { visual: { ...visual, sections } }, select: { id: true, visual: true } });
+  res.json({ sections: (updated.visual as any)?.sections || [], available, catalog: CAPABILITY_CATALOG });
+});
+
+router.get('/:id/billing', requireBusinessOwner, async (req: AuthRequest, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ billing: await businessBillingOverview(String(req.params.id)) });
 });
 
 router.get('/:id', requireBusinessOwner, async (req: AuthRequest, res) => {

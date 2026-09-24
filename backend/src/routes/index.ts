@@ -23,6 +23,7 @@ import aliexpressRoutes from './aliexpress.routes';
 
 import businessRoutes from './business.routes';
 import publicBusinessRoutes from './public-business.routes';
+import businessSubscriptionRoutes from './business-subscription.routes';
 import mpOAuthRoutes from './mp-oauth.routes';
 const router = Router();
 
@@ -32,6 +33,7 @@ router.use('/auth', authRoutes);
 // business.routes coincide con estos segmentos, en cualquier orden de mount).
 router.use('/businesses', mpOAuthRoutes);
 router.use('/businesses', businessRoutes);
+router.use('/business', businessSubscriptionRoutes);
 router.use('/public/businesses', publicBusinessRoutes);
 // Callback OAuth: /api/mercadopago/oauth/callback (redirect_uri registrada en MP)
 router.use('/mercadopago', mpOAuthRoutes);

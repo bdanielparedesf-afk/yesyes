@@ -114,4 +114,11 @@ export function resolveTemplate(code?: string | null): AnyTemplate {
   return Generic;
 }
 
+export function hasRenderableSection(business: any, id: string): boolean {
+  const sections = business?.visual?.sections;
+  if (!Array.isArray(sections)) return true;
+  const section = sections.find((s: any) => s?.id === id);
+  return section ? section.enabled !== false : true;
+}
+
 export { Generic as GenericTemplate };

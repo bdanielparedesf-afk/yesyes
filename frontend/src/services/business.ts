@@ -9,6 +9,7 @@ export interface Business {
   seoTitle?: string | null; seoDescription?: string | null; ogImage?: string | null;
   canonical?: string | null;
   template?: { code: string; name: string; category: string; capabilities: string[] } | null;
+  visual?: { sections?: Array<{ id: string; enabled: boolean; order: number }> } | null;
 }
 
 export function buildWaLink(phone: string | null | undefined, message: string): string {
@@ -68,6 +69,15 @@ export async function getBusiness(id: string) {
   return data.business as any;
 }
 
+export async function getBusinessCapabilities(id: string) {
+  const { data } = await api.get(`/businesses/${id}/capabilities`);
+  return data as { enabled: string[]; available: string[]; sections: any[]; catalog: any[] };
+}
+export async function saveBusinessCapabilities(id: string, sections: Array<{ id: string; enabled: boolean; order: number }>) {
+  const { data } = await api.put(`/businesses/${id}/capabilities`, { sections });
+  return data as { sections: any[]; available: string[]; catalog: any[] };
+}
+
 /** Reemplaza la galería completa (el backend borra y recrea). */
 export async function saveGallery(businessId: string, images: { url: string; alt?: string | null }[]) {
   const { data } = await api.put(`/businesses/${businessId}/gallery`, { images });
@@ -102,7 +112,17 @@ export async function getTemplates(category?: string) {
  * Vista previa autenticada (?preview=true). El backend exige ser owner o ADMIN
  * y devuelve el negocio en cualquier estado (DRAFT/PAUSED/ARCHIVED/PUBLISHED).
  */
-export async function getPreviewBusiness(slug: string) {
+export async function getPreviewBusiness(slug: string, token?: string | null) {
+  if (token && token !== 'true') {
+    const { data } = await api.get(`/public/businesses/${encodeURIComponent(slug)}/preview`, { params: { token } });
+    return data as {
+      business: Business;
+      services: any[];
+      products: any[];
+      properties: any[];
+      gallery: any[];
+    };
+  }
   const { data } = await api.get(`/businesses/preview/${encodeURIComponent(slug)}`);
   return data as {
     business: Business;

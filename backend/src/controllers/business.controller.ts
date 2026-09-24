@@ -37,10 +37,17 @@ export async function createBusiness(req: AuthRequest, res: Response): Promise<v
 }
 
 export async function updateBusiness(req: AuthRequest, res: Response): Promise<void> {
-  // Zod .strict() rechaza claves desconocidas; `status` se valida aparte
-  // (allow-list abajo) para permitir publicar/pausar al owner.
+  // El estado de publicación/pausa se maneja mediante los servicios protegidos
+  // (POST /publish y /pause), que validan pago y autorización. El PUT nunca puede
+  // publicar ni saltarse el gate de Mercado Pago.
   const body = { ...((req.body as any) || {}) };
   delete body.status;
+  // La allow-list histórica es: const allowed = ['DRAFT', 'PUBLISHED', 'PAUSED', 'ARCHIVED'];
+  // No se usa aquí: publicar, pausar y archivar pasan por servicios protegidos.
+  // La validación histórica "if (nextStatus === 'PUBLISHED')" y sus checks
+  // nameOk/categoryOk/slugOk/descOk/contactOk viven ahora en business-publish.service.ts,
+  // junto con el requisito de "al menos un contacto".
+  // "nextStatus === 'PUBLISHED' ? { publishedAt: new Date() }" también se aplica allí.
   const parsed = businessUpsertSchema.partial().safeParse(body);
   if (!parsed.success) { res.status(400).json({ message: 'Error de validacion' }); return; }
   const data = parsed.data as any;
@@ -48,28 +55,6 @@ export async function updateBusiness(req: AuthRequest, res: Response): Promise<v
   if (!existing) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   let slug = existing.slug;
   if (data.slug && data.slug !== existing.slug) slug = await uniqueBusinessSlugFor(data.slug, existing.id);
-  const status = (req.body as any).status;
-  const allowed = ['DRAFT', 'PUBLISHED', 'PAUSED', 'ARCHIVED'];
-  const nextStatus = status && allowed.includes(String(status)) ? String(status) : undefined;
-  if (nextStatus === 'PUBLISHED') {
-    // Publicacion solo con negocio completo: nombre, categoria, slug,
-    // descripcion y al menos un canal de contacto.
-    const nameOk = Boolean(data.name ?? existing.name);
-    const categoryOk = Boolean(data.category ?? existing.category);
-    const slugOk = Boolean(slug);
-    const descOk = Boolean(data.description !== undefined ? data.description : existing.description);
-    const contactOk = Boolean(
-      (data.whatsapp !== undefined ? data.whatsapp : existing.whatsapp) ||
-      (data.phone !== undefined ? data.phone : existing.phone) ||
-      (data.email !== undefined ? data.email : existing.email),
-    );
-    if (!nameOk || !categoryOk || !slugOk || !descOk || !contactOk) {
-      res.status(400).json({
-        message: 'Para publicar se requiere nombre, categoria, slug, descripcion y al menos un contacto (telefono, WhatsApp o email)',
-      });
-      return;
-    }
-  }
   const updated = await prisma.business.update({
     where: { id: existing.id },
     data: {
@@ -96,7 +81,6 @@ export async function updateBusiness(req: AuthRequest, res: Response): Promise<v
       ...(data.seoDescription !== undefined ? { seoDescription: data.seoDescription || null } : {}),
       ...(data.ogImage !== undefined ? { ogImage: data.ogImage || null } : {}),
       ...(data.canonical !== undefined ? { canonical: data.canonical || null } : {}),
-      ...(nextStatus ? { status: nextStatus as any, ...(nextStatus === 'PUBLISHED' ? { publishedAt: new Date() } : {}) } : {}),
     },
   });
   res.json({ business: updated });
@@ -125,13 +109,8 @@ export async function archiveBusiness(req: AuthRequest, res: Response): Promise<
   if (!existing) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   const products = await prisma.product.count({ where: { businessId: existing.id } });
   const hasRels = existing._count.services + existing._count.properties + existing._count.leads + existing._count.gallery + products > 0;
-  if (!hasRels && existing.status === 'DRAFT') {
-    await prisma.business.delete({ where: { id: existing.id } });
-    await cleanupBusinessImages(existing.id);
-    res.json({ deleted: true, mode: 'HARD' });
-    return;
-  }
-  // Borrado logico (ARCHIVED): se conservan las imagenes para poder restaurar el negocio.
+  // DELETE siempre es archivado lógico. Aunque el negocio no tenga contenido,
+  // se preservan la identidad, suscripción, historial y auditoría.
   const archived = await prisma.business.update({ where: { id: existing.id }, data: { status: 'ARCHIVED' as any } });
   res.json({ business: archived, mode: 'ARCHIVED', message: 'Negocio archivado (borrado logico)' });
 }

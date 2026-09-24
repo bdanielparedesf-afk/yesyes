@@ -1,6 +1,7 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { authenticate, requireAdmin } from '../middlewares/auth';
+import { authenticate, requireAdmin, type AuthRequest } from '../middlewares/auth';
 import {
   getRecentProducts,
   getAllProducts,
@@ -15,6 +16,13 @@ import { getCategories, createCategory, updateCategory, deleteCategory } from '.
 import { getOrders, getOrderById, updateOrderStatus, bulkUpdateOrderStatus, bulkDeleteOrders } from '../controllers/order.controller';
 import { getUsers, updateUserRole, toggleUserActive } from '../controllers/user.controller';
 import { getProductsTemplateExcel, bulkCreateProducts } from '../controllers/excel.controller';
+import {
+  archiveBusinessSoft,
+  pauseBusiness,
+  publishBusiness,
+} from '../services/business-publish.service';
+import { uniqueBusinessSlugFor } from '../services/business.service';
+
 
 const router = Router();
 
@@ -124,22 +132,55 @@ router.get('/businesses', async (req, res) => {
   }
 });
 
-router.put('/businesses/:id/status', async (req, res) => {
+router.put('/businesses/:id/status', async (req: AuthRequest, res) => {
+  const businessId = String(req.params.id);
+  const status = String((req.body as any)?.status || '').toUpperCase();
+  if (!['PUBLISHED', 'PAUSED', 'ARCHIVED'].includes(status)) {
+    res.status(400).json({ message: 'Estado invalido' });
+    return;
+  }
   try {
-    const allowed = ['DRAFT', 'PUBLISHED', 'PAUSED', 'ARCHIVED'];
-    const status = String((req.body as any)?.status || '');
-    if (!allowed.includes(status)) {
-      res.status(400).json({ message: 'Estado invalido' });
+    if (status === 'PUBLISHED') {
+      const result = await publishBusiness({ businessId, userId: req.user!.id, ip: req.ip });
+      if (!result.ok) {
+        res.status(result.error.status).json({
+          code: result.error.code,
+          message: result.error.message,
+          checklist: result.checklist,
+        });
+        return;
+      }
+      res.json({ business: result.business, checklist: result.checklist });
       return;
     }
-    const business = await prisma.business.update({
-      where: { id: String(req.params.id) },
-      data: { status: status as any, ...(status === 'PUBLISHED' ? { publishedAt: new Date() } : {}) },
-    });
-    res.json({ business });
-  } catch (error: any) {
-    res.status(500).json({ message: 'Error updating business status', error: error.message });
+    if (status === 'PAUSED') {
+      const business = await pauseBusiness({ businessId, userId: req.user!.id, ip: req.ip, reason: 'admin' });
+      res.json({ business });
+      return;
+    }
+    const business = await archiveBusinessSoft({ businessId, userId: req.user!.id, ip: req.ip });
+    res.json({ business, archived: true });
+  } catch {
+    res.status(500).json({ message: 'Error updating business status' });
   }
+});
+
+router.post('/businesses', async (req: AuthRequest, res) => {
+  const parsed = z.object({ ownerId: z.string().uuid(), name: z.string().trim().min(2).max(120), category: z.enum(['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING']), templateId: z.string().uuid().nullable().optional() }).strict().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ message: 'ownerId, name, category y templateId son requeridos' }); return; }
+  const { ownerId, name, category, templateId } = parsed.data as any;
+  const owner = await prisma.user.findFirst({ where: { id: ownerId, isActive: true }, select: { id: true } });
+  if (!owner) { res.status(404).json({ message: 'Cliente no encontrado o inactivo' }); return; }
+  const template = templateId ? await prisma.businessTemplate.findFirst({ where: { id: templateId, active: true }, select: { id: true, category: true } }) : null;
+  if (templateId && (!template || template.category !== category)) { res.status(400).json({ message: 'Plantilla invalida o incompatible con la categoria' }); return; }
+  const slug = await uniqueBusinessSlugFor(name);
+  const business = await prisma.business.create({ data: { ownerId, name: String(name).trim(), slug, category, templateId: templateId || null, status: 'DRAFT' } as any });
+  res.status(201).json({ business });
+});
+
+router.get('/businesses/candidates', async (_req, res) => {
+  const users = await prisma.user.findMany({ where: { isActive: true, role: { in: ['CUSTOMER', 'BUSINESS'] } }, select: { id: true, name: true, lastName: true, email: true }, orderBy: { name: 'asc' }, take: 500 });
+  res.json({ users });
 });
 
 router.get('/business-categories', async (_req, res) => {

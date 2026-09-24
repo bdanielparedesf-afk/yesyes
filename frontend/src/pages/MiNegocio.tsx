@@ -1,9 +1,9 @@
 import { Suspense, useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import BusinessLayout from '@/business/shared/BusinessLayout';
+import BusinessPageRenderer from '@/business/BusinessPageRenderer';
 import SeoHead from '@/business/shared/SeoHead';
 import WhatsAppButton from '@/business/shared/WhatsAppButton';
-import { resolveTemplate } from '@/business/registry';
 import { getPublicBusiness, getPublicServices, getPublicProducts, getPublicProperties, getPublicGallery, getPreviewBusiness, createLead, trackEvent, buildWaLink, type Business } from '@/services/business';
 
 const LEAD_TYPES = [
@@ -16,7 +16,9 @@ const LEAD_TYPES = [
 export default function MiNegocio() {
   const { slug = '' } = useParams();
   const [searchParams] = useSearchParams();
-  const preview = searchParams.get('preview') === 'true';
+  const previewParam = searchParams.get('preview');
+  const preview = Boolean(previewParam);
+  const previewToken = previewParam && previewParam !== 'true' ? previewParam : null;
   const [business, setBusiness] = useState<Business | null>(null);
   const [services, setServices] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -32,7 +34,7 @@ export default function MiNegocio() {
       try {
         if (preview) {
           // Vista previa autenticada: el backend exige owner o ADMIN.
-          const data = await getPreviewBusiness(slug);
+          const data = await getPreviewBusiness(slug, previewToken);
           if (!alive) return;
           setBusiness(data.business);
           setServices(data.services);
@@ -58,12 +60,11 @@ export default function MiNegocio() {
       }
     })();
     return () => { alive = false; };
-  }, [slug, preview]);
+  }, [slug, preview, previewToken]);
 
   if (error) return <div className="min-h-screen flex items-center justify-center p-6 text-center">{error}</div>;
   if (!business) return <div className="min-h-screen flex items-center justify-center animate-pulse">Cargando…</div>;
 
-  const Template = resolveTemplate(business?.template?.code);
   const waMsg = `Hola ${business.name}, quiero más información.`;
 
   return (
@@ -92,7 +93,7 @@ export default function MiNegocio() {
           </div>
         }
       >
-        <Template business={business} services={services} products={products} properties={properties} gallery={gallery} />
+        <BusinessPageRenderer business={business} services={services} products={products} properties={properties} gallery={gallery} />
       </Suspense>
       <section className="bg-white rounded-xl border p-4">
         <h2 className="text-xl font-bold">Escríbenos</h2>

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/useAuthStore';
-import { myBusinesses, createBusiness, getBusiness, updateBusiness } from '@/services/business';
+import api from '@/lib/axios';
+import { myBusinesses, createBusiness, getBusiness } from '@/services/business';
 import DashboardNav, { type DashboardSection } from '@/business/dashboard/DashboardNav';
 import ConfigSection, { CATS } from '@/business/dashboard/ConfigSection';
 import ServicesSection from '@/business/dashboard/ServicesSection';
@@ -92,13 +93,14 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
     }
   };
 
-  const quickStatus = async (id: string, status: string) => {
+  const quickStatus = async (id: string, action: 'publish' | 'pause') => {
     setBusy(true);
     try {
-      await updateBusiness(id, { status } as any);
-      setList((l) => l.map((b) => (b.id === id ? { ...b, status } : b)));
-      if (selectedId === id) setDetail((d: any) => (d ? { ...d, status } : d));
-      setMsg('Estado actualizado');
+      const { data } = await api.post(`/businesses/${id}/${action}`);
+      const updated = data.business;
+      setList((l) => l.map((b) => (b.id === id ? { ...b, ...updated } : b)));
+      if (selectedId === id) setDetail((d: any) => (d ? { ...d, ...updated } : d));
+      setMsg(action === 'publish' ? 'Negocio publicado' : 'Negocio pausado');
     } catch (err: any) {
       setMsg(err?.response?.data?.message || 'Error actualizando estado');
     } finally {
@@ -134,11 +136,11 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
               <a className="underline" href={`/mi-negocio/${b.slug}?preview=true`} target="_blank" rel="noreferrer">Vista previa</a>
               {b.status !== 'PUBLISHED' && b.status !== 'ARCHIVED' && (
                 <button type="button" className="underline text-green-700" disabled={busy}
-                  onClick={() => quickStatus(b.id, 'PUBLISHED')}>Publicar</button>
+                  onClick={() => quickStatus(b.id, 'publish')}>Publicar</button>
               )}
               {b.status === 'PUBLISHED' && (
                 <button type="button" className="underline text-amber-600" disabled={busy}
-                  onClick={() => quickStatus(b.id, 'PAUSED')}>Pausar</button>
+                  onClick={() => quickStatus(b.id, 'pause')}>Pausar</button>
               )}
             </div>
           </li>

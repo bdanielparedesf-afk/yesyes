@@ -22,6 +22,9 @@ const CATEGORIES: { code: any; name: string; order: number }[] = [
   { code: 'DETAILING', name: 'Detailing', order: 17 },
 ];
 
+const CATEGORY_DEFAULTS: Record<string, string[]> = {
+  FOOD: ['CATALOG', 'PRODUCTS', 'DELIVERY', 'PROMOTIONS', 'OPENING_HOURS'], BOUTIQUE: ['CATALOG', 'PRODUCTS', 'GALLERY', 'PROMOTIONS'], FURNITURE: ['CATALOG', 'GALLERY', 'PORTFOLIO'], MECHANIC: ['SERVICES', 'BRANDS', 'BEFORE_AFTER', 'BOOKING'], PHONE: ['PRODUCTS', 'SERVICES', 'REPAIR'], CLEANING: ['SERVICES', 'PRICING', 'BOOKING'], PHOTO: ['PORTFOLIO', 'GALLERY', 'SERVICES', 'BOOKING'], TUTORING: ['SUBJECTS', 'SERVICES', 'TEAM', 'BOOKING'], CONSTRUCTION: ['SERVICES', 'PORTFOLIO', 'GALLERY'], BEAUTY: ['SERVICES', 'PRICING', 'GALLERY', 'BOOKING'], PET: ['SERVICES', 'PRODUCTS', 'GALLERY', 'BOOKING'], DETAILING: ['SERVICES', 'PRICING', 'BEFORE_AFTER', 'GALLERY', 'BOOKING'],
+};
 const TEMPLATES: { code: string; category: any; name: string; capabilities: string[] }[] = [
   { code: 'HAIR_01', category: 'HAIR', name: 'Peluquería Hero', capabilities: ['SERVICES', 'TEAM', 'PORTFOLIO', 'WHATSAPP', 'MAP', 'SOCIALS'] },
   { code: 'HAIR_02', category: 'HAIR', name: 'Peluquería Cards', capabilities: ['SERVICES', 'TEAM', 'PORTFOLIO', 'WHATSAPP', 'MAP', 'SOCIALS'] },
@@ -43,7 +46,7 @@ const TEMPLATES: { code: string; category: any; name: string; capabilities: stri
 
 async function main() {
   for (const c of CATEGORIES) {
-    await prisma.businessCategory.upsert({ where: { code: c.code }, update: { name: c.name, order: c.order, active: true }, create: { code: c.code, name: c.name, order: c.order, active: true } });
+    await prisma.businessCategory.upsert({ where: { code: c.code }, update: { name: c.name, order: c.order, active: true, defaultCapabilities: CATEGORY_DEFAULTS[c.code] || [] }, create: { code: c.code, name: c.name, order: c.order, active: true, defaultCapabilities: CATEGORY_DEFAULTS[c.code] || [] } });
   }
   for (const t of TEMPLATES) {
     await prisma.businessTemplate.upsert({

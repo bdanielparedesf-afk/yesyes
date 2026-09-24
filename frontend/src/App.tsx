@@ -34,6 +34,7 @@ const AdminImport = lazy(() => import('@/pages/AdminImport'));
 const AdminBulk = lazy(() => import('@/pages/AdminBulk'));
 const AdminAliExpress = lazy(() => import('@/pages/AdminAliExpress'));
 const AdminBusinesses = lazy(() => import('@/pages/AdminBusinesses'));
+const AdminBusinessEditor = lazy(() => import('@/pages/AdminBusinessEditor'));
 const MiNegocio = lazy(() => import('@/pages/MiNegocio'));
 const BusinessDashboard = lazy(() => import('@/pages/BusinessDashboard'));
 const PropertyDetail = lazy(() => import('@/pages/PropertyDetail'));
@@ -98,6 +99,7 @@ function App() {
       <Route path="/admin/bulk-import" element={<Navigate to="/admin/bulk" replace />} />
       <Route path="/admin/aliexpress" element={<AdminLayout><AdminAliExpress /></AdminLayout>} />
       <Route path="/admin/negocios" element={<AdminLayout><AdminBusinesses /></AdminLayout>} />
+      <Route path="/admin/negocios/:id/editor" element={<AdminLayout><AdminBusinessEditor /></AdminLayout>} />
       <Route path="/mi-negocio/:slug" element={<MiNegocio />} />
       <Route path="/mi-negocio/:slug/propiedad/:propertyId" element={<PropertyDetail />} />
       <Route path="/negocio" element={<BusinessDashboard />} />

@@ -2,6 +2,8 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { prisma } from '../lib/prisma';
 import { leadSchema } from '../utils/business';
+import { checkSpam } from '../utils/business-antispam';
+import { validatePreviewToken } from '../services/business-preview.service';
 
 const router = Router();
 const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
@@ -9,7 +11,7 @@ const PUBLIC_SELECT = {
   id: true, name: true, slug: true, category: true, status: true,
   logo: true, cover: true, description: true, phone: true, whatsapp: true,
   email: true, address: true, city: true, region: true, mapsUrl: true,
-  lat: true, lng: true, hours: true, socials: true, cta: true,
+  lat: true, lng: true, hours: true, socials: true, cta: true, visual: true,
   seoTitle: true, seoDescription: true, ogImage: true, canonical: true,
   templateId: true, publishedAt: true,
   template: { select: { code: true, name: true, category: true, capabilities: true } },
@@ -17,6 +19,44 @@ const PUBLIC_SELECT = {
 async function publishedBySlug(slug: string) {
   return prisma.business.findFirst({ where: { slug: String(slug), status: 'PUBLISHED' as any }, select: PUBLIC_SELECT });
 }
+async function previewPayload(businessId: string) {
+  const b = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: {
+      id: true, name: true, slug: true, category: true, status: true,
+      logo: true, cover: true, description: true, phone: true, whatsapp: true,
+      email: true, address: true, city: true, region: true, mapsUrl: true,
+      lat: true, lng: true, hours: true, socials: true, cta: true,
+      seoTitle: true, seoDescription: true, ogImage: true, canonical: true,
+      templateId: true, publishedAt: true, visual: true,
+      template: { select: { code: true, name: true, category: true, capabilities: true } },
+      services: { orderBy: { order: 'asc' } },
+      gallery: { orderBy: { position: 'asc' } },
+      properties: { include: { images: { orderBy: { position: 'asc' } } }, orderBy: { createdAt: 'desc' } },
+    },
+  });
+  if (!b) return null;
+  const products = await prisma.product.findMany({
+    where: { businessId: b.id, status: 'PUBLISHED' },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  return { business: b, services: b.services, products, properties: b.properties, gallery: b.gallery };
+}
+router.get('/:slug/preview', async (req, res) => {
+  const token = String(req.query.token || '');
+  const check = await validatePreviewToken(token);
+  const b = check.valid
+    ? await prisma.business.findUnique({ where: { id: check.businessId }, select: { id: true, slug: true } })
+    : null;
+  if (!b || b.slug !== String(req.params.slug)) {
+    res.status(404).json({ message: 'Vista previa no encontrada' });
+    return;
+  }
+  const payload = await previewPayload(b.id);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(payload);
+});
 router.get('/:slug', async (req, res) => {
   const b = await publishedBySlug(String(req.params.slug));
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
@@ -95,9 +135,22 @@ router.get('/:slug/properties/:propertyId', async (req, res) => {
 router.post('/:slug/leads', leadLimiter, async (req, res) => {
   const b = await publishedBySlug(String(req.params.slug));
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const parsed = leadSchema.safeParse(req.body);
+  const body = (req.body && typeof req.body === 'object') ? req.body as Record<string, unknown> : {};
+  const spam = checkSpam(body, {
+    name: typeof body.name === 'string' ? body.name : null,
+    email: typeof body.email === 'string' ? body.email : null,
+    phone: typeof body.phone === 'string' ? body.phone : null,
+    message: typeof body.message === 'string' ? body.message : null,
+    honeypot: typeof body.website === 'string' ? body.website : null,
+  });
+  if (spam.spam) {
+    res.status(202).json({ accepted: true });
+    return;
+  }
+  const parsed = leadSchema.safeParse(body);
   if (!parsed.success) { res.status(400).json({ message: 'Error de validacion' }); return; }
-  const lead = await prisma.businessLead.create({ data: { businessId: b.id, ...(parsed.data as any) } as any });
+  const { website: _website, ...leadData } = parsed.data as any;
+  const lead = await prisma.businessLead.create({ data: { businessId: b.id, ...leadData } as any });
   const today = new Date(); today.setHours(0, 0, 0, 0);
   await prisma.businessStatDaily.upsert({
     where: { businessId_date: { businessId: b.id, date: today } },
