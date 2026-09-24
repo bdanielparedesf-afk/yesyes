@@ -37,10 +37,10 @@ test('editor visual: autosave debounce, retry y confirmación de template', () =
   assert.ok(dashboard.includes('window.confirm'));
 });
 
-test('registry incluye los 25 templates y renderer prioriza templates dedicados', () => {
+test('registry incluye templates dedicados y renderer los prioriza', () => {
   const renderer = fs.readFileSync(path.join(__dirname, '../../frontend/src/business/BusinessPageRenderer.tsx'), 'utf8');
-  assert.ok(seed.includes('25 templates'));
-  for (const code of ['FOOD_01','BOUTIQUE_01','PHOTO_01','BEAUTY_01','DETAILING_01','CLEANING_01','MECHANIC_01','TUTORING_01','CONSTRUCTION_01']) {
+  assert.ok(seed.includes('CAFE_01') && seed.includes('PRO_01'));
+  for (const code of ['FOOD_01','BOUTIQUE_01','PHOTO_01','BEAUTY_01','DETAILING_01','CLEANING_01','MECHANIC_01','TUTORING_01','CONSTRUCTION_01','CAFE_01','NAILS_01','PETS_01','FITNESS_01','AUTO_01','PRO_01']) {
     assert.ok(seed.includes(`'${code}'`));
     assert.ok(registry.includes(code));
   }

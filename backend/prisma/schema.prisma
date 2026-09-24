@@ -692,6 +692,11 @@ enum BusinessCategoryCode {
   BEAUTY
   PET
   DETAILING
+  CAFE
+  NAILS
+  FITNESS
+  AUTO
+  PRO
 }
 
 enum PropertyOperation {

@@ -43,7 +43,7 @@ export function cleanDescription(input: unknown): string | undefined {
 export const businessUpsertSchema = z.object({
   name: z.string().min(2).max(120),
   slug: z.string().min(2).max(80).optional(),
-  category: z.enum(['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING']),
+  category: z.enum(['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING','CAFE','NAILS','FITNESS','AUTO','PRO']),
   templateId: z.string().uuid().nullable().optional(),
   description: z.string().max(20000).nullable().optional(),
   phone: z.string().max(30).nullable().optional(),

@@ -31,6 +31,10 @@ export interface VisualConfig {
   containerWidth: ContainerWidth;
   headerStyle: HeaderStyle;
   footerStyle: FooterStyle;
+  background: string;
+  typography: string;
+  shadow: string;
+  preset: string;
 }
 
 export const DEFAULT_VISUAL: VisualConfig = {
@@ -49,6 +53,10 @@ export const DEFAULT_VISUAL: VisualConfig = {
   containerWidth: 'default',
   headerStyle: 'minimal',
   footerStyle: 'simple',
+  background: 'clean',
+  typography: 'moderna',
+  shadow: 'soft',
+  preset: 'moderno',
 };
 
 /** Fuentes ya disponibles sin pedir recursos externos (sin CDN de Google Fonts). */
@@ -120,6 +128,10 @@ export function sanitizeVisualConfig(input: unknown, base: VisualConfig = DEFAUL
     containerWidth: pickEnum(src.containerWidth, VISUAL_ENUMS.containerWidth, base.containerWidth),
     headerStyle: pickEnum(src.headerStyle, VISUAL_ENUMS.headerStyle, base.headerStyle),
     footerStyle: pickEnum(src.footerStyle, VISUAL_ENUMS.footerStyle, base.footerStyle),
+    background: typeof src.background === 'string' && /^[a-z0-9-]{2,40}$/i.test(src.background) ? src.background : base.background,
+    typography: typeof src.typography === 'string' && /^[a-z0-9-]{2,40}$/i.test(src.typography) ? src.typography : base.typography,
+    shadow: pickEnum(src.shadow, ['none', 'soft', 'elevated', 'dramatic'], base.shadow),
+    preset: typeof src.preset === 'string' && /^[a-z0-9-]{2,40}$/i.test(src.preset) ? src.preset : base.preset,
   };
 }
 
@@ -132,6 +144,7 @@ export function visualCssVars(visual: VisualConfig): Record<string, string> {
     '--biz-bg': visual.backgroundColor,
     '--biz-text': visual.textColor,
     '--biz-radius': `${visual.borderRadius}px`,
+    '--biz-shadow': visual.shadow === 'none' ? 'none' : visual.shadow === 'dramatic' ? '0 30px 80px rgba(0,0,0,.28)' : visual.shadow === 'elevated' ? '0 22px 60px rgba(24,24,27,.14)' : '0 12px 35px rgba(24,24,27,.08)',
   };
 }
 

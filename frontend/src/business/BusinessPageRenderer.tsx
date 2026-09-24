@@ -1,14 +1,15 @@
 import { getNormalizedTemplateCode, hasDedicatedTemplate, resolveTemplate, type TemplateProps } from './registry';
 import { getCategoryComposition, isSpecializedCategory, resolveOrderedSections } from './categoryRegistry';
 import { buildWaLink } from '@/services/business';
+import { categoryLabel, sectionLabel } from './businessLabels';
+import { ContactSection } from './components/BusinessSections';
 
 function isDedicatedCode(value?: string | null): boolean {
   return hasDedicatedTemplate(value);
 }
 
 function sectionTitle(id: string): string {
-  const labels: Record<string, string> = { HERO: 'Inicio', ABOUT: 'Nosotros', SERVICES: 'Servicios', PRICING: 'Precios', PRODUCTS: 'Productos', CATALOG: 'Catálogo', GALLERY: 'Galería', PORTFOLIO: 'Portafolio', BEFORE_AFTER: 'Antes y después', PROMOTIONS: 'Promociones', DELIVERY: 'Delivery', PICKUP: 'Retiro', MAP: 'Ubicación', CONTACT: 'Contacto' };
-  return labels[id] || id.replace(/_/g, ' ');
+  return sectionLabel(id);
 }
 
 function CategoryComposition({ business, services, products, gallery, properties, sections, cta }: TemplateProps & { sections: Array<{ id: string; enabled: boolean; order: number }>; cta: string }) {
@@ -16,7 +17,7 @@ function CategoryComposition({ business, services, products, gallery, properties
   return <div className="space-y-10" data-business-sections={sections.map((s) => s.id).join(',')}>
     {sections.filter((s) => s.enabled).map((section) => {
       const items = content[section.id] || [];
-      if (section.id === 'HERO') return <section key={section.id} className="rounded-3xl bg-neutral-900 text-white p-8 sm:p-14"><p className="text-sm uppercase tracking-widest opacity-70">{business?.category}</p><h1 className="text-4xl font-extrabold mt-2">{business?.name}</h1>{business?.description && <p className="mt-3 max-w-2xl opacity-80">{business.description}</p>}<a className="inline-block mt-6 rounded-full bg-white text-black px-6 py-3 font-semibold" href={buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${cta.toLowerCase()}.`)}>{cta}</a></section>;
+      if (section.id === 'HERO') return <section key={section.id} className="rounded-3xl bg-neutral-900 text-white p-8 sm:p-14"><p className="text-sm uppercase tracking-widest opacity-70">{categoryLabel(business?.category)}</p><h1 className="text-4xl font-extrabold mt-2">{business?.name}</h1>{business?.description && <p className="mt-3 max-w-2xl opacity-80">{business.description}</p>}<a className="inline-block mt-6 rounded-full bg-white text-black px-6 py-3 font-semibold" href={buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${cta.toLowerCase()}.`)}>{cta}</a></section>;
       if (section.id === 'CONTACT') return <section key={section.id} className="rounded-2xl border bg-white p-6"><h2 className="font-bold text-xl">{sectionTitle(section.id)}</h2><p className="text-sm mt-2">{business?.address}{business?.city ? `, ${business.city}` : ''}</p>{business?.phone && <p className="text-sm">Tel: {business.phone}</p>}</section>;
       if (section.id === 'CTA') return <section key={section.id} className="text-center rounded-2xl bg-neutral-100 p-6"><p className="font-semibold mb-3">¿Te gustaría comenzar?</p><a className="rounded-full bg-black text-white px-6 py-3" href={buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${cta.toLowerCase()}.`)}>{cta}</a></section>;
       if (['DELIVERY','PICKUP','MAP','PROMOTIONS','PRICING','BOOKING','SOCIALS'].includes(section.id)) return <section key={section.id} className="rounded-2xl border bg-white p-6"><h2 className="font-bold text-xl">{sectionTitle(section.id)}</h2><p className="text-sm text-neutral-600 mt-2">Construye tu solicitud con {cta.toLowerCase()}.</p></section>;
@@ -37,6 +38,8 @@ function EditorialModules({ business, testimonials, team, promotions, faqs, book
 
 
 
+const INDUSTRY_CODES = new Set(['FOOD_01','BOUTIQUE_01','PHOTO_01','BEAUTY_01','DETAILING_01','CLEANING_01','MECHANIC_01','TUTORING_01','CONSTRUCTION_01','CAFE_01','NAILS_01','PETS_01','FITNESS_01','AUTO_01','PRO_01']);
+
 export default function BusinessPageRenderer(props: TemplateProps) {
   const composition = getCategoryComposition(props.business?.category);
   const configuredSections = props.business?.visual?.sections;
@@ -50,7 +53,7 @@ export default function BusinessPageRenderer(props: TemplateProps) {
   if (hasDedicatedTemplate(templateCode)) {
     const saved = Array.isArray(configuredSections) ? configuredSections : [];
     const enabled = new Set(saved.length ? saved.filter((s: any) => s.enabled !== false).map((s: any) => s.id) : ['HERO','SERVICES','PRODUCTS','CATALOG','GALLERY','PORTFOLIO','BEFORE_AFTER','PROPERTIES','TESTIMONIALS','TEAM','PROMOTIONS','FAQ','BOOKING','CONTACT','CTA']);
-    return <div {...rendererData} data-business-renderer="dedicated" data-business-sections={[...enabled].join(',')}><Template {...props} services={enabled.has('SERVICES') ? props.services : []} products={enabled.has('PRODUCTS') || enabled.has('CATALOG') ? props.products : []} properties={enabled.has('PROPERTIES') ? props.properties : []} gallery={enabled.has('GALLERY') || enabled.has('PORTFOLIO') || enabled.has('BEFORE_AFTER') ? props.gallery : []} /><EditorialModules {...props} enabled={enabled} /></div>;
+    return <div {...rendererData} data-business-renderer="dedicated" data-business-sections={[...enabled].join(',')}><Template {...props} services={enabled.has('SERVICES') ? props.services : []} products={enabled.has('PRODUCTS') || enabled.has('CATALOG') ? props.products : []} properties={enabled.has('PROPERTIES') ? props.properties : []} gallery={enabled.has('GALLERY') || enabled.has('PORTFOLIO') || enabled.has('BEFORE_AFTER') ? props.gallery : []} /><EditorialModules {...props} enabled={enabled} />{enabled.has('CONTACT') && !INDUSTRY_CODES.has(normalizedTemplateCode) && <ContactSection business={props.business} preview={props.preview} />}</div>;
   }
   if (isSpecializedCategory(props.business?.category)) {
     const defaults = composition.defaultOrder.map((id, index) => ({ id, order: (index + 1) * 10, enabled: composition.defaultEnabled.includes(id) }));

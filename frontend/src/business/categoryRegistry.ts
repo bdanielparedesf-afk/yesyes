@@ -1,4 +1,4 @@
-export const BUSINESS_CATEGORY_CODES = ['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING'] as const;
+export const BUSINESS_CATEGORY_CODES = ['HAIR','BARBER','BAKERY','FLOWERS','FOOD','CAFE','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','AUTO','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','NAILS','PET','FITNESS','PRO','DETAILING'] as const;
 export type BusinessCategory = typeof BUSINESS_CATEGORY_CODES[number];
 export type BusinessSectionId = string;
 export type CategoryComposition = { label: string; cta: string; supportedCapabilities: string[]; defaultOrder: string[]; defaultEnabled: string[] };

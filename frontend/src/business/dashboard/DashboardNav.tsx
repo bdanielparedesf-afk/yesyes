@@ -22,7 +22,7 @@ const ITEMS: { key: DashboardSection; label: string; path: string }[] = [
   { key: 'diseno', label: 'Diseño', path: '/negocio/diseno' },
   { key: 'contenido', label: 'Contenido', path: '/negocio/contenido' },
   { key: 'reservas', label: 'Reservas', path: '/negocio/reservas' },
-  { key: 'leads', label: 'Leads', path: '/negocio/leads' },
+  { key: 'leads', label: 'Contactos', path: '/negocio/leads' },
 ];
 
 /** Tabs de navegación del dashboard Business (?id= mantiene el negocio seleccionado). */

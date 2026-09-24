@@ -47,6 +47,11 @@ export const CATEGORY_REQUIREMENTS: Record<string, { mainContent: 'services' | '
   BAKERY: { mainContent: 'products' },
   FLOWERS: { mainContent: 'products' },
   FOOD: { mainContent: 'products' },
+  CAFE: { mainContent: 'products' },
+  NAILS: { mainContent: 'services' },
+  FITNESS: { mainContent: 'services' },
+  AUTO: { mainContent: 'services' },
+  PRO: { mainContent: 'services' },
   BOUTIQUE: { mainContent: 'products' },
   FURNITURE: { mainContent: 'products' },
   PHONE: { mainContent: 'products' },
@@ -116,17 +121,15 @@ export async function businessPublishContext(businessId: string) {
   });
   if (!business) return null;
 
-  const [services, products, properties, gallery, subscription, category] = await Promise.all([
-    prisma.businessService.count({ where: { businessId, active: true, NOT: { name: { startsWith: 'Contenido de ejemplo' } } } }),
-    prisma.businessCatalogItem.count({ where: { businessId, active: true, NOT: { OR: [{ metadata: { path: ['demo'], equals: true } }, { name: { startsWith: 'Contenido de ejemplo' } }] } } }),
-    prisma.property.count({ where: { businessId, published: true } }),
-    prisma.businessGalleryImage.count({ where: { businessId } }),
-    getSubscriptionForBusiness(businessId),
-    prisma.businessCategory.findUnique({
-      where: { code: business.category },
-      select: { defaultCapabilities: true },
-    }),
-  ]);
+  const services = await prisma.businessService.count({ where: { businessId, active: true, NOT: { name: { startsWith: 'Contenido de ejemplo' } } } });
+  const products = await prisma.businessCatalogItem.count({ where: { businessId, active: true, NOT: { OR: [{ metadata: { path: ['demo'], equals: true } }, { name: { startsWith: 'Contenido de ejemplo' } }] } } });
+  const properties = await prisma.property.count({ where: { businessId, published: true } });
+  const gallery = await prisma.businessGalleryImage.count({ where: { businessId } });
+  const subscription = await getSubscriptionForBusiness(businessId);
+  const category = await prisma.businessCategory.findUnique({
+    where: { code: business.category },
+    select: { defaultCapabilities: true },
+  });
 
   const counts = { services, products, properties, gallery };
   return {

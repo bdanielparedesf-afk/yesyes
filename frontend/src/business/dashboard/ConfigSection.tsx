@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getTemplates, updateBusiness, uploadBusinessImage, deleteBusiness } from '@/services/business';
 import { getMercadoPagoStatus, startMercadoPagoConnection, disconnectMercadoPago, type MercadoPagoStatus } from '@/services/mercadoPago';
+import { categoryLabel } from '../businessLabels';
 
-export const CATS = ['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING'];
+export const CATS = ['FLOWERS','BARBER','HAIR','CAFE','FOOD','BAKERY','NAILS','PET','FITNESS','AUTO','REAL_ESTATE','BOUTIQUE','PHOTO','PRO','BEAUTY','MECHANIC','DETAILING','CLEANING','TUTORING','CONSTRUCTION','FURNITURE','PHONE'];
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 type TemplateOption = { id: string; code: string; name: string; category: string; capabilities: string[] };
 
@@ -258,7 +259,7 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
           onChange={(e) => setForm({ ...form, slug: e.target.value })} />
         <select className="border rounded-lg px-3 py-2" value={form.category}
           onChange={(e) => setForm({ ...form, category: e.target.value })}>
-          {CATS.map((c) => <option key={c} value={c}>{c}</option>)}
+          {CATS.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
         </select>
         <input className="border rounded-lg px-3 py-2" placeholder="Teléfono" value={form.phone}
           onChange={(e) => setForm({ ...form, phone: e.target.value })} />

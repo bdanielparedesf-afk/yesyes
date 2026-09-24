@@ -1,6 +1,6 @@
 import { lazy, type ComponentType } from 'react';
 
-export type TemplateProps = { business: any; services: any[]; products: any[]; properties: any[]; gallery: any[]; testimonials?: any[]; faqs?: any[]; promotions?: any[]; team?: any[]; bookingSlots?: any[] };
+export type TemplateProps = { business: any; services: any[]; products: any[]; properties: any[]; gallery: any[]; testimonials?: any[]; faqs?: any[]; promotions?: any[]; team?: any[]; bookingSlots?: any[]; preview?: boolean };
 
 function Generic({ business, services, products, properties, gallery }: TemplateProps) {
   return (
@@ -100,7 +100,7 @@ const REAL_ESTATE_01 = lazy(() => import('./realestate/RealEstate01'));
 const REAL_ESTATE_02 = lazy(() => import('./realestate/RealEstate02'));
 const REAL_ESTATE_03 = lazy(() => import('./realestate/RealEstate03'));
 const REAL_ESTATE_04 = lazy(() => import('./realestate/RealEstate04'));
-const VITRINE_TEMPLATES = lazy(() => import('./VitrineTemplates'));
+const INDUSTRY_TEMPLATES = lazy(() => import('./IndustryTemplates'));
 
 const DEDICATED_TEMPLATE_CODES = new Set([
   'HAIR_01', 'HAIR_02', 'HAIR_03', 'BARBER_01',
@@ -109,6 +109,7 @@ const DEDICATED_TEMPLATE_CODES = new Set([
   'REAL_ESTATE_01', 'REAL_ESTATE_02', 'REAL_ESTATE_03', 'REAL_ESTATE_04',
   'FOOD_01', 'BOUTIQUE_01', 'PHOTO_01', 'BEAUTY_01', 'DETAILING_01',
   'CLEANING_01', 'MECHANIC_01', 'TUTORING_01', 'CONSTRUCTION_01',
+  'CAFE_01', 'NAILS_01', 'PETS_01', 'FITNESS_01', 'AUTO_01', 'PRO_01',
 ]);
 
 const TEMPLATE_ALIASES: Record<string, string> = { FLORES_01: 'FLOWERS_01' };
@@ -138,6 +139,12 @@ export function resolveTemplate(code?: string | null): AnyTemplate {
     case 'REAL_ESTATE_02': return REAL_ESTATE_02;
     case 'REAL_ESTATE_03': return REAL_ESTATE_03;
     case 'REAL_ESTATE_04': return REAL_ESTATE_04;
+    case 'CAFE_01':
+    case 'NAILS_01':
+    case 'PETS_01':
+    case 'FITNESS_01':
+    case 'AUTO_01':
+    case 'PRO_01': return INDUSTRY_TEMPLATES;
     case 'FOOD_01':
     case 'BOUTIQUE_01':
     case 'PHOTO_01':
@@ -146,7 +153,7 @@ export function resolveTemplate(code?: string | null): AnyTemplate {
     case 'CLEANING_01':
     case 'MECHANIC_01':
     case 'TUTORING_01':
-    case 'CONSTRUCTION_01': return VITRINE_TEMPLATES;
+    case 'CONSTRUCTION_01': return INDUSTRY_TEMPLATES;
     default: return Generic;
   }
 }

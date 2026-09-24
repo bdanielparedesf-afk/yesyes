@@ -62,6 +62,34 @@ router.get('/:slug/preview', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json(payload);
 });
+
+router.get('/:slug/page', async (req, res) => {
+  const slug = String(req.params.slug);
+  const now = new Date();
+  const business = await prisma.business.findFirst({
+    where: { slug, status: 'PUBLISHED' as any },
+    select: {
+      ...PUBLIC_SELECT,
+      services: { where: { active: true }, orderBy: { order: 'asc' } },
+      catalogItems: {
+        where: { active: true },
+        orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }], take: 100,
+      },
+      gallery: { orderBy: { position: 'asc' } },
+      properties: { where: { published: true, available: true }, include: { images: { orderBy: { position: 'asc' } } }, orderBy: { createdAt: 'desc' } },
+      testimonials: { where: { active: true }, orderBy: { order: 'asc' } },
+      faqs: { where: { active: true }, orderBy: { order: 'asc' } },
+      promotions: { where: { active: true, AND: [{ OR: [{ startAt: null }, { startAt: { lte: now } }] }, { OR: [{ endAt: null }, { endAt: { gte: now } }] }] }, orderBy: { order: 'asc' } },
+      teamMembers: { where: { active: true }, orderBy: { order: 'asc' } },
+      bookingSlots: { where: { active: true }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] },
+    },
+  });
+  if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const { catalogItems, teamMembers, ...data } = business;
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+  res.json({ ...data, products: catalogItems, team: teamMembers });
+});
+
 router.get('/:slug', async (req, res) => {
   const b = await publishedBySlug(String(req.params.slug));
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
@@ -72,13 +100,11 @@ router.get('/:slug/content', async (req, res) => {
   const b = await publishedBySlug(String(req.params.slug));
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   const now = new Date();
-  const [testimonials, faqs, promotions, team, bookingSlots] = await Promise.all([
-    prisma.businessTestimonial.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } }),
-    prisma.businessFaq.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } }),
-    prisma.businessPromotion.findMany({ where: { businessId: b.id, active: true, AND: [{ OR: [{ startAt: null }, { startAt: { lte: now } }] }, { OR: [{ endAt: null }, { endAt: { gte: now } }] }] }, orderBy: { order: 'asc' } }),
-    prisma.businessTeamMember.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } }),
-    prisma.bookingSlot.findMany({ where: { businessId: b.id, active: true }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] }),
-  ]);
+  const testimonials = await prisma.businessTestimonial.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } });
+  const faqs = await prisma.businessFaq.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } });
+  const promotions = await prisma.businessPromotion.findMany({ where: { businessId: b.id, active: true, AND: [{ OR: [{ startAt: null }, { startAt: { lte: now } }] }, { OR: [{ endAt: null }, { endAt: { gte: now } }] }] }, orderBy: { order: 'asc' } });
+  const team = await prisma.businessTeamMember.findMany({ where: { businessId: b.id, active: true }, orderBy: { order: 'asc' } });
+  const bookingSlots = await prisma.bookingSlot.findMany({ where: { businessId: b.id, active: true }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] });
   res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
   res.json({ testimonials, faqs, promotions, team, bookingSlots });
 });

@@ -17,7 +17,8 @@ export function buildWaLink(phone: string | null | undefined, message: string): 
   let n = digits;
   if (n.length === 9) n = '56' + n;
   else if (n.length === 11 && n.startsWith('569')) n = '56' + n.slice(2);
-  const clean = n.replace(/\D/g, '') || '56900000000';
+  const clean = n.replace(/\D/g, '');
+  if (!clean) return '#contacto';
   return `https://wa.me/${clean}?text=${encodeURIComponent(message)}`;
 }
 
@@ -25,6 +26,10 @@ export async function trackEvent(slug: string, event: string) {
   try { await api.post(`/public/businesses/${slug}/track`, { event }); } catch { /* noop */ }
 }
 
+export async function getPublicPage(slug: string) {
+  const { data } = await api.get(`/public/businesses/${slug}/page`);
+  return data as { business: Business; services: any[]; products: any[]; properties: any[]; gallery: any[]; testimonials: any[]; faqs: any[]; promotions: any[]; team: any[]; bookingSlots: any[] };
+}
 export async function getPublicBusiness(slug: string) {
   const { data } = await api.get(`/public/businesses/${slug}`);
   return data.business as Business;

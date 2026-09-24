@@ -13,6 +13,8 @@ import DesignSection from '@/business/dashboard/DesignSection';
 import LeadsSection from '@/business/dashboard/LeadsSection';
 import ContentSection from '@/business/dashboard/ContentSection';
 import BookingsSection from '@/business/dashboard/BookingsSection';
+import { Building2, Check, Plus } from 'lucide-react';
+import { categoryLabel, categoryDescription, statusLabel } from '@/business/businessLabels';
 
 const STATUS_STYLE: Record<string, string> = {
   DRAFT: 'bg-neutral-100 text-neutral-600',
@@ -144,9 +146,9 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
             <div className="min-w-0">
               <p className="font-semibold truncate">{b.name}</p>
               <p className="text-xs text-neutral-500">
-                /mi-negocio/{b.slug} · {b.category}{' '}
+                /mi-negocio/{b.slug} · {categoryLabel(b.category)}{' '}
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[b.status] || ''}`}>
-                  {b.status}
+                  {statusLabel(b.status)}
                 </span>
               </p>
             </div>
@@ -179,7 +181,7 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
             <span className="font-semibold text-neutral-800">{detail.name}</span>
             {' · '}
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[detail.status] || ''}`}>
-              {detail.status}
+              {statusLabel(detail.status)}
             </span>
           </p>
         )}
@@ -192,18 +194,18 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
 
       {section === 'inicio' ? (
         <>
-          <form onSubmit={handleCreate} className="bg-white border rounded-xl p-4 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-            <input
-              className="border rounded-lg px-3 py-2" placeholder="Nombre del nuevo negocio (ej: Peluquería Luna)"
-              value={name} onChange={(e) => setName(e.target.value)} required
-            />
-            <select className="border rounded-lg px-3 py-2" value={category} onChange={(e) => setCategory(e.target.value)}>
-              {CATS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <button className="bg-black text-white rounded-lg px-4 py-2 disabled:opacity-50" type="submit" disabled={busy}>
-              {busy ? 'Creando…' : 'Crear negocio'}
-            </button>
-          </form>
+    <div className="mb-8"><p className="text-sm font-semibold text-stone-500">Paso 1 de 6</p><h2 className="mt-1 text-3xl font-bold tracking-tight">¿Qué tipo de negocio tienes?</h2><p className="mt-2 text-stone-500">Elige el rubro que mejor representa tu trabajo.</p></div>
+    <fieldset><legend className="sr-only">Selecciona un rubro</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {CATS.map((code) => <button key={code} type="button" onClick={() => setCategory(code)} aria-pressed={category === code} className={`group relative overflow-hidden rounded-2xl border bg-white p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-stone-400 hover:shadow-lg focus-visible:outline focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 ${category === code ? 'border-stone-900 ring-2 ring-stone-900' : ''}`}>
+        <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-stone-100"><Building2 className="h-5 w-5" aria-hidden /></span>
+        <b className="block">{categoryLabel(code)}</b><span className="mt-1 block text-sm leading-5 text-stone-500">{categoryDescription(code)}</span>
+        {category === code && <span className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-stone-900 text-white"><Check size={14} aria-hidden /></span>}
+      </button>)}
+    </div></fieldset>
+    <form onSubmit={handleCreate} className="mt-7 rounded-2xl bg-stone-950 p-5 text-white sm:flex sm:items-end sm:gap-3">
+      <label className="block flex-1 text-sm font-semibold">Nombre del negocio<input className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 p-3 font-normal text-white placeholder:text-white/50" placeholder="Ejemplo: Floristería Luna" value={name} onChange={(e) => setName(e.target.value)} required /></label>
+      <button className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white px-6 font-bold text-stone-950 disabled:opacity-50 sm:mt-0 sm:w-auto" type="submit" disabled={busy || !name.trim()}>{busy ? 'Creando…' : <><Plus size={18} aria-hidden />Continuar con {categoryLabel(category)}</>}</button>
+    </form>
           {renderList()}
         </>
       ) : needsBusiness ? (

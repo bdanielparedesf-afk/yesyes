@@ -166,7 +166,7 @@ router.put('/businesses/:id/status', async (req: AuthRequest, res) => {
 });
 
 router.post('/businesses', async (req: AuthRequest, res) => {
-  const parsed = z.object({ ownerId: z.string().uuid(), name: z.string().trim().min(2).max(120), category: z.enum(['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING']), templateId: z.string().uuid().nullable().optional() }).strict().safeParse(req.body);
+  const parsed = z.object({ ownerId: z.string().uuid(), name: z.string().trim().min(2).max(120), category: z.enum(['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING','CAFE','NAILS','FITNESS','AUTO','PRO']), templateId: z.string().uuid().nullable().optional() }).strict().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ message: 'ownerId, name, category y templateId son requeridos' }); return; }
   const { ownerId, name, category, templateId } = parsed.data as any;
   const owner = await prisma.user.findFirst({ where: { id: ownerId, isActive: true }, select: { id: true } });
