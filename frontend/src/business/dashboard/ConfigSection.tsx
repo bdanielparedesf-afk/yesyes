@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getTemplates, updateBusiness, uploadBusinessImage, deleteBusiness } from '@/services/business';
+import api from '@/lib/axios';
 import { getMercadoPagoStatus, startMercadoPagoConnection, disconnectMercadoPago, type MercadoPagoStatus } from '@/services/mercadoPago';
 import { categoryLabel } from '../businessLabels';
+import { createLatestTemplatesRequest, reconcileTemplateId, type TemplateOption } from './templateSync';
 
 export const CATS = ['FLOWERS','BARBER','HAIR','CAFE','FOOD','BAKERY','NAILS','PET','FITNESS','AUTO','REAL_ESTATE','BOUTIQUE','PHOTO','PRO','BEAUTY','MECHANIC','DETAILING','CLEANING','TUTORING','CONSTRUCTION','FURNITURE','PHONE'];
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-type TemplateOption = { id: string; code: string; name: string; category: string; capabilities: string[] };
+type TemplatesState = { category: string; options: TemplateOption[] };
 
 /**
  * Sección de configuración: información básica, plantilla, horarios, redes,
@@ -19,13 +21,15 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
 }) {
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    name: '', slug: '', category: 'HAIR', description: '', phone: '', whatsapp: '',
+    name: '', slug: '', category: detail?.category || '', description: '', phone: '', whatsapp: '',
     email: '', address: '', city: '', region: '', mapsUrl: '', seoTitle: '', seoDescription: '',
   });
   const [hours, setHours] = useState<Record<string, string>>({});
   const [socials, setSocials] = useState({ instagram: '', facebook: '', tiktok: '', youtube: '' });
-  const [templateId, setTemplateId] = useState('');
-  const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [templateId, setTemplateId] = useState(detail?.templateId || '');
+  const [templatesState, setTemplatesState] = useState<TemplatesState>({ category: '', options: [] });
+  const [templatesStatus, setTemplatesStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const templatesRequest = useRef<ReturnType<typeof createLatestTemplatesRequest<TemplateOption>> | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [mpStatus, setMpStatus] = useState<MercadoPagoStatus | null>(null);
@@ -34,7 +38,7 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
   useEffect(() => {
     if (!detail) return;
     setForm({
-      name: detail.name || '', slug: detail.slug || '', category: detail.category || 'HAIR',
+      name: detail.name || '', slug: detail.slug || '', category: detail.category || '',
       description: detail.description || '', phone: detail.phone || '', whatsapp: detail.whatsapp || '',
       email: detail.email || '', address: detail.address || '', city: detail.city || '',
       region: detail.region || '', mapsUrl: detail.mapsUrl || '',
@@ -48,13 +52,38 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
       tiktok: String((s as any).tiktok || ''), youtube: String((s as any).youtube || ''),
     });
     setTemplateId(detail.templateId || '');
-    setMsg('');
   }, [detail]);
 
-  // Plantillas compatibles con la categoria seleccionada.
+  // Solo la respuesta vigente puede reemplazar la lista de la categoría actual.
   useEffect(() => {
-    if (!form.category) return;
-    getTemplates(form.category).then(setTemplates).catch(() => setTemplates([]));
+    const category = form.category;
+    if (!category) {
+      templatesRequest.current?.invalidate();
+      setTemplatesState({ category: '', options: [] });
+      setTemplatesStatus('idle');
+      return;
+    }
+
+    const request = createLatestTemplatesRequest(getTemplates, {
+      onStart: (requestedCategory) => {
+        setTemplatesState({ category: requestedCategory, options: [] });
+        setTemplatesStatus('loading');
+      },
+      onSuccess: (requestedCategory, options) => {
+        setTemplatesState({ category: requestedCategory, options });
+        setTemplateId((current: string) => reconcileTemplateId(current, options));
+        setTemplatesStatus('idle');
+      },
+      onError: (requestedCategory) => {
+        setTemplatesState({ category: requestedCategory, options: [] });
+        setTemplateId('');
+        setTemplatesStatus('error');
+      },
+    });
+    templatesRequest.current = request;
+    void request.load(category);
+
+    return () => request.invalidate();
   }, [form.category]);
 
   // Estado de Mercado Pago del negocio.
@@ -99,9 +128,11 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
   const setStatus = async (status: 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'ARCHIVED') => {
     setBusy(true);
     try {
-      const updated = await updateBusiness(businessId, { status } as any);
+      const action = status === 'PUBLISHED' ? 'publish' : status === 'PAUSED' ? 'pause' : 'archive';
+      const { data } = await api.post(`/businesses/${businessId}/${action}`);
+      const updated = data.business;
       onSaved(updated);
-      setMsg(status === 'PUBLISHED' ? 'Negocio publicado 🎉' : 'Estado actualizado');
+      setMsg(status === 'PUBLISHED' ? 'Negocio publicado 🎉' : status === 'PAUSED' ? 'Negocio pausado' : 'Negocio archivado');
     } catch (err: any) {
       setMsg(err?.response?.data?.message || 'Error actualizando estado');
     } finally {
@@ -159,6 +190,7 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
       setMpLoading(false);
     }
   };
+  const templates = templatesState.category === form.category ? templatesState.options : [];
   const checks = [
     { label: 'Nombre', ok: Boolean(detail?.name) },
     { label: 'Descripción', ok: Boolean(detail?.description) },
@@ -258,7 +290,13 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
         <input className="border rounded-lg px-3 py-2" placeholder="Slug (URL)" value={form.slug}
           onChange={(e) => setForm({ ...form, slug: e.target.value })} />
         <select className="border rounded-lg px-3 py-2" value={form.category}
-          onChange={(e) => setForm({ ...form, category: e.target.value })}>
+          onChange={(e) => {
+            const category = e.target.value;
+            setForm({ ...form, category });
+            setTemplatesState({ category, options: [] });
+            setTemplateId('');
+            setTemplatesStatus('loading');
+          }}>
           {CATS.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
         </select>
         <input className="border rounded-lg px-3 py-2" placeholder="Teléfono" value={form.phone}
@@ -281,7 +319,11 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
         {/* Plantillas compatibles con la categoria */}
         <div className="sm:col-span-2 mt-2">
           <p className="text-sm font-semibold mb-2">Plantilla de la página</p>
-          {templates.length === 0 ? (
+          {templatesStatus === 'loading' ? (
+            <p className="text-xs text-neutral-500" role="status" aria-live="polite">Cargando plantillas…</p>
+          ) : templatesStatus === 'error' ? (
+            <p className="text-xs text-red-600" role="alert">No pudimos cargar las plantillas. Intenta nuevamente.</p>
+          ) : templates.length === 0 ? (
             <p className="text-xs text-neutral-500">
               No hay plantillas cargadas para esta categoría. Ejecuta <code>npm run db:seed:business</code> para sembrarlas.
             </p>
