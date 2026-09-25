@@ -19,3 +19,25 @@ dist/
 logs/
 
 .vercel
+
+# QA / harness: artefactos generados en tiempo de ejecución.
+# Los scripts del harness (qa/*.mjs) SÍ se versionan; los resultados no.
+
+# Perfil de Chrome usado por los runners de QA (muy pesado, ~2 GB)
+.qa-chrome-profile/
+qa/.qa-chrome-profile/
+**/.qa-chrome-profile/
+
+# Capturas de pantalla y artefactos temporales de certificación
+qa/final-responsive/
+qa/qa/
+*.tmp
+
+# Reportes generados por el harness
+qa/*-report.json
+qa/*.exit
+qa/*-exit
+qa/git-diff-check-*.log
+
+# Scripts de depuración temporales
+qa/_orphan-sweep.mjs
