@@ -34,6 +34,19 @@ export async function createBusiness(req: AuthRequest, res: Response): Promise<v
     }
     return b;
   });
+  // El sitio del negocio es SIEMPRE un manifest V2 derivado de un diseño. La
+  // plantilla elegida solo aportó la composición inicial: desde aquí el usuario
+  // puede cambiar de diseño, de variante y de secciones sin perder contenido.
+  if (business.templateId) {
+    try {
+      const { ensureSiteInstance } = await import('../template-engine/bootstrap');
+      await ensureSiteInstance(business.id);
+    } catch {
+      // Nunca se cae la creación del negocio por el manifest: el sitio usará
+      // la vía de compatibilidad y se puede reintentar desde el editor.
+      logger.warn('[business] no se pudo crear la instancia de sitio', { businessId: business.id });
+    }
+  }
   // Cada página normal tiene su propio ciclo de cobro. Se crea después del
   // business para reutilizar el plan central y mantener ADMIN sin suscripción falsa.
   if (req.user!.role !== 'ADMIN') {

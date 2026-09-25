@@ -3,6 +3,7 @@ import { resolveCapabilities } from '../utils/business-capabilities';
 import { subscriptionAllowsPublishing, type SubscriptionLike } from './business-subscription-state';
 import { getSubscriptionForBusiness, toSubscriptionDTO } from './business-subscription.service';
 import { logBusinessAudit } from './business-audit.service';
+import { logger } from '../utils/logger';
 
 /**
  * YESYES BUSINESS — Publicacion controlada.
@@ -198,6 +199,39 @@ export async function publishBusiness(params: {
       ...(ctx.business.publishedAt ? {} : { publishedAt: new Date() }),
     },
   });
+
+  // Congelar el borrador actual como revisión PUBLICADA. La página pública
+  // renderiza esta revisión, así que el usuario puede seguir experimentando
+  // con el diseño sin que el sitio en vivo cambie hasta volver a publicar.
+  try {
+    const instance = await prisma.businessSiteInstance.findUnique({
+      where: { businessId: params.businessId },
+      select: { id: true, manifest: true, manifestVersion: true },
+    });
+    if (instance) {
+      const alreadyFrozen = await prisma.businessSiteRevision.findFirst({
+        where: { instanceId: instance.id, reason: { startsWith: 'PUBLICADO' } },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, manifest: true },
+      });
+      const sameAsPublished = JSON.stringify(alreadyFrozen?.manifest ?? null) === JSON.stringify(instance.manifest);
+      if (!sameAsPublished) {
+        await prisma.businessSiteRevision.create({
+          data: {
+            id: `rev-${params.businessId}-pub-${Date.now()}`,
+            instanceId: instance.id,
+            manifestVersion: instance.manifestVersion,
+            manifest: instance.manifest as any,
+            reason: `PUBLICADO ${new Date().toISOString()}`,
+          },
+        });
+      }
+    }
+  } catch {
+    // Publicar el negocio nunca falla por la congelación del manifest: el
+    // sitio seguirá funcionando por la vía que ya tenía.
+    logger.warn('[business] no se pudo congelar la revisión publicada', { businessId: params.businessId });
+  }
 
   if (!alreadyPublished) {
     await logBusinessAudit('BUSINESS_PUBLISHED', {

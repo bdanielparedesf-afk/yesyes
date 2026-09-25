@@ -72,7 +72,27 @@ const PUBLIC_SELECT = {
   seoTitle: true, seoDescription: true, ogImage: true, canonical: true,
   templateId: true, publishedAt: true,
   template: { select: { code: true, name: true, category: true, capabilities: true } },
+  // El manifest que compone la página pública. Se elige la revisión PUBLICADA
+  // más reciente, nunca el borrador: editar no cambia el sitio en vivo.
+  siteInstance: { select: { manifest: true, manifestVersion: true, legacyCompatibility: true } },
 } as const;
+
+/**
+ * Manifest que debe renderizar la PÁGINA PÚBLICA.
+ *
+ * Mientras el negocio no ha publicado, devuelve `null`: la página pública no
+ * existe todavía. Una vez publicado, devuelve el manifest de la última revisión
+ * marcada como publicada, para que el borrador del editor no altere el sitio.
+ */
+async function publishedManifestOf(instanceId: string | null | undefined): Promise<unknown | null> {
+  if (!instanceId) return null;
+  const published = await prisma.businessSiteRevision.findFirst({
+    where: { instanceId, reason: { startsWith: 'PUBLICADO' } },
+    orderBy: { createdAt: 'desc' },
+    select: { manifest: true },
+  });
+  return published ? published.manifest : null;
+}
 async function publishedBySlug(slug: string) {
   return prisma.business.findFirst({ where: { slug: String(slug), status: 'PUBLISHED' as any }, select: PUBLIC_SELECT });
 }
@@ -87,6 +107,9 @@ async function previewPayload(businessId: string) {
       seoTitle: true, seoDescription: true, ogImage: true, canonical: true,
       templateId: true, publishedAt: true, visual: true,
       template: { select: { code: true, name: true, category: true, capabilities: true } },
+      // La vista previa renderiza el BORRADOR: es lo que el usuario está
+      // probando. Por eso editor, preview y pública comparten renderer.
+      siteInstance: { select: { manifest: true, manifestVersion: true, legacyCompatibility: true } },
       services: { orderBy: { order: 'asc' } },
       gallery: { orderBy: { position: 'asc' } },
       properties: { include: { images: { orderBy: { position: 'asc' } } }, orderBy: { createdAt: 'desc' } },
@@ -142,9 +165,17 @@ router.get('/:slug/page', async (req, res) => {
     },
   });
   if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const { catalogItems, teamMembers, ...data } = business;
+  const { catalogItems, teamMembers, siteInstance, ...data } = business;
+  // La página pública renderiza la ÚLTIMA REVISIÓN PUBLICADA. El borrador del
+  // editor nunca se filtra aquí: probar un diseño no cambia el sitio en vivo.
+  const published = await publishedManifestOf(siteInstance ? `site-${business.id}` : null);
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ ...data, products: catalogItems, team: teamMembers });
+  res.json({
+    ...data,
+    siteInstance: published ? { manifest: published, manifestVersion: siteInstance?.manifestVersion || 1 } : null,
+    products: catalogItems,
+    team: teamMembers,
+  });
 });
 
 router.get('/:slug', async (req, res) => {

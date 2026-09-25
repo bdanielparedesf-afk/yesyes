@@ -777,16 +777,16 @@ enum BlogPostStatus {
 }
 
 model BusinessCategory {
-  id          String               @id @default(uuid())
-  code        BusinessCategoryCode @unique
-  name        String
-  description String?
-  icon        String?
-  active      Boolean              @default(true)
-  order       Int                  @default(0)
+  id                  String               @id @default(uuid())
+  code                BusinessCategoryCode @unique
+  name                String
+  description         String?
+  icon                String?
+  active              Boolean              @default(true)
+  order               Int                  @default(0)
   /// Matriz de capacidades por rubro (seed). ADMIN puede modificarla:
   /// es el default de referencia, nunca un limite duro.
-  defaultCapabilities String[]     @default([])
+  defaultCapabilities String[]             @default([])
 
   @@index([active])
   @@index([order])
@@ -794,30 +794,150 @@ model BusinessCategory {
 }
 
 model BusinessTemplate {
-  id           String               @id @default(uuid())
-  category     BusinessCategoryCode
-  code         String               @unique
-  name         String
-  description  String?
-  version      Int                  @default(1)
-  active       Boolean              @default(true)
+  id               String                    @id @default(uuid())
+  category         BusinessCategoryCode
+  code             String                    @unique
+  name             String
+  description      String?
+  version          Int                       @default(1)
+  active           Boolean                   @default(true)
   /// Estilo visual legible ("Editorial", "Premium"...). Nunca se muestra el código.
-  style        String?
+  style            String?
   /// Las plantillas del modelo V3 se marcan legacy: siguen activas, pero la
   /// galería las distingue de las nuevas de V5.
-  legacy       Boolean              @default(false)
-  previewUrl   String?
-  previewImage String?
-  sortOrder    Int                  @default(0)
-  capabilities String[]
-  config       Json?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  businesses   Business[]
+  legacy           Boolean                   @default(false)
+  previewUrl       String?
+  previewImage     String?
+  sortOrder        Int                       @default(0)
+  capabilities     String[]
+  config           Json?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  businesses       Business[]
+  /// Versiones inmutables del manifest V2 (Fase 3). Vacio en los 97 legacy.
+  templateVersions BusinessTemplateVersion[]
+  siteInstances    BusinessSiteInstance[]
 
   @@index([category])
   @@index([active])
   @@map("business_templates")
+}
+
+/// YESYES BUSINESS · TEMPLATE ENGINE V2 (Fase 3)
+///
+/// Un `BusinessTemplate` es la ROSTA (compatibilidad V3 +Master Template V2).
+/// Estas tres tablas agregan la arquitectura V2 SIN tocar los 97 templates
+/// legacy ni el enum `BusinessCategoryCode`.
+///
+/// Reglas de versionado:
+///  - Un template maestro NUNCA se edita en silencio. Cada cambio de manifest
+///    crea una fila nueva en `BusinessTemplateVersion` (imutable, con
+///    `manifestVersion` y `templateVersion`).
+///  - Un negocio guarda el `templateVersionId` que eligio. Actualizar el
+///    maestro NO cambia el sitio publicado del cliente sin una migracion
+///    explicita.
+model BusinessTemplateVersion {
+  id              String                 @id @default(uuid())
+  templateId      String
+  template        BusinessTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  /// Version del CONTENIDO del template dentro de su lineage (1, 2, 3...).
+  templateVersion Int
+  /// Version del FORMATO del manifest. Permite migrar sin tocar el diseno.
+  manifestVersion Int                    @default(1)
+  /// Manifest completo y validado en backend. Inmutable una vez creado.
+  manifest        Json
+  /// Descripcion legible del cambio (visible en el historial del sitio).
+  changelog       String?
+  /// Solo las versiones publicadas pueden instanciarse.
+  published       Boolean                @default(false)
+  createdAt       DateTime               @default(now())
+  instances       BusinessSiteInstance[]
+
+  @@unique([templateId, templateVersion])
+  @@index([templateId, published])
+  @@map("business_template_versions")
+}
+
+/// Instancia de sitio = el sitio REAL de un negocio.
+///
+/// Se crea al elegir un Master Template y queda aislada: modificar la
+/// instancia NO toca el template maestro ni a otro negocio. Guarda el
+/// manifest resuelto (con overrides del negocio) y su propio historial de
+/// versiones para que el sitio publicado nunca cambie en silencio.
+model BusinessSiteInstance {
+  id                  String                   @id @default(uuid())
+  businessId          String                   @unique
+  business            Business                 @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  templateId          String
+  template            BusinessTemplate         @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateVersionId   String?
+  templateVersion     BusinessTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
+  /// Version de formato del manifest almacenado en esta instancia.
+  manifestVersion     Int                      @default(1)
+  /// Manifest efectivo del negocio (master + overrides). Fuente del renderer.
+  manifest            Json
+  /// Overrides del negocio sobre el master (contenido, medio, orden).
+  overrides           Json?
+  /// true mientras la instancia se renderiza por la via de compatibilidad V3.
+  legacyCompatibility Boolean                  @default(false)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  revisions           BusinessSiteRevision[]
+
+  @@index([templateId])
+  @@index([templateVersionId])
+  @@map("business_site_instances")
+}
+
+/// Historial append-only de la instancia. Permite deshacer, auditar y detectar
+/// que un sitio publicado cambio de version sin control.
+model BusinessSiteRevision {
+  id              String               @id @default(uuid())
+  instanceId      String
+  instance        BusinessSiteInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  /// Version de formato del manifest en esta revision.
+  manifestVersion Int
+  /// Manifest completo tal como quedo en este momento.
+  manifest        Json
+  reason          String?
+  createdAt       DateTime             @default(now())
+
+  @@index([instanceId, createdAt])
+  @@map("business_site_revisions")
+}
+
+/// MEDIO del negocio (Fase 3 prepara el contrato; Fase 5 implementa upload).
+///
+/// El Template Engine V2 ya consume esta tabla para que los bloques de video
+/// (HeroVideo, VideoGallery) tengan una fuente de datos real y no falsa.
+/// Hasta que Fase 5 active el upload, las filas son opcionales: un bloque de
+/// video sin medio simply cae a su poster/fallback estatico.
+model BusinessMedia {
+  id          String   @id @default(uuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  /// IMAGE o VIDEO. Un unico registro por medio.
+  kind        String
+  url         String
+  /// Imagen de vista previa (obligatoria para VIDEO).
+  posterUrl   String?
+  mimeType    String?
+  width       Int?
+  height      Int?
+  /// Duracion en segundos (solo VIDEO).
+  durationSec Int?
+  /// Texto alternativo. Obligatorio para imagenes.
+  alt         String?
+  title       String?
+  /// Datos libres por tipo (codec, autoplay sugerido, etc).
+  metadata    Json?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([businessId, kind])
+  @@index([businessId, position])
+  @@map("business_media")
 }
 
 model Business {
@@ -877,6 +997,9 @@ model Business {
   subscription            BusinessSubscription?
   paymentEvents           BusinessPaymentEvent[]
   previewTokens           BusinessPreviewToken[]
+  /// Template Engine V2: la instancia de sitio de este negocio (0..1).
+  siteInstance            BusinessSiteInstance?
+  media                   BusinessMedia[]
 
   @@index([ownerId])
   @@index([category])
@@ -905,20 +1028,20 @@ model BusinessMercadoPago {
 }
 
 model MercadoPagoOAuthAttempt {
-  id                   String    @id @default(uuid())
-  stateHash            String    @unique @map("state_hash")
-  businessId           String    @map("business_id")
-  business             Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  userId               String    @map("user_id")
-  user                 User      @relation(fields: [userId], references: [id])
-  codeVerifierHash     String?   @map("code_verifier_hash")
-  codeVerifierEncrypted String?  @map("code_verifier_encrypted")
-  expiresAt            DateTime  @map("expires_at")
-  consumedAt           DateTime? @map("consumed_at")
-  success              Boolean   @default(false)
-  mpUserId             String?   @map("mp_user_id")
-  error                String?   @map("error")
-  createdAt            DateTime  @default(now()) @map("created_at")
+  id                    String    @id @default(uuid())
+  stateHash             String    @unique @map("state_hash")
+  businessId            String    @map("business_id")
+  business              Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId                String    @map("user_id")
+  user                  User      @relation(fields: [userId], references: [id])
+  codeVerifierHash      String?   @map("code_verifier_hash")
+  codeVerifierEncrypted String?   @map("code_verifier_encrypted")
+  expiresAt             DateTime  @map("expires_at")
+  consumedAt            DateTime? @map("consumed_at")
+  success               Boolean   @default(false)
+  mpUserId              String?   @map("mp_user_id")
+  error                 String?   @map("error")
+  createdAt             DateTime  @default(now()) @map("created_at")
 
   @@index([stateHash])
   @@index([businessId])
@@ -947,26 +1070,26 @@ model BusinessService {
 }
 
 model BusinessCatalogItem {
-  id                 String    @id @default(uuid())
-  businessId         String
-  business           Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name               String
-  slug               String
-  shortDescription   String?
-  description        String?   @db.Text
-  price              Float
-  compareAtPrice     Float?
-  currency           String    @default("CLP")
-  image              String?
-  additionalImages   String[]  @default([])
-  category           String?
-  featured           Boolean   @default(false)
-  active             Boolean   @default(true)
-  sortOrder          Int       @default(0)
-  cta                String?
-  metadata           Json?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id               String   @id @default(uuid())
+  businessId       String
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name             String
+  slug             String
+  shortDescription String?
+  description      String?  @db.Text
+  price            Float
+  compareAtPrice   Float?
+  currency         String   @default("CLP")
+  image            String?
+  additionalImages String[] @default([])
+  category         String?
+  featured         Boolean  @default(false)
+  active           Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  cta              String?
+  metadata         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([businessId, slug])
   @@index([businessId, active, sortOrder])
@@ -1106,21 +1229,21 @@ model BusinessCapability {
 /// Plan comercial de YesYes Business. El precio vive AQUI (nunca hardcodeado),
 /// y ADMIN puede editarlo sin tocar codigo.
 model BusinessPlan {
-  id            String                @id @default(uuid())
-  code          String                @unique
+  id            String                 @id @default(uuid())
+  code          String                 @unique
   name          String
   description   String?
   amount        Float
-  currency      String                @default("CLP")
-  frequency     Int                   @default(1)
-  frequencyType SubscriptionFrequency @default(MONTH)
+  currency      String                 @default("CLP")
+  frequency     Int                    @default(1)
+  frequencyType SubscriptionFrequency  @default(MONTH)
   /// Caracteristicas mostradas en la pagina de pago (copy del plan).
-  features      String[]              @default([])
-  trialDays     Int                   @default(0)
-  active        Boolean               @default(true)
-  order         Int                   @default(0)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  features      String[]               @default([])
+  trialDays     Int                    @default(0)
+  active        Boolean                @default(true)
+  order         Int                    @default(0)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
   subscriptions BusinessSubscription[]
 
   @@index([active])
@@ -1130,30 +1253,30 @@ model BusinessPlan {
 /// Suscripcion mensual del negocio a YesYes (proveedor: Mercado Pago).
 /// Una sola suscripcion por negocio: evita duplicados por webhooks repetidos.
 model BusinessSubscription {
-  id                     String                @id @default(uuid())
-  businessId             String                @unique
-  business               Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  id                     String                 @id @default(uuid())
+  businessId             String                 @unique
+  business               Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
   planId                 String
-  plan                   BusinessPlan          @relation(fields: [planId], references: [id])
-  provider               String                @default("MERCADOPAGO")
-  providerSubscriptionId String?               @unique
+  plan                   BusinessPlan           @relation(fields: [planId], references: [id])
+  provider               String                 @default("MERCADOPAGO")
+  providerSubscriptionId String?                @unique
   providerPlanId         String?
-  status                 SubscriptionStatus    @default(NONE)
+  status                 SubscriptionStatus     @default(NONE)
   amount                 Float
-  currency               String                @default("CLP")
-  frequency              Int                   @default(1)
-  frequencyType          SubscriptionFrequency @default(MONTH)
+  currency               String                 @default("CLP")
+  frequency              Int                    @default(1)
+  frequencyType          SubscriptionFrequency  @default(MONTH)
   currentPeriodStart     DateTime?
   currentPeriodEnd       DateTime?
   nextPaymentAt          DateTime?
   graceUntil             DateTime?
-  cancelAtPeriodEnd      Boolean               @default(false)
+  cancelAtPeriodEnd      Boolean                @default(false)
   activatedAt            DateTime?
   cancelledAt            DateTime?
   lastPaymentAt          DateTime?
   lastEventAt            DateTime?
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
   paymentEvents          BusinessPaymentEvent[]
 
   @@index([businessId])

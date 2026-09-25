@@ -1,4 +1,4 @@
-import api from '@/lib/axios';
+﻿import api from '@/lib/axios';
 
 export interface BusinessSubscriptionSummary {
   id: string;
@@ -53,13 +53,13 @@ export async function getPublicBusinessPlan() {
   return data.plan as { name: string; amount: number; currency: string; frequency: number; frequencyType: string; features: string[] } | null;
 }
 
-/** Taxonomía pública de rubros (grupos + categorías canónicas, sin duplicados). */
+/** TaxonomÃ­a pÃºblica de rubros (grupos + categorÃ­as canÃ³nicas, sin duplicados). */
 export async function getBusinessTaxonomy() {
   const { data } = await api.get('/public/businesses/taxonomy');
   return data.groups as { group: { key: string; label: string; description: string }; categories: { code: string; label: string; description: string; cta: string }[] }[];
 }
 
-/** Galería de diseños de un rubro: nombre, estilo y funciones en lenguaje humano. */
+/** GalerÃ­a de diseÃ±os de un rubro: nombre, estilo y funciones en lenguaje humano. */
 export async function getPublicTemplates(category?: string) {
   const { data } = await api.get('/public/businesses/templates', { params: category ? { category } : {} });
   return data.templates as { id: string; code: string; category: string; label: string; style: string; legacy: boolean; previewImage?: string | null; functions: string[] }[];
@@ -145,6 +145,76 @@ export async function getBusinessCapabilities(id: string) {
   const { data } = await api.get(`/businesses/${id}/capabilities`);
   return data as { enabled: string[]; available: string[]; sections: any[]; catalog: any[] };
 }
+
+/**
+ * DISEÃ‘O Y VARIANTES (Fase 4.1).
+ *
+ * Estas llamadas son lo que convierte el editor en un constructor visual: el
+ * usuario puede cambiar de diseÃ±o, cambiar la variante de una secciÃ³n y
+ * agregar/quitar/reordenar, sin salir de la interfaz ni editar JSON.
+ */
+
+/** CatÃ¡logo de diseÃ±os del rubro, con nombres legibles y sin cÃ³digos. */
+export async function getBusinessDesigns(id: string) {
+  const { data } = await api.get(`/business/${id}/designs`);
+  return data as {
+    category: string;
+    categoryLabel: string;
+    designs: Array<{
+      id: string;
+      templateId: string;
+      label: string;
+      styleLabel: string;
+      description: string;
+      layout: string;
+      sections: Array<{ id: string; label: string; blocks: Array<{ block: string; label: string; variants: Array<{ id: string; label: string }> }> }>;
+    }>;
+  };
+}
+
+/** Manifest actual del negocio (borrador). */
+export async function getBusinessManifest(id: string) {
+  const { data } = await api.get(`/business/${id}/manifest`);
+  return (data as { manifest: any }).manifest;
+}
+
+/** Cambia el diseÃ±o global conservando el contenido. */
+export async function applyBusinessDesign(id: string, templateId: string) {
+  const { data } = await api.post(`/business/${id}/design`, { templateId });
+  return data as { manifest: any; design: { id: string; label: string } };
+}
+
+/** Vista previa de un diseÃ±o SIN aplicarlo: cancelar no cambia nada. */
+export async function previewBusinessDesign(id: string, templateId: string) {
+  const { data } = await api.post(`/business/${id}/design/preview`, { templateId });
+  return data as { manifest: any; design: { id: string; label: string } };
+}
+
+/** Cambia la variante de un bloque. El contenido nunca se toca. */
+export async function setBusinessBlockVariant(id: string, instanceId: string, variant: string) {
+  const { data } = await api.put(`/business/${id}/block/${instanceId}/variant`, { variant });
+  return (data as { manifest: any }).manifest;
+}
+
+/** Secciones que este rubro puede agregar, con sus variantes. */
+export async function getAddableSections(id: string) {
+  const { data } = await api.get(`/business/${id}/addable-sections`);
+  return data as {
+    sections: Array<{ capability: string; label: string; block: string; blockLabel: string; variants: Array<{ id: string; label: string }> }>;
+  };
+}
+
+/** Agrega una secciÃ³n al manifest. Falla explÃ­citamente si ya existe. */
+export async function addBusinessSection(id: string, capability: string, variant?: string) {
+  const { data } = await api.post(`/business/${id}/sections`, { capability, variant });
+  return (data as { manifest: any }).manifest;
+}
+
+/** Reordena, oculta, quita o duplica secciones. */
+export async function updateBusinessSections(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.put(`/business/${id}/sections`, payload);
+  return (data as { manifest: any }).manifest;
+}
 export async function saveBusinessCapabilities(id: string, sections: Array<{ id: string; enabled: boolean; order: number }>) {
   const { data } = await api.put(`/businesses/${id}/capabilities`, { sections });
   return data as { sections: any[]; available: string[]; catalog: any[] };
@@ -161,7 +231,7 @@ export async function pauseBusinessPage(id: string, reason = 'owner') {
 }
 
 
-/** Reemplaza la galería completa (el backend borra y recrea). */
+/** Reemplaza la galerÃ­a completa (el backend borra y recrea). */
 export async function saveGallery(businessId: string, images: { url: string; alt?: string | null }[]) {
   const { data } = await api.put(`/businesses/${businessId}/gallery`, { images });
   return data.gallery as any[];
@@ -233,7 +303,7 @@ export async function deleteService(businessId: string, serviceId: string) {
   return data as { deleted: boolean };
 }
 
-// Catálogo propio del Business. No usa Product, Category ni carrito de la tienda.
+// CatÃ¡logo propio del Business. No usa Product, Category ni carrito de la tienda.
 export async function listBusinessProducts(businessId: string) {
   const { data } = await api.get(`/businesses/${businessId}/products`);
   return data.products as any[];
@@ -312,3 +382,4 @@ export async function getBusinessStats(businessId: string) {
     };
   };
 }
+

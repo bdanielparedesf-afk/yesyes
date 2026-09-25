@@ -3,6 +3,7 @@ import { getCategoryComposition, isSpecializedCategory, resolveOrderedSections }
 import { buildWaLink } from '@/services/business';
 import { categoryLabel, sectionLabel } from './businessLabels';
 import { ContactSection } from './components/BusinessSections';
+import { TemplateEngineV2, type ManifestLike } from './engine/TemplateEngineV2';
 
 function isDedicatedCode(value?: string | null): boolean {
   return hasDedicatedTemplate(value);
@@ -40,6 +41,26 @@ function EditorialModules({ business, testimonials, team, promotions, faqs, book
 
 const INDUSTRY_CODES = new Set(['FOOD_01','BOUTIQUE_01','PHOTO_01','BEAUTY_01','DETAILING_01','CLEANING_01','MECHANIC_01','TUTORING_01','CONSTRUCTION_01','CAFE_01','NAILS_01','PETS_01','FITNESS_01','AUTO_01','PRO_01']);
 
+/**
+ * TEMPLATE ENGINE V2 (Fases 3 y 4.1).
+ *
+ * Este es el ÚNICO punto donde entra el manifest. El resto del archivo es
+ * la vía de compatibilidad V3, que solo se usa si el negocio no tiene
+ * instancia (sitios antiguos creados antes del motor).
+ *
+ * Se compone por V2 cuando hay un manifest NO legacy con secciones. El
+ * manifest llega por `business.siteInstance.manifest` tanto en el editor
+ * (borrador), en la vista previa y en la página pública (revisión
+ * publicada): los tres caminos usan EXACTAMENTE este renderer.
+ */
+function engineV2Manifest(business: any): ManifestLike | null {
+  const manifest = (business as any)?.siteInstance?.manifest as ManifestLike | null | undefined;
+  if (!manifest || typeof manifest !== 'object') return null;
+  if (manifest.legacy === true) return null;
+  if (!Array.isArray(manifest.sections) || manifest.sections.length === 0) return null;
+  return manifest;
+}
+
 export default function BusinessPageRenderer(props: TemplateProps) {
   const composition = getCategoryComposition(props.business?.category);
   const configuredSections = props.business?.visual?.sections;
@@ -50,6 +71,30 @@ export default function BusinessPageRenderer(props: TemplateProps) {
   const dedicated = isDedicatedCode(templateCode);
   const resolvedTemplate = normalizedTemplateCode === 'FLOWERS_01' ? 'Flowers01' : normalizedTemplateCode === 'FOOD_01' ? 'Restaurant01' : normalizedTemplateCode || 'Generic';
   const rendererData = { 'data-business-template': templateCode || 'generic', 'data-business-template-normalized': normalizedTemplateCode || 'generic', 'data-business-resolved-template': resolvedTemplate, 'data-business-dedicated': String(dedicated) };
+  // TEMPLATE ENGINE V2: si el negocio tiene un manifest V2 real, se compone
+  // con el motor. Si no, se sigue por la vía V3 de siempre (sin cambios).
+  const v2Manifest = engineV2Manifest(props.business);
+  if (v2Manifest) {
+    const v2 = (
+      <TemplateEngineV2
+        manifest={v2Manifest}
+        business={props.business}
+        services={props.services || []}
+        products={props.products || []}
+        properties={props.properties || []}
+        gallery={props.gallery || []}
+        testimonials={props.testimonials || []}
+        faqs={props.faqs || []}
+        promotions={props.promotions || []}
+        team={props.team || []}
+        bookingSlots={props.bookingSlots || []}
+        media={(props.business as any)?.media || []}
+        mobile="stack"
+        preview={props.preview}
+      />
+    );
+    return <div {...rendererData} data-business-renderer="v2">{v2}</div>;
+  }
   if (hasDedicatedTemplate(templateCode)) {
     const saved = Array.isArray(configuredSections) ? configuredSections : [];
     const enabled = new Set(saved.length ? saved.filter((s: any) => s.enabled !== false).map((s: any) => s.id) : ['HERO','SERVICES','PRODUCTS','CATALOG','GALLERY','PORTFOLIO','BEFORE_AFTER','PROPERTIES','TESTIMONIALS','TEAM','PROMOTIONS','FAQ','BOOKING','CONTACT','CTA']);

@@ -67,6 +67,9 @@ router.get('/preview/:slug', async (req: AuthRequest, res) => {
     where,
     include: {
       template: { select: { code: true, name: true, category: true, capabilities: true } },
+      // El manifest V2 del negocio: es lo que compone el renderer único en la
+      // vista previa, con exactamente los mismos bloques que la página pública.
+      siteInstance: { select: { manifest: true, manifestVersion: true, legacyCompatibility: true } },
       services: { orderBy: { order: 'asc' } },
       gallery: { orderBy: { position: 'asc' } },
       properties: { include: { images: { orderBy: { position: 'asc' } } }, orderBy: { createdAt: 'desc' } },
@@ -150,7 +153,15 @@ router.get('/:id/billing', requireBusinessOwner, async (req: AuthRequest, res) =
 router.get('/:id', requireBusinessOwner, async (req: AuthRequest, res) => {
   const b = await prisma.business.findFirst({
     where: ownerWhere(req, String(req.params.id)),
-    include: { template: true, services: { orderBy: { order: 'asc' } }, gallery: { orderBy: { position: 'asc' } }, properties: { include: { images: { orderBy: { position: 'asc' } } } } },
+    include: {
+      template: true,
+      services: { orderBy: { order: 'asc' } },
+      gallery: { orderBy: { position: 'asc' } },
+      properties: { include: { images: { orderBy: { position: 'asc' } } } },
+      // La instancia de sitio es el manifest que compone el renderer. Sin esto
+      // el editor no podría cambiar diseño, variantes ni secciones.
+      siteInstance: { select: { manifest: true, manifestVersion: true, legacyCompatibility: true, updatedAt: true } },
+    },
   });
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   res.json({ business: b, completeness: businessCompleteness(b) });

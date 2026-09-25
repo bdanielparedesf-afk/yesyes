@@ -1,4 +1,5 @@
 import { ALL_BUSINESS_CATEGORY_CODES, categoryDef, BUSINESS_CATEGORY_CODES } from './taxonomy';
+import { buildWaLink } from '@/services/business';
 
 /**
  * Labels visibles centralizados. Las categorías NO se redefinen aquí: viven en
@@ -37,6 +38,54 @@ export const CATEGORY_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
 
 
 export const categoryLabel = (code?: string | null) => CATEGORY_LABELS[String(code || '').toUpperCase()] || 'Negocio';
+/**
+ * CTA DEL NEGOCIO — FUENTE ÚNICA (Fase 4.1, corrección del bug reportado).
+ *
+ * Antes, el texto del botón se leía de `industryComposition`, que trae un
+ * valor HARDCODEADO por rubro ("Reservar mesa", "Pedir ahora"...). El usuario
+ * escribía "Agendar hora" en el editor y la página mostraba "Reservar mesa",
+ * en todos los sitios y a la vez.
+ *
+ * Regla de la fase: si el usuario lo configuró, se respeta SIEMPRE.
+ * La prioridad es, de mayor a menor:
+ *   1. `business.cta.primaryLabel`   → lo que el usuario escribió
+ *   2. texto del bloque en el manifest
+ *   3. etiqueta sugerida del rubro
+ * Nunca se invierte el orden.
+ */
+export function resolveBusinessCta(
+  business: any,
+  options: { blockLabel?: unknown; fallback?: string } = {},
+): string {
+  const configured = business?.cta;
+  const primary = typeof configured === 'object' && configured ? configured.primaryLabel : undefined;
+  const fromBlock = typeof options.blockLabel === 'string' ? options.blockLabel.trim() : '';
+  const candidate = String(primary || '').trim();
+  if (candidate) return candidate;
+  if (fromBlock) return fromBlock;
+  return String(options.fallback || 'Contactar por WhatsApp').trim() || 'Contactar por WhatsApp';
+}
+
+/** URL de la acción principal del CTA, según lo configurado y lo disponible. */
+export function resolveCtaHref(business: any, action?: unknown): string {
+  const configured = business?.cta && typeof business.cta === 'object' ? business.cta : {};
+  const requested = String(action || configured.primaryAction || 'whatsapp').toLowerCase();
+  if (requested === 'call' && business?.phone) return `tel:${business.phone}`;
+  if (requested === 'email' && business?.email) return `mailto:${business.email}`;
+  if (requested === 'map' && business?.mapsUrl) return business.mapsUrl;
+  const href = typeof configured.primaryHref === 'string' ? configured.primaryHref : '';
+  if (requested === 'link' && href) return href;
+  if (requested === 'booking' && business?.whatsapp) {
+    return buildWaLink(business.whatsapp, `Hola ${business.name || ''}, quiero reservar una hora.`);
+  }
+  if (requested === 'lead' && business?.whatsapp) {
+    return buildWaLink(business.whatsapp, `Hola ${business.name || ''}, tengo una consulta.`);
+  }
+  if (business?.whatsapp) return buildWaLink(business.whatsapp, `Hola ${business.name || ''}.`);
+  if (business?.phone) return `tel:${business.phone}`;
+  if (business?.email) return `mailto:${business.email}`;
+  return href;
+}
 export const categoryDescription = (code?: string | null) => CATEGORY_DESCRIPTIONS[String(code || '').toUpperCase()] || 'Una página hecha para presentar y crecer tu negocio.';
 export const sectionLabel = (id: string) => SECTION_LABELS[id] || 'Sección';
 export const statusLabel = (status: string) => STATUS_LABELS[status] || 'En revisión';

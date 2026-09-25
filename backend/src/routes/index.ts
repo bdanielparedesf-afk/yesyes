@@ -24,6 +24,8 @@ import aliexpressRoutes from './aliexpress.routes';
 import businessRoutes from './business.routes';
 import publicBusinessRoutes from './public-business.routes';
 import businessSubscriptionRoutes from './business-subscription.routes';
+import templateEngineRoutes from './template-engine.routes';
+import designRoutes from './design.routes';
 import mpOAuthRoutes from './mp-oauth.routes';
 const router = Router();
 
@@ -34,6 +36,13 @@ router.use('/auth', authRoutes);
 router.use('/businesses', mpOAuthRoutes);
 router.use('/businesses', businessRoutes);
 router.use('/business', businessSubscriptionRoutes);
+// TEMPLATE ENGINE V2 (Fase 3). Montado aparte de `business.routes` para no
+// tocar ninguna ruta existente (compatibilidad V3 intacta).
+router.use('/template-engine', templateEngineRoutes);
+// DISEÑO Y VARIANTES (Fase 4.1). Permiten cambiar de diseño, cambiar la
+// variante de una sección y agregar/quitar/reordenar, todo sobre el manifest
+// con validación de backend y sin perder el contenido configurado.
+router.use('/business', designRoutes);
 router.use('/public/businesses', publicBusinessRoutes);
 // Callback OAuth: /api/mercadopago/oauth/callback (redirect_uri registrada en MP)
 router.use('/mercadopago', mpOAuthRoutes);
