@@ -1,3 +1,5 @@
+import { getIndustryComposition } from '../industryComposition';
+import { thematicAssets } from '../assets';
 import { buildWaLink, trackEvent } from '@/services/business';
 import { clp, productImage, waMessage, type TemplateProps } from '../shared/templateUtils';
 import WhatsAppButton from '../shared/WhatsAppButton';
@@ -13,13 +15,20 @@ const OCCASIONS = [
 /** FLOWERS_01 — Ocasiones: filtros por evento como eje + catálogo. */
 export default function Flowers01({ business, products, gallery }: TemplateProps) {
   const slug = business?.slug;
+  const composition = getIndustryComposition(business?.template?.code, business?.category);
+  const hero = business?.cover || thematicAssets(composition.category)[0];
+  const waHref = buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${composition.cta.toLowerCase()}.`);
   return (
     <div className="space-y-12">
-      <header className="text-center bg-green-50 -mx-4 px-4 py-10 rounded-b-3xl">
-        <p className="uppercase tracking-[0.35em] text-xs text-green-700">Florería</p>
-        <h1 className="text-4xl sm:text-5xl font-extrabold mt-2 text-green-950">{business?.name}</h1>
-        <div className="mt-3 flex justify-center">
-          <Socials socials={business?.socials} />
+      <header className="relative -mx-4 overflow-hidden px-4 pb-16 pt-14 text-white sm:min-h-[68vh] sm:pb-20">
+        <img src={hero?.src} alt={hero?.alt || `Arreglo floral de ${business?.name}`} className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent" />
+        <div className="relative mx-auto max-w-5xl">
+          <p className="uppercase tracking-[0.35em] text-xs text-white/75">Floristería editorial</p>
+          <h1 className="mt-3 max-w-3xl font-serif text-5xl font-normal leading-[.95] sm:text-7xl">{business?.name}</h1>
+          <p className="mt-5 max-w-xl text-lg text-white/85">{business?.description}</p>
+          <a href={waHref} target="_blank" rel="noreferrer" onClick={() => trackEvent(slug, 'WHATSAPP_CLICK')} className="mt-7 inline-block rounded-full bg-white px-7 py-3 font-bold text-stone-900 focus-visible:outline focus-visible:ring-2">{composition.cta}</a>
+          <div className="mt-5"><Socials socials={business?.socials} /></div>
         </div>
       </header>
 

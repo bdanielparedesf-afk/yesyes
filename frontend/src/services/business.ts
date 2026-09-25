@@ -12,6 +12,31 @@ export interface Business {
   visual?: { sections?: Array<{ id: string; enabled: boolean; order: number }> } | null;
 }
 
+type PublicBusinessCollections = {
+  services?: any[];
+  products?: any[];
+  properties?: any[];
+  gallery?: any[];
+  testimonials?: any[];
+  faqs?: any[];
+  promotions?: any[];
+  team?: any[];
+  bookingSlots?: any[];
+};
+type PublicBusinessPagePayload = Business & PublicBusinessCollections;
+type PublicBusinessPage = {
+  business: Business;
+  services: any[];
+  products: any[];
+  properties: any[];
+  gallery: any[];
+  testimonials: any[];
+  faqs: any[];
+  promotions: any[];
+  team: any[];
+  bookingSlots: any[];
+};
+
 export function buildWaLink(phone: string | null | undefined, message: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   let n = digits;
@@ -26,9 +51,18 @@ export async function trackEvent(slug: string, event: string) {
   try { await api.post(`/public/businesses/${slug}/track`, { event }); } catch { /* noop */ }
 }
 
-export async function getPublicPage(slug: string) {
+export async function getPublicPage(slug: string): Promise<PublicBusinessPage> {
   const { data } = await api.get(`/public/businesses/${slug}/page`);
-  return data as { business: Business; services: any[]; products: any[]; properties: any[]; gallery: any[]; testimonials: any[]; faqs: any[]; promotions: any[]; team: any[]; bookingSlots: any[] };
+  const {
+    services = [], products = [], properties = [], gallery = [],
+    testimonials = [], faqs = [], promotions = [], team = [], bookingSlots = [],
+    ...business
+  } = data as PublicBusinessPagePayload;
+  return {
+    business,
+    services, products, properties, gallery,
+    testimonials, faqs, promotions, team, bookingSlots,
+  };
 }
 export async function getPublicBusiness(slug: string) {
   const { data } = await api.get(`/public/businesses/${slug}`);

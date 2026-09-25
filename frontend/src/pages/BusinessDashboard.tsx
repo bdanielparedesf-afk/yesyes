@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/useAuthStore';
 import api from '@/lib/axios';
-import { myBusinesses, createBusiness, getBusiness } from '@/services/business';
+import { myBusinesses, createBusiness, getBusiness, deleteBusiness } from '@/services/business';
 import DashboardNav, { type DashboardSection } from '@/business/dashboard/DashboardNav';
 import ConfigSection, { CATS } from '@/business/dashboard/ConfigSection';
 import ServicesSection from '@/business/dashboard/ServicesSection';
@@ -55,7 +55,7 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
     }
     setLoadingList(true);
     myBusinesses()
-      .then(setList)
+      .then((items) => setList(items.filter((item) => item.status !== 'ARCHIVED')))
       .catch(() => setMsg('No se pudieron cargar tus negocios'))
       .finally(() => setLoadingList(false));
   }, [status]);
@@ -89,7 +89,7 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
   }, [selectedId, status]);
 
   const selectBusiness = (id: string, target?: string) => {
-    navigate(`${target || '/negocio/configuracion'}?id=${id}`);
+    navigate(`${target || '/negocio/diseno'}?id=${id}`);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -100,13 +100,25 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
       const b = await createBusiness({ name: name.trim(), category });
       setList((l) => [b, ...l]);
       setName('');
-      setMsg(`Negocio "${b.name}" creado. Ahora completa su configuración.`);
       selectBusiness(b.id);
     } catch (err: any) {
       setMsg(err?.response?.data?.message || 'Error creando el negocio');
     } finally {
       setBusy(false);
     }
+  };
+
+  const quickDelete = async (id: string, businessName: string) => {
+    if (!window.confirm(`¿Eliminar “${businessName}”? Desaparecerá del panel y de la web. Los datos quedan archivados de forma segura.`)) return;
+    setBusy(true);
+    try {
+      await deleteBusiness(id);
+      setList((items) => items.filter((item) => item.id !== id));
+      if (selectedId === id) { setDetail(null); navigate('/negocio'); }
+      setMsg('Negocio eliminado del panel.');
+    } catch (err: any) {
+      setMsg(err?.response?.data?.message || 'No se pudo eliminar el negocio.');
+    } finally { setBusy(false); }
   };
 
   const quickStatus = async (id: string, action: 'publish' | 'pause') => {
@@ -155,6 +167,8 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
             <div className="flex flex-wrap gap-2 text-sm">
               <button type="button" className="underline" onClick={() => selectBusiness(b.id)}>Editar</button>
               <a className="underline" href={`/mi-negocio/${b.slug}?preview=true`} target="_blank" rel="noreferrer">Vista previa</a>
+               <button type="button" className="underline text-red-600" disabled={busy} onClick={() => quickDelete(b.id, b.name)}>Eliminar</button>
+
               {b.status !== 'PUBLISHED' && b.status !== 'ARCHIVED' && (
                 <button type="button" className="underline text-green-700" disabled={busy}
                   onClick={() => quickStatus(b.id, 'publish')}>Publicar</button>

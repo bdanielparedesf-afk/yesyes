@@ -1,4 +1,5 @@
 import { lazy, type ComponentType } from 'react';
+import { isSignatureTemplate } from './SignatureTemplate';
 
 export type TemplateProps = { business: any; services: any[]; products: any[]; properties: any[]; gallery: any[]; testimonials?: any[]; faqs?: any[]; promotions?: any[]; team?: any[]; bookingSlots?: any[]; preview?: boolean };
 
@@ -101,6 +102,7 @@ const REAL_ESTATE_02 = lazy(() => import('./realestate/RealEstate02'));
 const REAL_ESTATE_03 = lazy(() => import('./realestate/RealEstate03'));
 const REAL_ESTATE_04 = lazy(() => import('./realestate/RealEstate04'));
 const INDUSTRY_TEMPLATES = lazy(() => import('./IndustryTemplates'));
+const SIGNATURE_TEMPLATE = lazy(() => import('./SignatureTemplate'));
 
 const DEDICATED_TEMPLATE_CODES = new Set([
   'HAIR_01', 'HAIR_02', 'HAIR_03', 'BARBER_01',
@@ -118,10 +120,11 @@ function normalizeTemplateCode(code?: string | null): string { return String(cod
 export function getNormalizedTemplateCode(code?: string | null): string { return TEMPLATE_ALIASES[normalizeTemplateCode(code)] || normalizeTemplateCode(code); }
 
 export function hasDedicatedTemplate(code?: string | null): boolean {
-  return DEDICATED_TEMPLATE_CODES.has(getNormalizedTemplateCode(code));
+  return DEDICATED_TEMPLATE_CODES.has(getNormalizedTemplateCode(code)) || isSignatureTemplate(code);
 }
 
 export function resolveTemplate(code?: string | null): AnyTemplate {
+  if (isSignatureTemplate(code)) return SIGNATURE_TEMPLATE;
   switch (getNormalizedTemplateCode(code)) {
     case 'HAIR_01': return HAIR_01;
     case 'HAIR_02': return HAIR_02;
@@ -165,4 +168,4 @@ export function hasRenderableSection(business: any, id: string): boolean {
   return section ? section.enabled !== false : true;
 }
 
-export { Generic as GenericTemplate };
+export { Generic as GenericTemplate, isSignatureTemplate };

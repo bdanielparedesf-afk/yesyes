@@ -64,6 +64,19 @@ const TEMPLATES: { code: string; category: any; name: string; capabilities: stri
   { code: 'PRO_01', category: 'PRO', name: 'Profesional de Confianza', capabilities: ['SERVICES', 'TEAM', 'PORTFOLIO', 'TESTIMONIALS', 'FAQ', 'BOOKING', 'CONTACT', 'WHATSAPP'] },
 ];
 
+// Añade tres alternativas coherentes con cada rubro. El nombre comunica la dirección visual.
+const SIGNATURE_CATEGORIES = ['FLOWERS', 'BARBER', 'HAIR', 'BAKERY', 'FOOD', 'CAFE', 'BOUTIQUE', 'FURNITURE', 'REAL_ESTATE', 'MECHANIC', 'PHONE', 'CLEANING', 'PHOTO', 'TUTORING', 'CONSTRUCTION', 'BEAUTY', 'NAILS', 'PET', 'FITNESS', 'AUTO', 'PRO', 'DETAILING'];
+const SIGNATURE_VARIANTS = [
+  { suffix: 'EDITORIAL', name: 'Esencial' },
+  { suffix: 'ATLAS', name: 'Dirección' },
+  { suffix: 'NATIVE', name: 'Cercano' },
+];
+for (const category of SIGNATURE_CATEGORIES) {
+  for (const variant of SIGNATURE_VARIANTS) {
+    TEMPLATES.push({ code: `${category}_SIGNATURE_${variant.suffix}`, category, name: `${CATEGORIES.find((item) => item.code === category)?.name || category} ${variant.name}`, capabilities: ['HERO', 'SERVICES', 'PRODUCTS', 'CATALOG', 'GALLERY', 'PORTFOLIO', 'PROPERTIES', 'CONTACT', 'WHATSAPP'] });
+  }
+}
+
 async function main() {
   for (const c of CATEGORIES) {
     await prisma.businessCategory.upsert({ where: { code: c.code }, update: { name: c.name, order: c.order, active: true, defaultCapabilities: CATEGORY_DEFAULTS[c.code] || [] }, create: { code: c.code, name: c.name, order: c.order, active: true, defaultCapabilities: CATEGORY_DEFAULTS[c.code] || [] } });

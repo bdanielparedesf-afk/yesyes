@@ -1,3 +1,6 @@
+import { getIndustryComposition } from '../industryComposition';
+import { thematicAssets } from '../assets';
+import { buildWaLink } from '@/services/business';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BedDouble, Bath, Car, Maximize } from 'lucide-react';
@@ -46,6 +49,9 @@ function Card({ p, onOpen }: { p: any; onOpen: () => void }) {
 /** REAL_ESTATE_01 — Clásico: hero + sidebar de filtros sticky + grid de propiedades. */
 export default function RealEstate01({ business, properties }: TemplateProps) {
   const slug = business?.slug;
+  const composition = getIndustryComposition(business?.template?.code, business?.category);
+  const hero = business?.cover || thematicAssets(composition.category)[0];
+  const waHref = buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${composition.cta.toLowerCase()}.`);
   const navigate = useNavigate();
   const [op, setOp] = useState('');
   const [type, setType] = useState('');
@@ -59,10 +65,15 @@ export default function RealEstate01({ business, properties }: TemplateProps) {
 
   return (
     <div className="space-y-8">
-      <section className="-mx-4 -mt-6 bg-blue-950 text-white px-4 py-12 text-center">
-        <p className="uppercase tracking-[0.35em] text-xs text-blue-300">Inmobiliaria</p>
-        <h1 className="text-4xl sm:text-5xl font-extrabold mt-2">{business?.name}</h1>
-        <p className="mt-3 text-blue-200">{business?.city || 'Chile'} · Venta y arriendo</p>
+      <section className="relative -mx-4 -mt-6 min-h-[68vh] overflow-hidden bg-stone-950 px-4 py-16 text-white sm:flex sm:items-center">
+        <img src={hero?.src} alt={hero?.alt || `Inmobiliaria ${business?.name}`} className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-white/95 via-white/75 to-white/10" />
+        <div className="relative mx-auto w-full max-w-5xl text-right">
+          <p className="text-xs uppercase tracking-[.35em] text-stone-600">Arquitectura y propiedades</p>
+          <h1 className="mt-3 text-4xl font-light tracking-tight text-stone-950 sm:text-6xl">{business?.name}</h1>
+          <p className="mt-4 text-stone-700">{business?.city || 'Chile'} · Venta y arriendo</p>
+          <a href={waHref} target="_blank" rel="noreferrer" className="mt-6 inline-block bg-stone-950 px-7 py-3 text-sm font-bold text-white focus-visible:outline focus-visible:ring-2">{composition.cta}</a>
+        </div>
       </section>
 
       <div className="grid lg:grid-cols-4 gap-6 items-start">

@@ -69,3 +69,26 @@ test('assets temáticos resuelven todos los grupos canónicos', () => {
   assert.ok(assets.includes('onError') === false);
   assert.ok(read('business/components/index.tsx').includes('onError'));
 });
+
+test('diseños firma cubren cada rubro y preservan la vista previa', () => {
+  const signature = read('business/SignatureTemplate.tsx');
+  const registry = read('business/registry.tsx');
+  const seed = fs.readFileSync(path.join(root, '..', '..', 'backend', 'prisma', 'seed-business.ts'), 'utf8');
+  assert.ok(signature.includes('signaturePrefix'));
+  assert.ok(signature.includes('thematicAssets(category)'));
+  assert.ok(registry.includes('isSignatureTemplate(code)'));
+  assert.ok(seed.includes('SIGNATURE_VARIANTS'));
+  assert.ok(seed.includes('SIGNATURE_CATEGORIES'));
+  assert.ok(read('business/dashboard/DesignSection.tsx').includes('templateCode'));
+  assert.ok(read('pages/MiNegocio.tsx').includes('event.data.templateCode'));
+});
+
+test('las 15 composiciones canónicas controlan navegación, hero, CTA y tratamiento visual', () => {
+  const composition = read('business/industryComposition.ts');
+  for (const code of ['FLOWERS_01','BARBER_01','HAIR_01','BEAUTY_01','CAFE_01','FOOD_01','BAKERY_01','NAILS_01','PETS_01','FITNESS_01','AUTO_01','REAL_ESTATE_01','BOUTIQUE_01','PHOTO_01','PRO_01']) assert.ok(composition.includes(code));
+  for (const field of ['navigation:', 'hero:', 'layout:', 'cards:', 'cta:', 'imageTreatment:', 'mobileBehavior:', 'background:']) assert.ok(composition.includes(field));
+  const shell = read('business/BusinessShell.tsx');
+  assert.ok(shell.includes('getIndustryComposition'));
+  assert.ok(shell.includes('Navegación principal'));
+  assert.ok(shell.includes('Navegación móvil'));
+});

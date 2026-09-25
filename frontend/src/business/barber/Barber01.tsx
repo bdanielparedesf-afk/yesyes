@@ -1,3 +1,5 @@
+import { getIndustryComposition } from '../industryComposition';
+import { thematicAssets } from '../assets';
 import { buildWaLink, trackEvent } from '@/services/business';
 import { clp, waMessage, type TemplateProps } from '../shared/templateUtils';
 import CTABar from '../shared/CTABar';
@@ -12,6 +14,9 @@ const DAY_LABELS: Record<string, string> = {
 /** BARBER_01 — Precios y horarios: tablero oscuro tipo barbershop con lista de precios. */
 export default function Barber01({ business, services, gallery }: TemplateProps) {
   const slug = business?.slug;
+  const composition = getIndustryComposition(business?.template?.code, business?.category);
+  const hero = business?.cover || thematicAssets(composition.category)[0];
+  const waHref = buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${composition.cta.toLowerCase()}.`);
   const hours = business?.hours && typeof business.hours === 'object' ? (business.hours as Record<string, unknown>) : null;
   const hoursRows = hours
     ? Object.entries(hours).map(([k, v]) => [DAY_LABELS[k] || DAY_LABELS[k.charAt(0).toUpperCase() + k.slice(1)] || k, String(v)] as const)
@@ -20,19 +25,15 @@ export default function Barber01({ business, services, gallery }: TemplateProps)
   return (
     <div className="-mx-4 -mt-6 bg-neutral-950 text-white">
       <div className="max-w-5xl mx-auto px-4 py-12 space-y-14">
-        <header className="text-center border-b border-amber-600/40 pb-10">
-          <p className="uppercase tracking-[0.5em] text-xs text-amber-500">Barbería</p>
-          <h1 className="text-5xl sm:text-7xl font-black mt-3 uppercase">{business?.name}</h1>
-          {business?.city && <p className="mt-3 text-neutral-400">{business.city}</p>}
-          <a
-            href={buildWaLink(business?.whatsapp, waMessage(business, 'quiero agendar una cita'))}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => trackEvent(slug, 'WHATSAPP_CLICK')}
-            className="mt-6 inline-block rounded-sm bg-amber-500 text-black font-bold uppercase tracking-wide px-8 py-3 hover:bg-amber-400"
-          >
-            Agendar cita
-          </a>
+        <header className="relative -mx-4 -mt-6 min-h-[68vh] overflow-hidden px-4 pb-12 sm:flex sm:items-end">
+          <img src={hero?.src} alt={hero?.alt || `Barbería ${business?.name}`} className="absolute inset-0 h-full w-full object-cover grayscale" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/20" />
+          <div className="relative mx-auto w-full max-w-5xl border-b border-amber-600/40 pb-10 text-center">
+            <p className="uppercase tracking-[0.5em] text-xs text-amber-500">Barbería</p>
+            <h1 className="mt-3 text-5xl font-black uppercase sm:text-7xl">{business?.name}</h1>
+            {business?.city && <p className="mt-3 text-neutral-300">{business.city}</p>}
+            <a href={waHref} target="_blank" rel="noreferrer" onClick={() => trackEvent(slug, 'WHATSAPP_CLICK')} className="mt-6 inline-block rounded-sm bg-amber-500 px-8 py-3 font-bold uppercase tracking-wide text-black focus-visible:outline focus-visible:ring-2">{composition.cta}</a>
+          </div>
         </header>
 
         <div className="grid md:grid-cols-3 gap-10">

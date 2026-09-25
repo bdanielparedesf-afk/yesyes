@@ -13,7 +13,7 @@ export function BusinessImage({ src, alt, className = '', eager = false, objectP
   const responsiveSet = src.includes('images.unsplash.com/')
     ? [640, 960, 1280].map((width) => `${src}${src.includes('?') ? '&' : '?'}w=${width}`).join(', ')
     : undefined;
-  return <img src={src} srcSet={responsiveSet} sizes={responsiveSet ? '(min-width: 768px) 50vw, 100vw' : undefined} alt={alt} className={className} loading={eager ? 'eager' : 'lazy'} decoding="async" fetchPriority={eager ? 'high' : 'auto'} onError={() => setFailed(true)} style={objectPosition ? { objectPosition } : undefined} />;
+  return <img src={src} srcSet={responsiveSet} sizes={responsiveSet ? '(min-width: 768px) 50vw, 100vw' : undefined} alt={alt} className={className} loading={eager ? 'eager' : 'lazy'} decoding="async" onError={() => setFailed(true)} style={objectPosition ? { objectPosition } : undefined} />;
 }
 export function ResponsiveImage(props: Parameters<typeof BusinessImage>[0]) { return <BusinessImage {...props} />; }
 export function BusinessGallery({ images, className = '' }: { images: Array<{ id?: string; url: string; alt?: string | null }>; className?: string }) { if (!images.length) return null; return <div className={`grid grid-cols-2 gap-2 md:grid-cols-3 ${className}`}>{images.map((image, index) => <BusinessImage key={image.id || `${image.url}-${index}`} src={image.url} alt={image.alt || 'Imagen de la galería'} className="aspect-[4/3] h-full w-full rounded-[calc(var(--biz-radius)*.7)] object-cover" />)}</div>; }

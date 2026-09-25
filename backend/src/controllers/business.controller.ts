@@ -32,14 +32,6 @@ export async function createBusiness(req: AuthRequest, res: Response): Promise<v
     if (req.user!.role === 'CUSTOMER') {
       await tx.user.update({ where: { id: req.user!.id }, data: { role: 'BUSINESS' as any } });
     }
-    const demoLabel = 'Contenido de ejemplo';
-    const productCategories = new Set(['BAKERY', 'FLOWERS', 'FOOD', 'BOUTIQUE', 'FURNITURE', 'PHONE']);
-    if (productCategories.has(String(data.category))) {
-      await tx.businessCatalogItem.create({ data: { businessId: b.id, name: `${demoLabel}: producto editable`, slug: 'contenido-de-ejemplo-producto', shortDescription: 'Reemplaza esta descripción por la información real de tu negocio.', price: 0, currency: 'CLP', active: true, metadata: { demo: true } } });
-    } else {
-      await tx.businessService.create({ data: { businessId: b.id, name: `${demoLabel}: servicio editable`, description: 'Reemplaza este servicio, su precio y duración por los datos reales de tu negocio.', price: 0, active: true } });
-    }
-    await tx.businessFaq.create({ data: { businessId: b.id, question: 'Este es un ejemplo de pregunta frecuente', answer: 'Contenido de ejemplo. Edítalo o elimínalo antes de publicar.', active: true } });
     return b;
   });
   res.status(201).json({ business });

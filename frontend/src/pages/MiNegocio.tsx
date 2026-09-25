@@ -27,7 +27,7 @@ export default function MiNegocio() {
     if (!preview) return;
     const receivePreview = (event: MessageEvent) => {
       if (event.origin !== window.location.origin || event.data?.type !== 'YESYES_BUSINESS_PREVIEW') return;
-      setBusiness((current) => current ? { ...current, visual: { ...current.visual, ...(event.data.visual || {}), sections: event.data.sections || current.visual?.sections } } : current);
+      setBusiness((current) => current ? { ...current, visual: { ...current.visual, ...(event.data.visual || {}), sections: event.data.sections || current.visual?.sections }, template: event.data.templateCode && current.template ? { ...current.template, code: String(event.data.templateCode) } : current.template } : current);
     };
     window.addEventListener('message', receivePreview);
     return () => window.removeEventListener('message', receivePreview);
@@ -35,6 +35,7 @@ export default function MiNegocio() {
 
   useEffect(() => {
     let alive = true;
+    setError('');
     const load = async () => {
       try {
         if (preview) {
@@ -51,8 +52,14 @@ export default function MiNegocio() {
         setProperties(data.properties || []); setGallery(data.gallery || []);
         setContent({ testimonials: data.testimonials || [], faqs: data.faqs || [], promotions: data.promotions || [], team: data.team || [], bookingSlots: data.bookingSlots || [] });
         void trackEvent(slug, 'PAGE_VIEW');
-      } catch {
-        if (alive) setError(preview ? 'No tienes acceso a esta vista previa. Inicia sesión como propietario o administrador.' : 'No encontramos este negocio.');
+      } catch (cause) {
+        if (!alive) return;
+        const status = (cause as any)?.response?.status;
+        setError(status === 401 || status === 403
+          ? 'Inicia sesión como propietario o administrador para abrir esta vista previa.'
+          : status === 404
+            ? (preview ? 'La vista previa no existe o venció.' : 'No encontramos este negocio.')
+            : 'No pudimos conectar con el servicio. Intenta nuevamente.');
       }
     };
     void load();

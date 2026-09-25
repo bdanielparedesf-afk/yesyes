@@ -156,13 +156,13 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
   };
 
   const archive = async () => {
-    if (!window.confirm('¿Archivar este negocio? Dejará de estar visible públicamente (borrado lógico).')) return;
+    if (!window.confirm('¿Eliminar este negocio? Desaparecerá del panel y de la web. Los datos quedarán archivados de forma segura.')) return;
     setBusy(true);
     try {
       await deleteBusiness(businessId);
       navigate('/negocio');
     } catch {
-      setMsg('Error archivando el negocio');
+      setMsg('No se pudo eliminar el negocio');
       setBusy(false);
     }
   };
@@ -244,7 +244,7 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
           {detail?.status === 'DRAFT' && (
             <button type="button" disabled={busy} onClick={() => setStatus('ARCHIVED')}
               className="border rounded-lg px-3 py-1.5 disabled:opacity-50">
-              Archivar
+              Eliminar
             </button>
           )}
         </div>
@@ -421,12 +421,12 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
       {/* Zona de peligro: borrado logico */}
       <section className="bg-white border border-red-200 rounded-xl p-4 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-red-700">Archivar negocio</p>
-          <p className="text-xs text-neutral-500">Borrado lógico: desaparece del público pero conserva tus datos.</p>
+          <p className="text-sm font-semibold text-red-700">Eliminar negocio</p>
+          <p className="text-xs text-neutral-500">El negocio desaparecerá del panel y de la web. Los datos quedan archivados de forma segura.</p>
         </div>
         <button type="button" disabled={busy} onClick={archive}
           className="text-red-700 border border-red-300 rounded-lg px-3 py-1.5 text-sm hover:bg-red-50 disabled:opacity-50">
-          Archivar
+          Eliminar
         </button>
       </section>
     </div>

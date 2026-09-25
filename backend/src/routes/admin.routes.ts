@@ -175,12 +175,7 @@ router.post('/businesses', async (req: AuthRequest, res) => {
   if (templateId && (!template || template.category !== category)) { res.status(400).json({ message: 'Plantilla invalida o incompatible con la categoria' }); return; }
   const slug = await uniqueBusinessSlugFor(name);
   const business = await prisma.$transaction(async (tx) => {
-    const created = await tx.business.create({ data: { ownerId, name: String(name).trim(), slug, category, templateId: templateId || null, status: 'DRAFT' } as any });
-    const productCategories = new Set(['BAKERY', 'FLOWERS', 'FOOD', 'BOUTIQUE', 'FURNITURE', 'PHONE']);
-    if (productCategories.has(String(category))) await tx.businessCatalogItem.create({ data: { businessId: created.id, name: 'Contenido de ejemplo: producto editable', slug: 'contenido-de-ejemplo-producto', shortDescription: 'Reemplaza esta descripción por la información real de tu negocio.', price: 0, currency: 'CLP', metadata: { demo: true } } });
-    else await tx.businessService.create({ data: { businessId: created.id, name: 'Contenido de ejemplo: servicio editable', description: 'Reemplaza este servicio por la información real de tu negocio.', price: 0 } });
-    await tx.businessFaq.create({ data: { businessId: created.id, question: 'Este es un ejemplo de pregunta frecuente', answer: 'Contenido de ejemplo. Edítalo o elimínalo antes de publicar.' } });
-    return created;
+    return tx.business.create({ data: { ownerId, name: String(name).trim(), slug, category, templateId: templateId || null, status: 'DRAFT' } as any });
   });
   res.status(201).json({ business });
 });

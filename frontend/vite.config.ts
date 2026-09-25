@@ -10,6 +10,10 @@ export default defineConfig({
     },
   },
   server: {
+    // QA/CDP usa 127.0.0.1 y el usuario manual usa localhost. Vincular solo a
+    // loopback IPv4 evita depender de cómo Windows resuelva `localhost` (Vite por
+    // defecto escucha únicamente en ::1 en este entorno).
+    host: '127.0.0.1',
     port: 5173,
     proxy: {
       '/api': {

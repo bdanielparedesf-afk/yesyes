@@ -1,3 +1,5 @@
+import { getIndustryComposition } from '../industryComposition';
+import { thematicAssets } from '../assets';
 import { buildWaLink, trackEvent } from '@/services/business';
 import { clp, productImage, waMessage, type TemplateProps } from '../shared/templateUtils';
 import CTABar from '../shared/CTABar';
@@ -7,27 +9,26 @@ import Socials from '../shared/Socials';
 /** HAIR_01 — Hero grande: portada a pantalla completa con overlay + servicios en tarjetas. */
 export default function Hair01({ business, services, products, gallery }: TemplateProps) {
   const slug = business?.slug;
+  const composition = getIndustryComposition(business?.template?.code, business?.category);
+  const hero = business?.cover || thematicAssets(composition.category)[0];
+  const waHref = buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${composition.cta.toLowerCase()}.`);
   return (
     <div className="space-y-12">
       <section className="relative -mx-4 -mt-6 h-[70vh] min-h-[420px] overflow-hidden bg-neutral-900">
-        {business?.cover ? (
-          <img src={business.cover} alt={business?.name} className="absolute inset-0 w-full h-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-900 to-purple-800" />
-        )}
+        <img src={hero?.src} alt={hero?.alt || `Peluquería ${business?.name}`} className="absolute inset-0 w-full h-full object-cover object-[center_35%]" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
         <div className="relative h-full flex flex-col justify-end max-w-5xl mx-auto px-4 pb-10 text-white">
           <p className="uppercase tracking-[0.3em] text-xs text-white/80">Estilo & Color</p>
           <h1 className="text-4xl sm:text-6xl font-extrabold mt-2">{business?.name}</h1>
           {business?.city && <p className="mt-2 text-white/85">{business.city}</p>}
           <a
-            href={buildWaLink(business?.whatsapp, waMessage(business, 'quiero agendar una hora'))}
+            href={waHref}
             target="_blank"
             rel="noreferrer"
             onClick={() => trackEvent(slug, 'WHATSAPP_CLICK')}
             className="mt-5 self-start rounded-full bg-white text-black font-semibold px-7 py-3 hover:bg-fuchsia-100"
           >
-            Agendar por WhatsApp
+            {composition.cta}
           </a>
         </div>
       </section>

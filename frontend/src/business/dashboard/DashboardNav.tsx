@@ -14,13 +14,13 @@ export type DashboardSection =
 
 const ITEMS: { key: DashboardSection; label: string; path: string }[] = [
   { key: 'inicio', label: 'Inicio', path: '/negocio' },
-  { key: 'configuracion', label: 'Configuración', path: '/negocio/configuracion' },
+  { key: 'diseno', label: 'Editar página', path: '/negocio/diseno' },
+  { key: 'configuracion', label: 'Datos y contacto', path: '/negocio/configuracion' },
   { key: 'servicios', label: 'Servicios', path: '/negocio/servicios' },
   { key: 'productos', label: 'Productos', path: '/negocio/productos' },
   { key: 'propiedades', label: 'Propiedades', path: '/negocio/propiedades' },
   { key: 'galeria', label: 'Galería', path: '/negocio/galeria' },
-  { key: 'diseno', label: 'Diseño', path: '/negocio/diseno' },
-  { key: 'contenido', label: 'Contenido', path: '/negocio/contenido' },
+  { key: 'contenido', label: 'Textos y extras', path: '/negocio/contenido' },
   { key: 'reservas', label: 'Reservas', path: '/negocio/reservas' },
   { key: 'leads', label: 'Contactos', path: '/negocio/leads' },
 ];
