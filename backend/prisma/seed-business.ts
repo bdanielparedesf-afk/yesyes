@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { templateStyleOf } from '../src/utils/business-taxonomy';
 
 const prisma = new PrismaClient();
 
@@ -82,10 +83,13 @@ async function main() {
     await prisma.businessCategory.upsert({ where: { code: c.code }, update: { name: c.name, order: c.order, active: true, defaultCapabilities: CATEGORY_DEFAULTS[c.code] || [] }, create: { code: c.code, name: c.name, order: c.order, active: true, defaultCapabilities: CATEGORY_DEFAULTS[c.code] || [] } });
   }
   for (const t of TEMPLATES) {
+    // Fase 2: los diseños actuales son `legacy` a propósito. NO se eliminan ni se
+    // desactivan: siguen disponibles para los negocios V3 ya publicados.
+    const style = templateStyleOf(t.code);
     await prisma.businessTemplate.upsert({
       where: { code: t.code },
-      update: { name: t.name, category: t.category, capabilities: t.capabilities, active: true },
-      create: { code: t.code, name: t.name, category: t.category, capabilities: t.capabilities, active: true },
+      update: { name: t.name, category: t.category, capabilities: t.capabilities, active: true, style },
+      create: { code: t.code, name: t.name, category: t.category, capabilities: t.capabilities, active: true, style, legacy: true },
     });
   }
   console.log(`Business seed OK: ${CATEGORIES.length} categorias, ${TEMPLATES.length} templates`);

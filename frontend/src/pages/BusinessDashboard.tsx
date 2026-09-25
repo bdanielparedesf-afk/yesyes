@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/useAuthStore';
 import api from '@/lib/axios';
-import { myBusinesses, createBusiness, getBusiness, deleteBusiness } from '@/services/business';
+import { myBusinesses, getBusiness, deleteBusiness } from '@/services/business';
 import DashboardNav, { type DashboardSection } from '@/business/dashboard/DashboardNav';
-import ConfigSection, { CATS } from '@/business/dashboard/ConfigSection';
+import ConfigSection from '@/business/dashboard/ConfigSection';
 import ServicesSection from '@/business/dashboard/ServicesSection';
 import ProductsSection from '@/business/dashboard/ProductsSection';
 import PropertiesSection from '@/business/dashboard/PropertiesSection';
@@ -13,8 +13,8 @@ import DesignSection from '@/business/dashboard/DesignSection';
 import LeadsSection from '@/business/dashboard/LeadsSection';
 import ContentSection from '@/business/dashboard/ContentSection';
 import BookingsSection from '@/business/dashboard/BookingsSection';
-import { Building2, Check, Plus } from 'lucide-react';
-import { categoryLabel, categoryDescription, statusLabel } from '@/business/businessLabels';
+import { groupedCategories } from '@/business/taxonomy';
+import { statusLabel } from '@/business/businessLabels';
 
 const STATUS_STYLE: Record<string, string> = {
   DRAFT: 'bg-neutral-100 text-neutral-600',
@@ -40,8 +40,6 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
   const [loadingList, setLoadingList] = useState(true);
   const [msg, setMsg] = useState('');
   const [mpMsg, setMpMsg] = useState('');
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState('HAIR');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -90,22 +88,6 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
 
   const selectBusiness = (id: string, target?: string) => {
     navigate(`${target || '/negocio/editor'}?id=${id}`);
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setBusy(true);
-    try {
-      const b = await createBusiness({ name: name.trim(), category });
-      setList((l) => [b, ...l]);
-      setName('');
-      selectBusiness(b.id);
-    } catch (err: any) {
-      setMsg(err?.response?.data?.message || 'Error creando el negocio');
-    } finally {
-      setBusy(false);
-    }
   };
 
   const quickDelete = async (id: string, businessName: string) => {
@@ -216,18 +198,18 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
             <div><p className="text-sm text-neutral-400">Tu sitio web</p><p className="mt-1 text-xl font-bold">{formattedPrice ? `$${formattedPrice} CLP / mes` : 'Consulta el precio de tu página'}</p><p className="text-xs text-neutral-400">por cada página · puedes crear varias</p></div>
             <button type="button" onClick={createPage} className="rounded-xl bg-white px-4 py-2 font-bold text-neutral-950">Crear página web</button>
           </div>
-          <div className="mb-8"><p className="text-sm font-semibold text-stone-500">Paso 1 de 6</p><h2 className="mt-1 text-3xl font-bold tracking-tight">¿Qué tipo de negocio tienes?</h2><p className="mt-2 text-stone-500">Elige el rubro que mejor representa tu trabajo.</p></div>
-    <fieldset><legend className="sr-only">Selecciona un rubro</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {CATS.map((code) => <button key={code} type="button" onClick={() => setCategory(code)} aria-pressed={category === code} className={`group relative overflow-hidden rounded-2xl border bg-white p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-stone-400 hover:shadow-lg focus-visible:outline focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 ${category === code ? 'border-stone-900 ring-2 ring-stone-900' : ''}`}>
-        <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-stone-100"><Building2 className="h-5 w-5" aria-hidden /></span>
-        <b className="block">{categoryLabel(code)}</b><span className="mt-1 block text-sm leading-5 text-stone-500">{categoryDescription(code)}</span>
-        {category === code && <span className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-stone-900 text-white"><Check size={14} aria-hidden /></span>}
-      </button>)}
-    </div></fieldset>
-    <form onSubmit={handleCreate} className="mt-7 rounded-2xl bg-stone-950 p-5 text-white sm:flex sm:items-end sm:gap-3">
-      <label className="block flex-1 text-sm font-semibold">Nombre del negocio<input id="business-create-name" className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 p-3 font-normal text-white placeholder:text-white/50" placeholder="Ejemplo: Floristería Luna" value={name} onChange={(e) => setName(e.target.value)} required /></label>
-      <button className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white px-6 font-bold text-stone-950 disabled:opacity-50 sm:mt-0 sm:w-auto" type="submit" disabled={busy || !name.trim()}>{busy ? 'Creando…' : <><Plus size={18} aria-hidden />Continuar con {categoryLabel(category)}</>}</button>
-    </form>
+          {/* Onboarding único: el asistente de /negocio/nuevo es el único camino para
+              crear una página. Aquí no se duplica el selector de rubro ni el formulario. */}
+          <section className="rounded-2xl border bg-white p-5">
+            <h2 className="text-lg font-bold">¿Qué tipo de negocio tienes?</h2>
+            <p className="mt-1 text-sm text-neutral-600">Elige tu rubro, mira los diseños y publica. Son dos minutos.</p>
+            <ul className="mt-3 flex flex-wrap gap-2 text-sm text-neutral-700">
+              {groupedCategories().map(({ group }) => (
+                <li key={group.key} className="rounded-full bg-neutral-100 px-3 py-1.5">{group.label}</li>
+              ))}
+            </ul>
+            <button type="button" onClick={createPage} className="mt-4 min-h-12 w-full rounded-xl bg-black px-6 font-bold text-white sm:w-auto">Crear página web</button>
+          </section>
           {renderList()}
         </>
       ) : needsBusiness ? (

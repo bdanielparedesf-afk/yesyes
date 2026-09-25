@@ -7,9 +7,63 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('labels visibles centralizados en español', () => {
   const labels = read('business/businessLabels.ts');
-  for (const value of ['Floristería', 'Barbería', 'Peluquería', 'Beauty y bienestar', 'Cafetería', 'Restaurante', 'Uñas', 'Gimnasio y fitness', 'Automotriz', 'Inmobiliaria', 'Servicios profesionales']) assert.ok(labels.includes(value));
+  const taxonomy = read('business/taxonomy.ts');
+  for (const value of ['Floristería', 'Barbería', 'Peluquería', 'Cafetería', 'Restaurante', 'Uñas', 'Gimnasio y fitness', 'Mecánica y taller', 'Inmobiliaria', 'Consultoría y servicios profesionales']) assert.ok(taxonomy.includes(value), `taxonomy debe incluir ${value}`);
   assert.ok(labels.includes("DRAFT: 'Borrador'"));
+  // La taxonomía es la única fuente: los labels se derivan, no se redeclaran.
+  assert.ok(labels.includes("from './taxonomy'"));
+  assert.doesNotMatch(labels, /HAIR:\s*'Peluquería'/);
 });
+
+test('selección de rubro vive en un único asistente, no duplicado en el panel', () => {
+  const wizard = read('pages/BusinessWizard.tsx');
+  const dashboard = read('pages/BusinessDashboard.tsx');
+  // El asistente es el flujo único: rubro -> diseños -> vista previa -> datos -> crear.
+  assert.ok(wizard.includes('groupedCategories()'));
+  assert.ok(wizard.includes('DesignGallery'));
+  assert.ok(wizard.includes('DesignFullPreview'));
+  assert.ok(wizard.includes("getPublicTemplates"));
+  assert.match(wizard, /const steps = \['Tipo de negocio', 'Diseño', 'Vista previa', 'Información básica', 'Revisión'\]/);
+  // El panel solo lleva al asistente: no repite selector de rubro ni formulario de alta.
+  assert.doesNotMatch(dashboard, /handleCreate/);
+  assert.doesNotMatch(dashboard, /business-create-name/);
+  assert.ok(dashboard.includes('groupedCategories()'));
+  assert.ok(dashboard.includes('Crear página web'));
+});
+
+test('el flujo muestra diseños y vista previa antes de pedir los datos', () => {
+  const wizard = read('pages/BusinessWizard.tsx');
+  const designsAt = wizard.indexOf('{step === 1 && (');
+  const previewAt = wizard.indexOf('{step === 2 && (');
+  const dataAt = wizard.indexOf('{step === 3 && (');
+  assert.ok(designsAt > -1 && previewAt > designsAt && dataAt > previewAt, 'el orden es rubro -> diseños -> vista previa -> datos');
+  // Los datos del negocio solo bloquean el avance en su propio paso.
+  assert.match(wizard, /const canContinue = step === 0 \? Boolean\(category\) : step === 1 \? Boolean\(designId\) : step === 3 \? form\.name\.trim\(\)\.length > 1 : true;/);
+  // La creación ocurre en el último paso, con el botón de resumen.
+  assert.ok(wizard.includes('Crear página') && wizard.includes('void submit()'));
+});
+
+test('la galería de diseños usa el renderer real y no muestra códigos técnicos', () => {
+  const gallery = read('business/templates/DesignGallery.tsx');
+  assert.ok(gallery.includes('BusinessPageRenderer'));
+  assert.ok(gallery.includes('buildPreviewFixture'));
+  assert.ok(gallery.includes('overflow-y-auto'), 'la vista previa completa debe ser scrolleable');
+  assert.ok(gallery.includes("'Escritorio'") && gallery.includes("'Tableta'") && gallery.includes("'Móvil'"));
+  assert.ok(gallery.includes('Ver página completa'));
+  // Nunca se imprime el código de la plantilla ni capacidades crudas.
+  assert.doesNotMatch(gallery, /\{design\.code\}/);
+  assert.doesNotMatch(gallery, /capabilities\.join/);
+});
+
+test('el contenido de demostración es una única fuente compartida', () => {
+  const fixture = read('business/fixtures/previewFixture.ts');
+  const fixturePage = read('pages/BusinessFixturePage.tsx');
+  assert.ok(fixture.includes('buildPreviewFixture'));
+  assert.ok(fixturePage.includes('buildPreviewFixture'));
+  assert.doesNotMatch(fixturePage, /const CATEGORIES = \[/, 'la lista de categorías no se duplica en la página de QA');
+  assert.ok(fixturePage.includes('ALL_BUSINESS_CATEGORY_CODES'));
+});
+
 
 test('BusinessShell, contacto y preview usan arquitectura dedicada', () => {
   const page = read('pages/MiNegocio.tsx');
@@ -42,11 +96,16 @@ test('Business permanece aislado del catálogo Store', () => {
   assert.doesNotMatch(service, /\/api\/products|Store Product|priceSync/);
 });
 
-test('selección de rubro usa tarjetas visuales y textos en español', () => {
+test('el panel no duplica el alta de negocios y el editor sigue en su ruta', () => {
   const dashboard = read('pages/BusinessDashboard.tsx');
-  assert.ok(dashboard.includes('¿Qué tipo de negocio tienes?'));
-  assert.ok(dashboard.includes('categoryDescription(code)'));
-  assert.ok(dashboard.includes('aria-pressed={category === code}'));
+  const config = read('business/dashboard/ConfigSection.tsx');
+  // El alta vive solo en el asistente; el panel mantiene el CTA y la lista.
+  assert.ok(dashboard.includes("navigate('/negocio/nuevo')"));
+  assert.doesNotMatch(config, /const CATS = \[/, 'la lista de categorías se importa de la taxonomía');
+  assert.ok(config.includes('BUSINESS_CATEGORY_CODES'));
+  // Nombre legible en el selector de diseño: sin código ni capacidades crudas.
+  assert.doesNotMatch(config, /\{t\.code\} · \{t\.capabilities\?\.join/);
+  assert.ok(config.includes('t.label || templateLabel(t.code, t.name)'));
 });
 
 test('preview del editor actualiza el renderer sin esperar el autoguardado', () => {

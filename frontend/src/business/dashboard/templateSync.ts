@@ -4,6 +4,13 @@ export interface TemplateOption {
   name: string;
   category: string;
   capabilities: string[];
+  /** Nombre legible que muestra el usuario (nunca el código interno). */
+  label?: string;
+  /** Estilo visual legible ("Editorial", "Premium"...). */
+  style?: string;
+  styleLabel?: string;
+  legacy?: boolean;
+  previewImage?: string | null;
 }
 
 export interface LatestTemplatesRequestHandlers<T> {

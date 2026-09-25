@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ALL_BUSINESS_CATEGORY_CODES } from './business-taxonomy';
 
 export const BUSINESS_RESERVED_SLUGS = [
   'mi-negocio', 'negocio', 'negocios', 'productos', 'producto', 'categoria',
@@ -43,7 +44,10 @@ export function cleanDescription(input: unknown): string | undefined {
 export const businessUpsertSchema = z.object({
   name: z.string().min(2).max(120),
   slug: z.string().min(2).max(80).optional(),
-  category: z.enum(['HAIR','BARBER','BAKERY','FLOWERS','FOOD','BOUTIQUE','FURNITURE','REAL_ESTATE','MECHANIC','PHONE','CLEANING','PHOTO','TUTORING','CONSTRUCTION','BEAUTY','PET','DETAILING','CAFE','NAILS','FITNESS','AUTO','PRO']),
+  // El enum acepta TODOS los valores del enum Prisma (incluidos los legacy
+  // AUTO y DETAILING) para no romper negocios V3 ya creados. La taxonomía
+  // canónica vive en `utils/business-taxonomy`.
+  category: z.enum(ALL_BUSINESS_CATEGORY_CODES as [string, ...string[]]),
   templateId: z.string().uuid().nullable().optional(),
   description: z.string().max(20000).nullable().optional(),
   phone: z.string().max(30).nullable().optional(),

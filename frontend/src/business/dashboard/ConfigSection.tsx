@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { getTemplates, updateBusiness, uploadBusinessImage, deleteBusiness } from '@/services/business';
 import api from '@/lib/axios';
 import { getMercadoPagoStatus, startMercadoPagoConnection, disconnectMercadoPago, type MercadoPagoStatus } from '@/services/mercadoPago';
-import { categoryLabel } from '../businessLabels';
+import { categoryLabel, templateLabel } from '../businessLabels';
+import { BUSINESS_CATEGORY_CODES } from '../taxonomy';
 import { createLatestTemplatesRequest, reconcileTemplateId, type TemplateOption } from './templateSync';
 
-export const CATS = ['FLOWERS','BARBER','HAIR','CAFE','FOOD','BAKERY','NAILS','PET','FITNESS','AUTO','REAL_ESTATE','BOUTIQUE','PHOTO','PRO','BEAUTY','MECHANIC','DETAILING','CLEANING','TUTORING','CONSTRUCTION','FURNITURE','PHONE'];
+/** Categorías que el usuario puede asignar: taxonomía canónica, sin duplicados. */
+export const CATS = BUSINESS_CATEGORY_CODES;
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 type TemplatesState = { category: string; options: TemplateOption[] };
 
@@ -343,8 +345,9 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
                   <input type="radio" name="template" className="mt-0.5" checked={templateId === t.id}
                     onChange={() => setTemplateId(t.id)} />
                   <span>
-                    <span className="font-semibold block">{t.name}</span>
-                    <span className="text-xs text-neutral-500">{t.code} · {t.capabilities?.join(', ')}</span>
+                    {/* Nombre legible + estilo. El código interno nunca se muestra. */}
+                    <span className="font-semibold block">{t.label || templateLabel(t.code, t.name)}</span>
+                    <span className="text-xs text-neutral-500">{t.styleLabel || t.style || 'Moderna'}</span>
                   </span>
                 </label>
               ))}

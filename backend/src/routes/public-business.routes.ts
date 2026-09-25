@@ -5,9 +5,58 @@ import { leadSchema, bookingCreateSchema } from '../utils/business';
 import { checkSpam } from '../utils/business-antispam';
 import { validatePreviewToken } from '../services/business-preview.service';
 import { listActivePlans } from '../services/business-subscription.service';
+import { groupedCategories, templateFamilyCodes, templateDisplayName, templateStyleOf, canonicalCategoryCode, dedupeDesigns, normalizeTemplateCode } from '../utils/business-taxonomy';
+import { CAPABILITY_CATALOG } from '../utils/business-capabilities';
 
 const router = Router();
 const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+
+/** Taxonomía pública de rubros: grupos + categorías canónicas (sin duplicados). */
+router.get('/taxonomy', (_req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+  res.json({ groups: groupedCategories() });
+});
+
+/**
+ * Galería pública de diseños. Devuelve nombre legible, rubro, estilo y funciones
+ * en lenguaje humano: nunca códigos técnicos de template ni de capacidad.
+ * Colapsa los rows visualmente idénticos (p. ej. la misma variante de firma en
+ * AUTO y DETAILING) para que la galería no muestre clones.
+ */
+router.get('/templates', async (req, res) => {
+  const category = String(req.query.category || '').trim().toUpperCase();
+  const canonical = canonicalCategoryCode(category);
+  const family = category ? templateFamilyCodes(category) : [];
+  const rows = await prisma.businessTemplate.findMany({
+    where: { active: true, ...(family.length ? { category: { in: family as any } } : {}) },
+    orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
+    select: { id: true, code: true, name: true, category: true, capabilities: true, style: true, legacy: true, previewImage: true, sortOrder: true },
+  });
+  // Primero los de la categoría canónica y los de código normalizado: son los
+  // que se conservan al deduplicar.
+  const ordered = [...rows].sort((a, b) => (
+    Number(b.category === canonical) - Number(a.category === canonical)
+    || Number(a.code === normalizeTemplateCode(a.code)) - Number(b.code === normalizeTemplateCode(b.code))
+  ));
+  const templates = dedupeDesigns(ordered);
+  const capabilityName = new Map(CAPABILITY_CATALOG.map((cap) => [cap.code, cap.name]));
+  res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
+  res.json({
+    templates: templates.map((template) => ({
+      id: template.id,
+      code: template.code,
+      category: template.category,
+      label: templateDisplayName(template),
+      style: templateStyleOf(template.code, template.style),
+      legacy: template.legacy,
+      previewImage: template.previewImage,
+      functions: template.capabilities
+        .filter((code) => !['HERO', 'CONTACT', 'FOOTER', 'WHATSAPP', 'CTA'].includes(code))
+        .map((code) => capabilityName.get(code))
+        .filter((name): name is string => Boolean(name)),
+    })),
+  });
+});
 
 router.get('/plans', async (_req, res) => {
   const plans = await listActivePlans();

@@ -16,6 +16,7 @@ import {
 import { createPreviewToken } from '../services/business-preview.service';
 import { toSubscriptionDTO } from '../services/business-subscription.service';
 import { isCapabilityCode, normalizeSections, resolveCapabilities, CAPABILITY_CATALOG } from '../utils/business-capabilities';
+import { templateDisplayName, templateFamilyCodes, templateStyleOf } from '../utils/business-taxonomy';
 
 const router = Router();
 
@@ -37,14 +38,21 @@ router.post('/', createBusiness);
 
 // Listado de plantillas activas para el picker del dashboard.
 // IMPORTANTE: debe ir ANTES de GET /:id, si no '/templates' se captura como id.
+// `label`/`style` son legibles; `code` y `capabilities` se conservan por compatibilidad.
 router.get('/templates', async (req: AuthRequest, res) => {
   const category = req.query.category ? String(req.query.category) : undefined;
   const templates = await prisma.businessTemplate.findMany({
-    where: { active: true, ...(category ? { category: category as any } : {}) },
-    orderBy: { code: 'asc' },
-    select: { id: true, code: true, name: true, category: true, capabilities: true },
+    where: { active: true, ...(category ? { category: { in: templateFamilyCodes(category) as any } } : {}) },
+    orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
+    select: { id: true, code: true, name: true, category: true, capabilities: true, style: true, legacy: true, previewImage: true },
   });
-  res.json({ templates });
+  res.json({
+    templates: templates.map((template) => ({
+      ...template,
+      label: templateDisplayName(template),
+      styleLabel: templateStyleOf(template.code, template.style),
+    })),
+  });
 });
 
 // Vista previa autenticada: solo owner (via ownerWhere) o ADMIN.

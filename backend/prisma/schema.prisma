@@ -801,6 +801,11 @@ model BusinessTemplate {
   description  String?
   version      Int                  @default(1)
   active       Boolean              @default(true)
+  /// Estilo visual legible ("Editorial", "Premium"...). Nunca se muestra el código.
+  style        String?
+  /// Las plantillas del modelo V3 se marcan legacy: siguen activas, pero la
+  /// galería las distingue de las nuevas de V5.
+  legacy       Boolean              @default(false)
   previewUrl   String?
   previewImage String?
   sortOrder    Int                  @default(0)

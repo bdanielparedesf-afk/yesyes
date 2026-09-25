@@ -53,6 +53,19 @@ export async function getPublicBusinessPlan() {
   return data.plan as { name: string; amount: number; currency: string; frequency: number; frequencyType: string; features: string[] } | null;
 }
 
+/** Taxonomía pública de rubros (grupos + categorías canónicas, sin duplicados). */
+export async function getBusinessTaxonomy() {
+  const { data } = await api.get('/public/businesses/taxonomy');
+  return data.groups as { group: { key: string; label: string; description: string }; categories: { code: string; label: string; description: string; cta: string }[] }[];
+}
+
+/** Galería de diseños de un rubro: nombre, estilo y funciones en lenguaje humano. */
+export async function getPublicTemplates(category?: string) {
+  const { data } = await api.get('/public/businesses/templates', { params: category ? { category } : {} });
+  return data.templates as { id: string; code: string; category: string; label: string; style: string; legacy: boolean; previewImage?: string | null; functions: string[] }[];
+}
+
+
 export function buildWaLink(phone: string | null | undefined, message: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
   let n = digits;
