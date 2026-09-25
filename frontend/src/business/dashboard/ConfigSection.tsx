@@ -224,10 +224,16 @@ export default function ConfigSection({ businessId, detail, onSaved }: {
             </button>
           )}
           {detail?.status === 'PUBLISHED' && (
-            <button type="button" disabled={busy} onClick={() => setStatus('PAUSED')}
-              className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg px-3 py-1.5 disabled:opacity-50">
-              Pausar
-            </button>
+            <>
+              <button type="button" disabled={busy} onClick={() => setStatus('PUBLISHED')}
+                className="bg-green-600 hover:bg-green-700 text-white rounded-lg px-3 py-1.5 disabled:opacity-50">
+                Republicar
+              </button>
+              <button type="button" disabled={busy} onClick={() => setStatus('PAUSED')}
+                className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg px-3 py-1.5 disabled:opacity-50">
+                Pausar
+              </button>
+            </>
           )}
           {detail?.status === 'PAUSED' && (
             <button type="button" disabled={busy} onClick={() => setStatus('PUBLISHED')}
