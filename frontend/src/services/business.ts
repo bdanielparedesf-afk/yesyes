@@ -1,7 +1,17 @@
 import api from '@/lib/axios';
 
+export interface BusinessSubscriptionSummary {
+  id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  frequency: number;
+  frequencyType: string;
+  plan?: { name: string; features: string[] } | null;
+}
+
 export interface Business {
-  id: string; ownerId?: string; name: string; slug: string; category: string;
+  id: string; ownerId?: string; name: string; slug: string; category: string; updatedAt?: string;
   templateId?: string | null; status: string; logo?: string | null; cover?: string | null;
   description?: string | null; phone?: string | null; whatsapp?: string | null; email?: string | null;
   address?: string | null; city?: string | null; region?: string | null; mapsUrl?: string | null;
@@ -10,6 +20,7 @@ export interface Business {
   canonical?: string | null;
   template?: { code: string; name: string; category: string; capabilities: string[] } | null;
   visual?: { sections?: Array<{ id: string; enabled: boolean; order: number }> } | null;
+  subscription?: BusinessSubscriptionSummary | null;
 }
 
 type PublicBusinessCollections = {
@@ -36,6 +47,11 @@ type PublicBusinessPage = {
   team: any[];
   bookingSlots: any[];
 };
+
+export async function getPublicBusinessPlan() {
+  const { data } = await api.get('/public/businesses/plans');
+  return data.plan as { name: string; amount: number; currency: string; frequency: number; frequencyType: string; features: string[] } | null;
+}
 
 export function buildWaLink(phone: string | null | undefined, message: string): string {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -120,6 +136,17 @@ export async function saveBusinessCapabilities(id: string, sections: Array<{ id:
   const { data } = await api.put(`/businesses/${id}/capabilities`, { sections });
   return data as { sections: any[]; available: string[]; catalog: any[] };
 }
+
+export async function publishBusinessPage(id: string) {
+  const { data } = await api.post(`/businesses/${id}/publish`);
+  return data as { business: Business; checklist?: any[]; subscription?: BusinessSubscriptionSummary | null };
+}
+
+export async function pauseBusinessPage(id: string, reason = 'owner') {
+  const { data } = await api.post(`/businesses/${id}/pause`, { reason });
+  return data.business as Business;
+}
+
 
 /** Reemplaza la galería completa (el backend borra y recrea). */
 export async function saveGallery(businessId: string, images: { url: string; alt?: string | null }[]) {

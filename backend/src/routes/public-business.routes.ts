@@ -4,9 +4,17 @@ import { prisma } from '../lib/prisma';
 import { leadSchema, bookingCreateSchema } from '../utils/business';
 import { checkSpam } from '../utils/business-antispam';
 import { validatePreviewToken } from '../services/business-preview.service';
+import { listActivePlans } from '../services/business-subscription.service';
 
 const router = Router();
 const leadLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+
+router.get('/plans', async (_req, res) => {
+  const plans = await listActivePlans();
+  const plan = plans[0];
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.json({ plan: plan ? { name: plan.name, amount: Number(plan.amount), currency: plan.currency, frequency: plan.frequency, frequencyType: plan.frequencyType, features: plan.features } : null });
+});
 const PUBLIC_SELECT = {
   id: true, name: true, slug: true, category: true, status: true,
   logo: true, cover: true, description: true, phone: true, whatsapp: true,
@@ -86,7 +94,7 @@ router.get('/:slug/page', async (req, res) => {
   });
   if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   const { catalogItems, teamMembers, ...data } = business;
-  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
+  res.setHeader('Cache-Control', 'no-store');
   res.json({ ...data, products: catalogItems, team: teamMembers });
 });
 

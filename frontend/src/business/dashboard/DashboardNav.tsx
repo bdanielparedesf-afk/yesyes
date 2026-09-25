@@ -29,7 +29,7 @@ const ITEMS: { key: DashboardSection; label: string; path: string }[] = [
 export default function DashboardNav({ section, businessId }: { section: DashboardSection; businessId?: string | null }) {
   const suffix = businessId ? `?id=${businessId}` : '';
   return (
-    <nav className="flex gap-1 overflow-x-auto pb-1">
+    <nav className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" aria-label="Navegación del panel Business">
       {ITEMS.map((it) => (
         <NavLink
           key={it.key}

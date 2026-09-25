@@ -23,7 +23,14 @@ router.use(authenticate);
 
 router.get('/', async (req: AuthRequest, res) => {
   const where = req.user!.role === 'ADMIN' ? {} : { ownerId: req.user!.id };
-  const businesses = await prisma.business.findMany({ where, orderBy: { updatedAt: 'desc' }, include: { template: true } });
+  const businesses = await prisma.business.findMany({
+    where,
+    orderBy: { updatedAt: 'desc' },
+    include: {
+      template: true,
+      subscription: { include: { plan: true } },
+    },
+  });
   res.json({ businesses });
 });
 router.post('/', createBusiness);
@@ -74,7 +81,7 @@ router.get('/preview/:slug', async (req: AuthRequest, res) => {
 });
 
 router.post('/:id/publish', requireBusinessOwner, async (req: AuthRequest, res) => {
-  const result = await publishBusiness({ businessId: String(req.params.id), userId: req.user!.id, ip: req.ip });
+  const result = await publishBusiness({ businessId: String(req.params.id), userId: req.user!.id, ip: req.ip, isAdmin: req.user!.role === 'ADMIN' });
   if (!result.ok) {
     res.status(result.error.status).json({ code: result.error.code, message: result.error.message, checklist: result.checklist });
     return;

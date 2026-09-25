@@ -69,6 +69,8 @@ export interface PublishChecklistInput {
   template?: { id: string; code: string } | null;
   subscription?: SubscriptionLike | null;
   counts?: { services: number; products: number; properties: number; gallery: number };
+  /** El backend puede publicar páginas administrativas sin suscripción. */
+  isAdmin?: boolean;
 }
 
 /**
@@ -96,7 +98,7 @@ export function businessPublishChecklist(input: PublishChecklistInput): PublishC
     { key: 'mainContent', label: `Contenido principal (${main})`, ok: mainCount > 0, required: false },
     { key: 'mainImage', label: 'Imagen principal (logo, portada o galería)', ok: Boolean(b.logo || b.cover || counts.gallery > 0), required: false },
     { key: 'seo', label: 'SEO (título o descripción)', ok: Boolean(b.seoTitle || b.seoDescription), required: false },
-    { key: 'subscription', label: 'Suscripción activa', ok: subscriptionAllowsPublishing(input.subscription ?? null), required: true },
+    { key: 'subscription', label: 'Suscripción activa', ok: Boolean(input.isAdmin) || subscriptionAllowsPublishing(input.subscription ?? null), required: !input.isAdmin },
   ];
 
   const missingRequired = items.filter((i) => i.required && !i.ok).map((i) => i.key);
@@ -117,7 +119,10 @@ export const PAYMENT_REQUIRED_MESSAGE =
 export async function businessPublishContext(businessId: string) {
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    include: { template: { select: { id: true, code: true, capabilities: true } } },
+    include: {
+      template: { select: { id: true, code: true, capabilities: true } },
+      subscription: { include: { plan: true } },
+    },
   });
   if (!business) return null;
 
@@ -170,6 +175,7 @@ export async function publishBusiness(params: {
   businessId: string;
   userId?: string | null;
   ip?: string | null;
+  isAdmin?: boolean;
 }): Promise<
   | { ok: true; business: any; checklist: PublishChecklist; subscription: any }
   | { ok: false; error: PublishGateError; checklist?: PublishChecklist }
@@ -177,6 +183,9 @@ export async function publishBusiness(params: {
   const ctx = await businessPublishContext(params.businessId);
   if (!ctx) {
     return { ok: false, error: { status: 404, code: 'NOT_FOUND', message: 'Negocio no encontrado' } };
+  }
+  if (params.isAdmin) {
+    ctx.checklist = businessPublishChecklist({ business: ctx.business, template: ctx.template, subscription: ctx.subscription, counts: ctx.counts, isAdmin: true });
   }
   const gate = publishGate({ business: ctx.business, checklist: ctx.checklist });
   if (gate) return { ok: false, error: gate, checklist: ctx.checklist };

@@ -130,6 +130,31 @@ export async function getSubscriptionForBusiness(businessId: string) {
   });
 }
 
+/**
+ * Crea la suscripción comercial de una página normal exactamente una vez.
+ * La relación 1:1 y el unique businessId hacen segura la operación aunque
+ * dos requests lleguen simultáneamente. ADMIN no usa este helper: sus páginas
+ * no llevan una suscripción falsa y se autorizan por rol en el gate de publicación.
+ */
+export async function ensureBusinessSubscription(businessId: string): Promise<any> {
+  const plan = await getOrCreateDefaultPlan();
+  return prisma.businessSubscription.upsert({
+    where: { businessId },
+    update: {},
+    create: {
+      businessId,
+      planId: plan.id,
+      provider: 'MERCADOPAGO',
+      status: 'PENDING',
+      amount: Number(plan.amount),
+      currency: plan.currency,
+      frequency: plan.frequency,
+      frequencyType: plan.frequencyType,
+    },
+    include: { plan: true },
+  });
+}
+
 export interface SubscriptionDTO {
   id: string | null;
   businessId: string;

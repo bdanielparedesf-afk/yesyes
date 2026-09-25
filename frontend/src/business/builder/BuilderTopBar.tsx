@@ -1,0 +1,19 @@
+﻿import { useNavigate } from 'react-router-dom';
+import { Eye, Monitor, Pause, Redo2, Save, Smartphone, Tablet, Undo2, Upload } from 'lucide-react';
+import { saveLabel } from './useBuilderState';
+import type { BuilderDevice, BuilderSaveState, BuilderSection } from './types';
+
+const status: Record<string, string> = { DRAFT: 'Borrador', PUBLISHED: 'Publicado', PAUSED: 'Pausado' };
+export default function BuilderTopBar({ business, saveState, device, sections, canUndo, canRedo, onDevice, onUndo, onRedo, onSave, onPublish, onPause }: {
+  business: any; saveState: BuilderSaveState; device: BuilderDevice; sections: BuilderSection[]; canUndo: boolean; canRedo: boolean;
+  onDevice: (value: BuilderDevice) => void; onUndo: () => void; onRedo: () => void; onSave: () => void; onPublish: () => void; onPause: () => void;
+}) {
+  const navigate = useNavigate();
+  return <header data-testid="builder-topbar" className="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b bg-white px-4 py-3 shadow-sm">
+    <div className="flex min-w-0 items-center gap-3"><button type="button" onClick={() => navigate('/negocio')} className="rounded-xl border px-3 py-2 text-sm font-semibold">← Volver</button><div className="min-w-0"><h1 className="truncate font-bold">{business.name}</h1><span className="text-xs text-stone-500">{status[business.status] || 'Borrador'}</span></div></div>
+    <div className="order-3 flex w-full justify-center sm:order-none sm:w-auto" role="status" aria-live="polite"><span className={saveState === 'ERROR' ? 'text-sm text-red-700' : 'text-sm text-stone-600'}>{saveLabel(saveState)}</span></div>
+    <div className="flex flex-wrap items-center gap-2"><div className="flex rounded-xl border bg-stone-50 p-1" aria-label="Tamaño de vista"><button type="button" aria-label="Escritorio" onClick={() => onDevice('desktop')} className={`rounded-lg p-2 ${device === 'desktop' ? 'bg-white shadow' : ''}`}><Monitor size={17} /></button><button type="button" aria-label="Tableta" onClick={() => onDevice('tablet')} className={`rounded-lg p-2 ${device === 'tablet' ? 'bg-white shadow' : ''}`}><Tablet size={17} /></button><button type="button" aria-label="Móvil" onClick={() => onDevice('mobile')} className={`rounded-lg p-2 ${device === 'mobile' ? 'bg-white shadow' : ''}`}><Smartphone size={17} /></button></div><button data-testid="builder-undo" type="button" disabled={!canUndo} onClick={onUndo} aria-label="Deshacer" className="rounded-xl border p-2 disabled:opacity-30"><Undo2 size={17} /></button><button data-testid="builder-redo" type="button" disabled={!canRedo} onClick={onRedo} aria-label="Rehacer" className="rounded-xl border p-2 disabled:opacity-30"><Redo2 size={17} /></button><a data-testid="builder-preview-button" className="rounded-xl border p-2" aria-label="Abrir vista previa" href={`/mi-negocio/${business.slug}?preview=true`} target="_blank" rel="noreferrer"><Eye size={17} /></a><button data-testid="builder-save" type="button" onClick={onSave} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold"><Save size={16} /> Guardar</button>{business.status === 'PUBLISHED' ? <button data-testid="builder-republish" type="button" onClick={onPublish} className="inline-flex items-center gap-2 rounded-xl bg-stone-900 px-3 py-2 text-sm font-semibold text-white"><Upload size={16} /> Republicar</button> : <button data-testid="builder-publish" type="button" onClick={onPublish} className="rounded-xl bg-stone-900 px-3 py-2 text-sm font-semibold text-white">Publicar</button>}{business.status === 'PUBLISHED' && <button data-testid="builder-pause" type="button" onClick={onPause} className="rounded-xl border p-2" aria-label="Pausar página"><Pause size={16} /></button>}<span className="sr-only">{sections.length} secciones</span></div>
+  </header>;
+}
+
+

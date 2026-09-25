@@ -46,7 +46,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
       className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 rounded-[var(--radius-xl)]"
       aria-label={product.name}
     >
-      <div className="relative flex h-full flex-col bg-white rounded-[var(--radius-xl)] shadow-soft group-hover:shadow-float-hover group-hover:-translate-y-1 transition-all duration-300 ease-out overflow-hidden border border-neutral-100">
+      <div className={`relative flex h-full flex-col bg-white rounded-[var(--radius-xl)] shadow-soft group-hover:shadow-float-hover group-hover:-translate-y-1 transition-all duration-300 ease-out overflow-hidden border border-neutral-100`}>
         <div className={`relative ${sizeClasses[size]} overflow-hidden bg-neutral-50`}>
           {product.image && (
             <>
@@ -56,7 +56,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
                 className="w-full h-full object-cover object-center group-hover:opacity-0 transition-opacity duration-500"
                 loading="lazy"
                 decoding="async"
-                onError={(e) => { (e.target as HTMLImageElement).src = '/logo-icon.svg'; }}
+                onError={(e) => { const image = e.currentTarget; image.style.display = 'none'; }}
               />
               <img
                 src={product.imageHover || product.image}
@@ -65,6 +65,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
                 className="w-full h-full object-cover object-center scale-[1.02] group-hover:scale-105 opacity-0 group-hover:opacity-100 transition-all duration-500 absolute inset-0"
                 loading="lazy"
                 decoding="async"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             </>
           )}

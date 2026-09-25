@@ -4,6 +4,7 @@ import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
 import { CreditCard, Shield, Loader2, MapPin, User, Mail, Phone, ShoppingCart } from 'lucide-react';
 import { createPaymentPreference } from '@/services/payment';
+import RemoteImage from '@/components/RemoteImage';
 
 export default function Checkout() {
   const { items, totalPrice } = useCartStore();
@@ -28,12 +29,9 @@ export default function Checkout() {
     try {
       const response = await createPaymentPreference({
         items: items.map((item) => ({
-          id: item.id,
-          title: item.name,
-          description: item.variant || '',
-          price: item.price,
+          productId: item.productId || item.id || '',
+          variantId: item.variantId,
           quantity: item.quantity,
-          image: item.image,
         })),
         payer: {
           name: form.name,
@@ -44,7 +42,11 @@ export default function Checkout() {
             number: form.phone,
           },
         },
-        total,
+        shippingAddress: {
+          address: form.address,
+          city: form.city,
+          zip: form.zip,
+        },
       });
 
       const initPoint = response.init_point || response.sandbox_init_point;
@@ -188,7 +190,7 @@ export default function Checkout() {
                 <div className="space-y-3 text-sm">
                   {items.map((item) => (
                     <div key={item.id} className="flex items-center gap-3">
-                      <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover" />
+                      <RemoteImage src={item.image} alt={item.name} decoding="async" className="w-10 h-10 rounded-lg object-cover" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-neutral-900 truncate">{item.name}</p>
                         <p className="text-xs text-neutral-500">x{item.quantity}</p>

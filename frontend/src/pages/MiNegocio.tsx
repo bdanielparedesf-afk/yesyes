@@ -59,7 +59,9 @@ export default function MiNegocio() {
           ? 'Inicia sesión como propietario o administrador para abrir esta vista previa.'
           : status === 404
             ? (preview ? 'La vista previa no existe o venció.' : 'No encontramos este negocio.')
-            : 'No pudimos conectar con el servicio. Intenta nuevamente.');
+            : status === 429
+              ? 'Hay demasiadas visitas en este momento. Espera un momento e inténtalo nuevamente.'
+              : 'No pudimos conectar con el servicio. Intenta nuevamente.');
       }
     };
     void load();
@@ -71,7 +73,7 @@ export default function MiNegocio() {
 
   return <BusinessShell business={business} preview={preview}>
     <SeoHead title={business.seoTitle || `${business.name}${business.city ? ` | ${business.city}` : ''}`} description={business.seoDescription || business.description?.slice(0, 160)} image={business.ogImage || business.cover} canonical={business.canonical || undefined} />
-    {preview && <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-2 text-sm"><Link className="font-semibold text-stone-700" to={`/negocio/configuracion?id=${business.id}`}>Volver a editar</Link><Link className="text-stone-600 hover:underline" to={`/mi-negocio/${slug}`}>Salir de vista previa</Link></div>}
+    {preview && <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-2 text-sm"><Link className="font-semibold text-stone-700" to={`/negocio/editor?id=${business.id}`}>Volver al Builder</Link><Link className="text-stone-600 hover:underline" to={`/mi-negocio/${slug}`}>Salir de vista previa</Link></div>}
     <Suspense fallback={<div className="mx-auto max-w-6xl animate-pulse px-4 py-20"><div className="h-72 rounded-3xl bg-stone-200" /></div>}>
       <BusinessPageRenderer business={business} services={services} products={products} properties={properties} gallery={gallery} {...content} preview={preview} />
     </Suspense>

@@ -1,10 +1,12 @@
 import api from '@/lib/axios';
 
 export interface CartItemAPI {
-  id: string;
-  title: string;
+  id?: string;
+  productId: string;
+  title?: string;
   description?: string;
-  price: number;
+  price?: number;
+  variantId?: string | null;
   quantity: number;
   image?: string;
 }
@@ -23,10 +25,18 @@ export interface PayerAPI {
   };
 }
 
+export interface ShippingAddressAPI {
+  address: string;
+  city: string;
+  zip: string;
+}
+
 export interface CreatePreferenceRequest {
   items: CartItemAPI[];
   payer?: PayerAPI;
-  total: number;
+  shippingAddress?: ShippingAddressAPI;
+  /** Kept only for backward-compatible clients; the backend recalculates it. */
+  total?: number;
 }
 
 export interface CreatePreferenceResponse {

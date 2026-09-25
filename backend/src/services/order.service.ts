@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 
 export const createOrder = async (data: {
-  userId: string;
+  userId?: string | null;
   items: {
     productId: string;
     productName: string;

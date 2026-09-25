@@ -34,6 +34,12 @@ export async function createBusiness(req: AuthRequest, res: Response): Promise<v
     }
     return b;
   });
+  // Cada página normal tiene su propio ciclo de cobro. Se crea después del
+  // business para reutilizar el plan central y mantener ADMIN sin suscripción falsa.
+  if (req.user!.role !== 'ADMIN') {
+    const { ensureBusinessSubscription } = await import('../services/business-subscription.service');
+    await ensureBusinessSubscription(business.id);
+  }
   res.status(201).json({ business });
 }
 

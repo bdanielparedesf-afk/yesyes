@@ -9,6 +9,6 @@ const router = Router();
 // es opcional en el schema).
 router.post('/create-preference', optionalAuth, createPaymentPreference);
 router.get('/payment-methods', getPaymentMethods);
-router.get('/status/:paymentId', getPaymentStatus);
+router.get('/status/:paymentId', optionalAuth, getPaymentStatus);
 
 export default router;

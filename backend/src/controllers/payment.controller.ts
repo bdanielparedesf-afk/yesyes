@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { getPreferenceClient, getPublicKey } from '../integrations/mercadopago';
 import { MercadoPagoConfig, Payment, PaymentMethod, WebhookSignatureValidator } from 'mercadopago';
 import { createOrder } from '../services/order.service';
+import { resolveTrustedCheckout } from '../services/checkout-pricing.service';
 import { prisma } from '../lib/prisma';
 
 const configuredFrontend = process.env.FRONTEND_URL?.replace(/\/$/, '') || '';
@@ -25,174 +26,45 @@ const SITE_URL = configuredFrontend.startsWith('https://') ? configuredFrontend 
 const API_URL =
   (configuredBackend.startsWith('https://') ? configuredBackend : '') || SITE_URL;
 
-/**
- * Garantiza que cada item del carrito apunte a un producto REAL de la BD.
- *
- * Si el carrito contiene un producto que ya no existe (fue borrado, la tabla
- * se vació al re-importar, o el carrito es viejo), la FK
- * `order_items.product_id → products.id` fallaba con P2003 y el checkout
- * devolvía 500 ("Error al procesar el pago") SIN explicación.
- *
- * Ahora, si el producto no existe, se recrea una ficha mínima en estado DRAFT
- * (no aparece en la tienda) para conservar la integridad referencial y el
- * historial de la orden, y el pago puede continuar.
- */
-async function resolveCartItemProductId(item: {
-  id?: string;
-  productId?: string;
-  title?: string;
-  name?: string;
-  price?: number;
-  image?: string;
-}): Promise<string> {
-  const requestedId = String(item.id || item.productId || '').trim();
-
-  if (requestedId) {
-    const existing = await prisma.product.findUnique({
-      where: { id: requestedId },
-      select: { id: true },
-    });
-    if (existing) return existing.id;
-  }
-
-  const name = (String(item.title || item.name || 'Producto').trim() || 'Producto').slice(0, 120);
-  const price = Number(item.price) || 0;
-
-  const category =
-    (await prisma.category.findUnique({ where: { slug: 'general' } })) ??
-    (await prisma.category.create({ data: { name: 'General', slug: 'general' } }));
-
-  const rescued = await prisma.product.create({
-    data: {
-      name,
-      slug: `recuperado-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      description:
-        'Ficha recreada automáticamente desde un carrito antiguo (el producto original ya no existe en el catálogo).',
-      images: item.image ? [String(item.image)] : [],
-      categoryId: category.id,
-      productCost: price,
-      totalCost: price,
-      salePrice: price,
-      margin: 0,
-      variants: [],
-      status: 'DRAFT',
-      importSource: 'CART_RECOVERY',
-    },
-    select: { id: true },
-  });
-
-  console.log(`[payments] Producto faltante recreado como DRAFT (${rescued.id}): ${name}`);
-  return rescued.id;
-}
-
 export const createPaymentPreference = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { items, payer, total } = req.body;
-
-    if (!items || items.length === 0) {
-      res.status(400).json({ message: 'items are required' });
-      return;
-    }
-
-    for (const item of items) {
-      if (!item.price || Number(item.price) <= 0) {
-        res.status(400).json({
-          message: 'unit_price invalid',
-          detail: `Producto ${item.title} sin precio válido. En producción MP no acepta $0`,
-        });
-        return;
-      }
-    }
-
-    const mpItems = items.map((item: any) => ({
-      id: String(item.id || item.productId || ''),
-      title: String(item.title || item.name || 'Producto'),
-      description: String(item.variant || ''),
-      quantity: Math.max(1, Number(item.quantity) || 1),
-      unit_price: Number(item.price),
+    const { items, payer, shippingAddress } = req.body;
+    const checkout = await resolveTrustedCheckout(items);
+    const mpItems = checkout.lines.map((line) => ({
+      id: line.variantId ? `${line.productId}-${line.variantId}` : line.productId,
+      title: line.name.slice(0, 120),
+      description: line.sku ? `SKU: ${line.sku}`.slice(0, 120) : '',
+      quantity: line.quantity,
+      unit_price: line.unitPrice,
       currency_id: 'CLP',
-      ...(item.image ? { picture_url: String(item.image) } : {}),
+      ...(line.image ? { picture_url: line.image } : {}),
     }));
-
-    const itemsTotal = mpItems.reduce((sum: number, i: any) => sum + i.unit_price * i.quantity, 0);
-    const clientTotal = Number(total) || 0;
-    const shippingCost = Math.max(0, Math.round((clientTotal - itemsTotal) * 100) / 100);
-
-    if (shippingCost > 0) {
-      mpItems.push({ id: 'envio', title: 'Envío', description: '', quantity: 1, unit_price: shippingCost, currency_id: 'CLP' });
+    if (checkout.shipping > 0) {
+      mpItems.push({ id: 'yesyes-shipping', title: 'Envío', description: '', quantity: 1, unit_price: checkout.shipping, currency_id: 'CLP' });
     }
-
-    // Resolver cada ítem contra un producto REAL de la BD. Si el producto del
-    // carrito ya no existe (fue borrado o re-importado), se recrea una ficha
-    // mínima en DRAFT para conservar la FK order_items.productId y el pago no
-    // truene con "Foreign key constraint violated: order_items_productId_fkey".
-    const orderItems: Array<{
-      productId: string;
-      productName: string;
-      productImage: string;
-      quantity: number;
-      unitPrice: number;
-      totalPrice: number;
-      variant?: any;
-      variantId?: string;
-    }> = [];
-
-    for (const i of mpItems) {
-      if (i.id === 'envio') {
-        orderItems.push({
-          productId: '', // placeholder que se completa abajo con producto de costo cero
-          productName: i.title,
-          productImage: '',
-          quantity: 1,
-          unitPrice: i.unit_price,
-          totalPrice: i.unit_price,
-          variant: undefined,
-          variantId: undefined,
-        });
-        continue;
-      }
-      const resolvedProductId = await resolveCartItemProductId({
-        id: i.id,
-        title: i.title,
-        price: i.unit_price,
-        image: i.picture_url,
-      });
-      orderItems.push({
-        productId: resolvedProductId,
-        productName: i.title,
-        productImage: i.picture_url || '',
-        quantity: i.quantity,
-        unitPrice: i.unit_price,
-        totalPrice: i.unit_price * i.quantity,
-        variant: i.description || undefined,
-        variantId: undefined,
-      });
-    }
-
-    // El ítem de envío no es un producto real: usa como FK el primer producto de
-    // la orden (siempre existe tras resolver), con costo 0 en la ficha.
-    const envioIndex = orderItems.findIndex((o) => o.productId === '');
-    if (envioIndex >= 0) {
-      const envioItem = orderItems[envioIndex];
-      if (envioItem) {
-        envioItem.productId =
-          orderItems.find((o) => o.productId !== '')?.productId ??
-          (await resolveCartItemProductId({ title: 'Producto', price: 0 }));
-      }
-    }
+    const orderItems = checkout.lines.map((line) => ({
+      productId: line.productId,
+      productName: line.name,
+      productImage: line.image || '',
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      totalPrice: line.totalPrice,
+      variant: line.sku ? { sku: line.sku } : undefined,
+      variantId: line.variantId || undefined,
+    }));
 
     const order = await createOrder({
       userId: (req as any).user?.id,
       items: orderItems,
-      subtotal: itemsTotal,
-      shipping: shippingCost,
+      subtotal: checkout.subtotal,
+      shipping: checkout.shipping,
       discount: 0,
-      total: clientTotal > 0 ? clientTotal : itemsTotal + shippingCost,
-      shippingAddress: {},
+      total: checkout.total,
+      shippingAddress: shippingAddress && typeof shippingAddress === 'object' ? shippingAddress : {},
     });
 
     // SITE_URL / API_URL ya incluyen el fallback HTTPS (https://yesyes.cl) por si
-    // FRONTEND_URL / BACKEND_URL no est�n configuradas. Mercado Pago RECHAZA las
+    // FRONTEND_URL / BACKEND_URL no est�n configuradas. Mercado Pago RECHAZA las
     // preferencias cuando back_urls o notification_url son URLs relativas o HTTP.
     // El notification_url apunta al webhook real (/webhooks/mercadopago), no a
     // /payments/webhook que no es ninguna ruta registrada.
@@ -273,6 +145,11 @@ export const getPaymentStatus = async (req: Request, res: Response): Promise<voi
   try {
     const { paymentId } = req.params;
     const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      res.status(401).json({ message: 'Inicia sesión para consultar el pago' });
+      return;
+    }
 
     if (!accessToken) {
       res.status(500).json({ message: 'Mercado Pago access token not configured' });
@@ -283,6 +160,14 @@ export const getPaymentStatus = async (req: Request, res: Response): Promise<voi
     const paymentClient = new Payment(mpConfig);
 
     const payment = await paymentClient.get({ id: String(paymentId) });
+    const order = await prisma.order.findFirst({
+      where: { id: String(payment.external_reference || ''), userId },
+      select: { id: true },
+    });
+    if (!order) {
+      res.status(404).json({ message: 'Pago no encontrado' });
+      return;
+    }
 
     res.status(200).json({
       id: payment.id,
@@ -323,7 +208,8 @@ export const validateWebhook = (req: Request): boolean => {
   try {
     const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
     if (!secret) {
-      console.warn('MERCADOPAGO_WEBHOOK_SECRET not configured, skipping validation');
+      if (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') return false;
+      console.warn('MERCADOPAGO_WEBHOOK_SECRET not configured; accepting webhook only outside production');
       return true;
     }
 

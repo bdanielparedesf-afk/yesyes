@@ -74,7 +74,9 @@ test('diseños firma cubren cada rubro y preservan la vista previa', () => {
   const signature = read('business/SignatureTemplate.tsx');
   const registry = read('business/registry.tsx');
   const seed = fs.readFileSync(path.join(root, '..', '..', 'backend', 'prisma', 'seed-business.ts'), 'utf8');
-  assert.ok(signature.includes('signaturePrefix'));
+  const signatureUtils = read('business/signatureUtils.ts');
+  assert.ok(signature.includes('signatureCategory'));
+  assert.ok(signatureUtils.includes('signaturePrefix'));
   assert.ok(signature.includes('thematicAssets(category)'));
   assert.ok(registry.includes('isSignatureTemplate(code)'));
   assert.ok(seed.includes('SIGNATURE_VARIANTS'));

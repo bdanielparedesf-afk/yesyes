@@ -6,9 +6,7 @@ import { thematicAssets } from './assets';
 import { BusinessButton, BusinessCard, BusinessContainer, BusinessHeading, BusinessImage, BusinessSection } from './components';
 import type { TemplateProps } from './registry';
 
-const signaturePrefix = /^(FLOWERS|BARBER|HAIR|BAKERY|FOOD|CAFE|BOUTIQUE|FURNITURE|REAL_ESTATE|MECHANIC|PHONE|CLEANING|PHOTO|TUTORING|CONSTRUCTION|BEAUTY|NAILS|PET|FITNESS|AUTO|PRO|DETAILING)_SIGNATURE_(EDITORIAL|ATLAS|NATIVE)$/;
-export const isSignatureTemplate = (code?: string | null) => signaturePrefix.test(String(code || '').trim().toUpperCase());
-export const signatureCategory = (code?: string | null) => String(code || '').trim().toUpperCase().match(signaturePrefix)?.[1] || '';
+import { signatureCategory, signatureVariant } from './signatureUtils';
 const money = (value: unknown) => value == null ? 'Consultar' : `$${Number(value).toLocaleString('es-CL')}`;
 const imageOf = (item: any) => item?.image || item?.images?.[0]?.url;
 
@@ -16,7 +14,7 @@ const imageOf = (item: any) => item?.image || item?.images?.[0]?.url;
 export default function SignatureTemplate({ business, services, products, properties, gallery }: TemplateProps) {
   const code = String(business?.template?.code || '').toUpperCase();
   const category = signatureCategory(code) || String(business?.category || 'PRO').toUpperCase();
-  const variant = code.match(signaturePrefix)?.[2] || 'EDITORIAL';
+  const variant = signatureVariant(code);
   const composition = getIndustryComposition(null, category);
   const assets = thematicAssets(category);
   const items = properties.length ? properties : products.length ? products : services;

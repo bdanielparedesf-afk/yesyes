@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Trash2, Plus, Minus, ShoppingBag, Tag } from 'lucide-react';
 import { useCartStore } from '@/store/useCartStore';
 import { toast } from 'react-hot-toast';
+import RemoteImage from '@/components/RemoteImage';
 
 export default function Cart() {
   const { items, removeItem, updateQuantity, totalPrice } = useCartStore();
@@ -54,10 +55,11 @@ export default function Cart() {
           <div className="lg:col-span-2 bg-white rounded-[var(--radius-xl)] shadow-sm border border-neutral-100 overflow-hidden divide-y divide-neutral-100">
             {items.map((item) => (
               <div key={item.id} className="p-4 sm:p-6 flex gap-4 sm:gap-5 hover:bg-neutral-50/60 transition-colors">
-                <img
+                <RemoteImage
                   src={item.image}
                   alt={item.name}
                   loading="lazy"
+                  decoding="async"
                   className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 rounded-xl object-cover border border-neutral-100 bg-neutral-50"
                 />
                 <div className="flex flex-col flex-1 min-w-0">

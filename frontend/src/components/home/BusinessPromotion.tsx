@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Check, Eye, Sparkles } from 'lucide-react';
+import { getPublicBusinessPlan } from '@/services/business';
 
 const BENEFITS = [
   'Página profesional para tu rubro',
@@ -56,6 +58,9 @@ export default function BusinessPromotion() {
   // o con el JWT de email/password dentro de BusinessDashboard. No se decide
   // aquí con `token`, porque Google no genera ese JWT.
   const target = '/negocio';
+  const [plan, setPlan] = useState<{ amount: number; currency: string } | null>(null);
+  useEffect(() => { void getPublicBusinessPlan().then((value) => setPlan(value ? { amount: value.amount, currency: value.currency } : null)).catch(() => undefined); }, []);
+  const price = plan ? `$${plan.amount.toLocaleString('es-CL')} ${plan.currency} / mes` : 'Consulta el precio por página';
 
   return (
     <section id="yesyes-business" className="overflow-hidden bg-neutral-950 py-16 sm:py-20" aria-labelledby="business-title">
@@ -73,7 +78,7 @@ export default function BusinessPromotion() {
               <a href="#como-funciona" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/25 px-7 py-3 font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white">Ver cómo funciona</a>
             </div>
             <div className="mt-7 flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-white/15 pt-5">
-              <div><p className="text-xs text-neutral-400">Desde</p><p className="text-2xl font-black text-white">$11.990 <span className="text-sm font-medium text-neutral-300">CLP / mes</span></p></div>
+              <div><p className="text-xs text-neutral-400">Tu sitio web</p><p className="text-2xl font-black text-white">{price}</p></div>
               <p className="pb-1 text-sm text-emerald-300">Sin pago anual obligatorio</p>
             </div>
             <p className="mt-4 text-sm text-neutral-400">Tu página funciona mediante una suscripción mensual. El pago se procesa de forma segura mediante Mercado Pago.</p>

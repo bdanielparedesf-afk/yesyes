@@ -1,70 +1,25 @@
+import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Package, Truck, CheckCircle, Clock } from 'lucide-react';
-
-interface OrderItem {
-  name: string;
-  quantity: number;
-  price: number;
-  image: string;
-}
-
-interface Order {
-  id: string;
-  date: string;
-  status: string;
-  total: number;
-  shipping: number;
-  items: OrderItem[];
-  address: string;
-  city: string;
-  tracking?: string;
-}
-
-const mockOrder: Order = {
-  id: 'ORD-1001',
-  date: '2025-01-15',
-  status: 'Entregado',
-  total: 59980,
-  shipping: 0,
-  items: [
-    { name: 'Audífonos Bluetooth Pro', quantity: 1, price: 19990, image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=400&fit=crop' },
-    { name: 'Mouse Inalámbrico Ergo', quantity: 2, price: 9990, image: 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=400&h=400&fit=crop' },
-  ],
-  address: 'Av. Providencia 1234',
-  city: 'Santiago',
-  tracking: 'CHL123456789',
-};
+import { getCustomerOrder, type CustomerOrder } from '@/services/orders';
 
 export default function OrderDetail() {
-  const { id } = useParams();
-  const order = id === mockOrder.id ? mockOrder : null;
+  const { id = '' } = useParams();
+  const [order, setOrder] = useState<CustomerOrder | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  if (!order) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="text-center space-y-4">
-          <Package className="w-16 h-16 text-gray-300 mx-auto" />
-          <h2 className="text-2xl font-bold text-gray-900">Pedido no encontrado</h2>
-          <p className="text-gray-500">El pedido que buscas no existe.</p>
-          <Link to="/mis-pedidos" className="inline-flex items-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-semibold rounded-lg shadow-lg shadow-primary-500/30 transition-all">
-            Ver mis pedidos
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    setLoading(true);
+    setError('');
+    getCustomerOrder(id).then(setOrder).catch(() => setError('No pudimos cargar este pedido.')).finally(() => setLoading(false));
+  }, [id]);
 
-  const getStatusIcon = () => {
-    switch (order.status) {
-      case 'Entregado':
-        return <CheckCircle className="w-5 h-5 text-green-600" />;
-      case 'En camino':
-        return <Truck className="w-5 h-5 text-blue-600" />;
-      default:
-        return <Clock className="w-5 h-5 text-yellow-600" />;
-    }
-  };
+  if (loading) return <div className="flex min-h-[60vh] items-center justify-center text-gray-500" aria-busy="true">Cargando pedido…</div>;
+  if (!order) return <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center"><Package className="h-16 w-16 text-gray-300" /><h1 className="text-2xl font-bold">Pedido no encontrado</h1><p className="text-gray-500">{error || 'El pedido no existe o no te pertenece.'}</p><Link to="/mis-pedidos" className="rounded-xl bg-primary-600 px-6 py-3 font-semibold text-white">Ver mis pedidos</Link></div>;
 
+  const address = order.shippingAddress as { address?: string; city?: string; zip?: string };
+  const StatusIcon = order.status === 'DELIVERED' ? CheckCircle : order.status === 'SHIPPED' ? Truck : Clock;
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -76,13 +31,13 @@ export default function OrderDetail() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-3">
-                <h1 className="text-2xl font-bold text-gray-900">{order.id}</h1>
-                <span className="flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700">
-                  {getStatusIcon()}
-                  <span className="ml-1">{order.status}</span>
+                <h1 className="text-2xl font-bold text-gray-900">{order.orderNumber}</h1>
+                <span className="flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700">
+                  <StatusIcon className="h-4 w-4" />
+                  <span>{order.status}</span>
                 </span>
               </div>
-              <p className="text-sm text-gray-500 mt-1">Fecha: {new Date(order.date).toLocaleDateString('es-CL')}</p>
+              <p className="text-sm text-gray-500 mt-1">Fecha: {new Date(order.createdAt).toLocaleDateString('es-CL')}</p>
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-500">Total</p>
@@ -93,14 +48,14 @@ export default function OrderDetail() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
           <h2 className="text-lg font-bold text-gray-900 mb-4">Productos</h2>
           <div className="space-y-4">
-            {order.items.map((item, idx) => (
-              <div key={idx} className="flex items-center space-x-4">
-                <img src={item.image} alt={item.name} className="w-16 h-16 rounded-lg object-cover" />
+            {order.orderItems.map((item) => (
+              <div key={item.id} className="flex items-center space-x-4">
+                <img src={item.productImage} alt={item.productName} className="w-16 h-16 rounded-lg bg-gray-100 object-cover" />
                 <div className="flex-1">
-                  <p className="font-medium text-gray-900">{item.name}</p>
+                  <p className="font-medium text-gray-900">{item.productName}</p>
                   <p className="text-sm text-gray-500">Cantidad: {item.quantity}</p>
                 </div>
-                <span className="font-semibold text-gray-900">${(item.price * item.quantity).toLocaleString('es-CL')}</span>
+                <span className="font-semibold text-gray-900">${item.totalPrice.toLocaleString('es-CL')}</span>
               </div>
             ))}
           </div>
@@ -110,14 +65,8 @@ export default function OrderDetail() {
           <div className="grid sm:grid-cols-2 gap-4 text-sm text-gray-600">
             <div>
               <p className="font-medium text-gray-900">Dirección</p>
-              <p>{order.address}, {order.city}</p>
+              <p>{address.address || 'No informada'}{address.city ? `, ${address.city}` : ''}{address.zip ? ` · ${address.zip}` : ''}</p>
             </div>
-            {order.tracking && (
-              <div>
-                <p className="font-medium text-gray-900">Seguimiento</p>
-                <p>{order.tracking}</p>
-              </div>
-            )}
           </div>
         </div>
       </div>

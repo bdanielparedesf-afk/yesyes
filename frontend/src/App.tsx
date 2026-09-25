@@ -37,6 +37,8 @@ const AdminBusinesses = lazy(() => import('@/pages/AdminBusinesses'));
 const AdminBusinessEditor = lazy(() => import('@/pages/AdminBusinessEditor'));
 const MiNegocio = lazy(() => import('@/pages/MiNegocio'));
 const BusinessDashboard = lazy(() => import('@/pages/BusinessDashboard'));
+const BusinessBuilder = lazy(() => import('@/pages/BusinessBuilder'));
+const BusinessWizard = lazy(() => import('@/pages/BusinessWizard'));
 const PropertyDetail = lazy(() => import('@/pages/PropertyDetail'));
 const PaymentResult = lazy(() => import('@/pages/PaymentResult'));
 const BusinessFixturePage = import.meta.env.DEV ? lazy(() => import('@/pages/BusinessFixturePage')) : null;
@@ -104,6 +106,8 @@ function App() {
       <Route path="/mi-negocio/:slug" element={<MiNegocio />} />
       {BusinessFixturePage && <Route path="/__qa/business/:category" element={<BusinessFixturePage />} />}
       <Route path="/mi-negocio/:slug/propiedad/:propertyId" element={<PropertyDetail />} />
+      <Route path="/negocio/nuevo" element={<BusinessWizard />} />
+      <Route path="/negocio/editor" element={<BusinessBuilder />} />
       <Route path="/negocio" element={<BusinessDashboard />} />
       <Route path="/negocio/dashboard" element={<BusinessDashboard />} />
       <Route path="/negocio/configuracion" element={<BusinessDashboard section="configuracion" />} />

@@ -1,6 +1,7 @@
 import { memo, useMemo } from 'react';
 import { Check, X } from 'lucide-react';
 import type { VariantAttributeVM, VariantAvailability, VariantEngine, VariantOptionVM } from '@/utils/variantEngine';
+import RemoteImage from '@/components/RemoteImage';
 
 interface ProductVariantSelectorProps {
   engine: VariantEngine<unknown>;
@@ -45,7 +46,7 @@ function ImageSwatch({ option, group, onSelect }: {
         }`}
       >
         {option.image ? (
-          <img
+          <RemoteImage
             src={option.image}
             alt=""
             loading="lazy"

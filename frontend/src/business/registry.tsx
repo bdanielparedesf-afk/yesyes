@@ -1,5 +1,5 @@
 import { lazy, type ComponentType } from 'react';
-import { isSignatureTemplate } from './SignatureTemplate';
+import { isSignatureTemplate } from './signatureUtils';
 
 export type TemplateProps = { business: any; services: any[]; products: any[]; properties: any[]; gallery: any[]; testimonials?: any[]; faqs?: any[]; promotions?: any[]; team?: any[]; bookingSlots?: any[]; preview?: boolean };
 

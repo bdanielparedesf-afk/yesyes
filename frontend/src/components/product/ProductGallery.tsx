@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Play, X, ZoomIn } from 'lucide-react';
 import { parseVideoSource } from '@/utils/productPresentation';
+import { IMAGE_FALLBACK_SRC } from '@/components/RemoteImage';
 
 interface GalleryItem {
   id: string;
@@ -20,7 +21,7 @@ interface ProductGalleryProps {
   overlay?: ReactNode;
 }
 
-const FALLBACK_IMAGE = '/logo-icon.svg';
+const FALLBACK_IMAGE = IMAGE_FALLBACK_SRC;
 
 /**
  * Galeria del producto: imagen principal grande, miniaturas, navegacion,

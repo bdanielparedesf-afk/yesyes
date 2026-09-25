@@ -27,9 +27,9 @@ export default function Footer() {
               Tu marketplace de confianza. Productos novedosos con envíos a todo Chile.
             </p>
             <div className="flex items-center gap-4 pt-2">
-              <a href="#" className="text-neutral-400 hover:text-white transition-colors"><Instagram className="w-5 h-5" /></a>
-              <a href="#" className="text-neutral-400 hover:text-white transition-colors"><Facebook className="w-5 h-5" /></a>
-              <a href="#" className="text-neutral-400 hover:text-white transition-colors"><Twitter className="w-5 h-5" /></a>
+              <a href="#" aria-label="Instagram" className="inline-flex min-h-11 min-w-11 items-center justify-center text-neutral-400 hover:text-white transition-colors"><Instagram className="w-5 h-5" /></a>
+              <a href="#" aria-label="Facebook" className="inline-flex min-h-11 min-w-11 items-center justify-center text-neutral-400 hover:text-white transition-colors"><Facebook className="w-5 h-5" /></a>
+              <a href="#" aria-label="Twitter" className="inline-flex min-h-11 min-w-11 items-center justify-center text-neutral-400 hover:text-white transition-colors"><Twitter className="w-5 h-5" /></a>
             </div>
           </div>
 
@@ -37,9 +37,9 @@ export default function Footer() {
           <div className="space-y-4">
             <h3 className="text-white font-semibold text-sm uppercase tracking-wider">Tienda</h3>
             <ul className="space-y-2">
-              <li><Link to="/productos" className="text-sm hover:text-white transition-colors">Todos los productos</Link></li>
-              <li><Link to="/ofertas" className="text-sm hover:text-white transition-colors">Ofertas</Link></li>
-              <li><Link to="/favoritos" className="text-sm hover:text-white transition-colors">Favoritos</Link></li>
+              <li><Link to="/productos" className="inline-flex min-h-11 items-center text-sm hover:text-white transition-colors">Todos los productos</Link></li>
+              <li><Link to="/ofertas" className="inline-flex min-h-11 items-center text-sm hover:text-white transition-colors">Ofertas</Link></li>
+              <li><Link to="/favoritos" className="inline-flex min-h-11 items-center text-sm hover:text-white transition-colors">Favoritos</Link></li>
             </ul>
           </div>
 
@@ -47,10 +47,10 @@ export default function Footer() {
           <div className="space-y-4">
             <h3 className="text-white font-semibold text-sm uppercase tracking-wider">Ayuda</h3>
             <ul className="space-y-2">
-              <li><Link to="/envios" className="text-sm hover:text-white transition-colors">Envíos</Link></li>
-              <li><Link to="/devoluciones" className="text-sm hover:text-white transition-colors">Devoluciones</Link></li>
-              <li><Link to="/faq" className="text-sm hover:text-white transition-colors">Preguntas frecuentes</Link></li>
-              <li><Link to="/contacto" className="text-sm hover:text-white transition-colors">Contacto</Link></li>
+              <li><Link to="/envios" className="inline-flex min-h-11 items-center text-sm hover:text-white transition-colors">Envíos</Link></li>
+              <li><Link to="/devoluciones" className="inline-flex min-h-11 items-center text-sm hover:text-white transition-colors">Devoluciones</Link></li>
+              <li><Link to="/faq" className="inline-flex min-h-11 items-center text-sm hover:text-white transition-colors">Preguntas frecuentes</Link></li>
+              <li><Link to="/contacto" className="inline-flex min-h-11 items-center text-sm hover:text-white transition-colors">Contacto</Link></li>
             </ul>
           </div>
 

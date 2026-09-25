@@ -55,7 +55,7 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
     }
     setLoadingList(true);
     myBusinesses()
-      .then((items) => setList(items.filter((item) => item.status !== 'ARCHIVED')))
+      .then((items) => setList(Array.from(new Map(items.filter((item) => item.status !== 'ARCHIVED').map((item) => [item.id, item])).values())))
       .catch(() => setMsg('No se pudieron cargar tus negocios'))
       .finally(() => setLoadingList(false));
   }, [status]);
@@ -89,7 +89,7 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
   }, [selectedId, status]);
 
   const selectBusiness = (id: string, target?: string) => {
-    navigate(`${target || '/negocio/diseno'}?id=${id}`);
+    navigate(`${target || '/negocio/editor'}?id=${id}`);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -142,6 +142,9 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
     return <div className="p-8 text-center text-neutral-600">Debes iniciar sesión para gestionar tus negocios.</div>;
   }
 
+  const subscriptionInfo = (b: any) => b.subscription
+    ? `${String(b.subscription.status || 'PENDING').replace('_', ' ')} · $${Number(b.subscription.amount || 0).toLocaleString('es-CL')} ${b.subscription.currency || 'CLP'}/mes`
+    : 'Sin suscripción · administración';
   const renderList = (compact = false) => (
     loadingList ? (
       <div className="grid gap-2">
@@ -158,23 +161,21 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
             <div className="min-w-0">
               <p className="font-semibold truncate">{b.name}</p>
               <p className="text-xs text-neutral-500">
-                /mi-negocio/{b.slug} · {categoryLabel(b.category)}{' '}
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[b.status] || ''}`}>
-                  {statusLabel(b.status)}
-                </span>
+                {subscriptionInfo(b)}
               </p>
+              <p className="mt-1 text-xs text-neutral-400">Actualizada {new Date(b.updatedAt).toLocaleDateString('es-CL')}</p>
             </div>
             <div className="flex flex-wrap gap-2 text-sm">
-              <button type="button" className="underline" onClick={() => selectBusiness(b.id)}>Editar</button>
-              <a className="underline" href={`/mi-negocio/${b.slug}?preview=true`} target="_blank" rel="noreferrer">Vista previa</a>
-               <button type="button" className="underline text-red-600" disabled={busy} onClick={() => quickDelete(b.id, b.name)}>Eliminar</button>
+              <button type="button" className="min-h-11 underline" onClick={() => selectBusiness(b.id)}>Editar</button>
+              <a className="inline-flex min-h-11 items-center underline" href={`/mi-negocio/${b.slug}?preview=true`} target="_blank" rel="noreferrer">Vista previa</a>
+               <button type="button" className="min-h-11 underline text-red-600" disabled={busy} onClick={() => quickDelete(b.id, b.name)}>Eliminar</button>
 
               {b.status !== 'PUBLISHED' && b.status !== 'ARCHIVED' && (
-                <button type="button" className="underline text-green-700" disabled={busy}
+                <button type="button" className="min-h-11 underline text-green-700" disabled={busy}
                   onClick={() => quickStatus(b.id, 'publish')}>Publicar</button>
               )}
               {b.status === 'PUBLISHED' && (
-                <button type="button" className="underline text-amber-600" disabled={busy}
+                <button type="button" className="min-h-11 underline text-amber-600" disabled={busy}
                   onClick={() => quickStatus(b.id, 'pause')}>Pausar</button>
               )}
             </div>
@@ -184,12 +185,15 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
     )
   );
 
+  const planPrice = list.find((item) => item.subscription?.amount)?.subscription?.amount;
+  const formattedPrice = Number(planPrice || 0).toLocaleString('es-CL');
+  const createPage = () => navigate('/negocio/nuevo');
   const needsBusiness = section !== 'inicio' && (!selectedId || !detail);
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold">Panel de negocios</h1>
+        <h1 className="text-2xl font-bold">Mis páginas</h1>
         {detail && (
           <p className="text-sm text-neutral-500">
             <span className="font-semibold text-neutral-800">{detail.name}</span>
@@ -208,7 +212,11 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
 
       {section === 'inicio' ? (
         <>
-    <div className="mb-8"><p className="text-sm font-semibold text-stone-500">Paso 1 de 6</p><h2 className="mt-1 text-3xl font-bold tracking-tight">¿Qué tipo de negocio tienes?</h2><p className="mt-2 text-stone-500">Elige el rubro que mejor representa tu trabajo.</p></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-neutral-950 p-5 text-white">
+            <div><p className="text-sm text-neutral-400">Tu sitio web</p><p className="mt-1 text-xl font-bold">{formattedPrice ? `$${formattedPrice} CLP / mes` : 'Consulta el precio de tu página'}</p><p className="text-xs text-neutral-400">por cada página · puedes crear varias</p></div>
+            <button type="button" onClick={createPage} className="rounded-xl bg-white px-4 py-2 font-bold text-neutral-950">Crear página web</button>
+          </div>
+          <div className="mb-8"><p className="text-sm font-semibold text-stone-500">Paso 1 de 6</p><h2 className="mt-1 text-3xl font-bold tracking-tight">¿Qué tipo de negocio tienes?</h2><p className="mt-2 text-stone-500">Elige el rubro que mejor representa tu trabajo.</p></div>
     <fieldset><legend className="sr-only">Selecciona un rubro</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {CATS.map((code) => <button key={code} type="button" onClick={() => setCategory(code)} aria-pressed={category === code} className={`group relative overflow-hidden rounded-2xl border bg-white p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-stone-400 hover:shadow-lg focus-visible:outline focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 ${category === code ? 'border-stone-900 ring-2 ring-stone-900' : ''}`}>
         <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-stone-100"><Building2 className="h-5 w-5" aria-hidden /></span>
@@ -217,7 +225,7 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
       </button>)}
     </div></fieldset>
     <form onSubmit={handleCreate} className="mt-7 rounded-2xl bg-stone-950 p-5 text-white sm:flex sm:items-end sm:gap-3">
-      <label className="block flex-1 text-sm font-semibold">Nombre del negocio<input className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 p-3 font-normal text-white placeholder:text-white/50" placeholder="Ejemplo: Floristería Luna" value={name} onChange={(e) => setName(e.target.value)} required /></label>
+      <label className="block flex-1 text-sm font-semibold">Nombre del negocio<input id="business-create-name" className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 p-3 font-normal text-white placeholder:text-white/50" placeholder="Ejemplo: Floristería Luna" value={name} onChange={(e) => setName(e.target.value)} required /></label>
       <button className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-white px-6 font-bold text-stone-950 disabled:opacity-50 sm:mt-0 sm:w-auto" type="submit" disabled={busy || !name.trim()}>{busy ? 'Creando…' : <><Plus size={18} aria-hidden />Continuar con {categoryLabel(category)}</>}</button>
     </form>
           {renderList()}

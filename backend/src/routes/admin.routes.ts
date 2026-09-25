@@ -124,7 +124,7 @@ router.get('/businesses', async (req, res) => {
   try {
     const businesses = await prisma.business.findMany({
       orderBy: { updatedAt: 'desc' },
-      include: { template: true, owner: { select: { id: true, email: true, name: true } } },
+      include: { template: true, subscription: { include: { plan: true } }, owner: { select: { id: true, email: true, name: true } } },
     });
     res.json({ businesses });
   } catch (error: any) {
@@ -141,7 +141,7 @@ router.put('/businesses/:id/status', async (req: AuthRequest, res) => {
   }
   try {
     if (status === 'PUBLISHED') {
-      const result = await publishBusiness({ businessId, userId: req.user!.id, ip: req.ip });
+      const result = await publishBusiness({ businessId, userId: req.user!.id, ip: req.ip, isAdmin: true });
       if (!result.ok) {
         res.status(result.error.status).json({
           code: result.error.code,
