@@ -42,4 +42,3 @@ export function getIndustryComposition(code?: string | null, category?: string |
 }
 
 export const CANONICAL_INDUSTRY_CODES = Object.keys(INDUSTRY_COMPOSITIONS);
-
