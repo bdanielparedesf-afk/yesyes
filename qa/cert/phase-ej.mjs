@@ -159,7 +159,11 @@ async function main() {
 
     // â”€â”€ CAMBIO DE DISEÃ‘O: preview NO guarda, aplicar SÃ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     await page.click('[data-testid="builder-designs"]');
-    await sleep(3000);
+    // No basta con dormir: la galeria pinta la pagina real dentro de cada
+    // miniatura, y eso tarda. Se espera a que aparezca la rejilla o el estado
+    // vacio, y solo despues se cuenta.
+    await page.waitFor('[data-testid="editor-design-gallery"], [data-testid="editor-design-gallery-empty"]', 45_000).catch(() => {});
+    await sleep(2000);
     await page.screenshot(SHOTS, 'G5-galeria-disenos');
     const galleryDesigns = await page.eval(`[...document.querySelectorAll('[data-testid^="design-option-"]')].length`);
     paso('G5-galeria-editor', galleryDesigns >= 2, `Galeria del editor ofrece ${galleryDesigns} disenos`);

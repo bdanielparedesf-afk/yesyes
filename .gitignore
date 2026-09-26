@@ -66,3 +66,4 @@ qa/*.log
 qa/*.exit
 qa/run-backend-tests.cmd
 qa/commit-msg.txt
+qa/cert-tres-webs.json

@@ -121,7 +121,11 @@ export function DesignGallery({ designs, category, selectedId, onSelect, emptyHi
         {designs.map((design) => {
           const selected = selectedId === design.id;
           return (
-            <article key={design.id} className={`overflow-hidden rounded-2xl border bg-white text-left transition ${selected ? 'border-stone-900 ring-2 ring-stone-900' : 'border-stone-200 hover:border-stone-400'}`}>
+            <article
+              key={design.id}
+              data-testid={`design-option-${design.id}`}
+              className={`overflow-hidden rounded-2xl border bg-white text-left transition ${selected ? 'border-stone-900 ring-2 ring-stone-900' : 'border-stone-200 hover:border-stone-400'}`}
+            >
               <DesignThumbnail design={design} category={category} />
               <div className="space-y-2 p-4">
                 <div className="flex items-start justify-between gap-2">
