@@ -30,7 +30,7 @@
  */
 
 import { LAYOUT_IDS, type LayoutId } from './layout-registry';
-import { getBlock } from './block-registry';
+import { getBlock, initialBlockConfig } from './block-registry';
 import { defaultVariantOf } from './variant-registry';
 import { suggestedLayoutsForCategory, industryProfileOf } from './capabilities';
 import { canonicalCategoryCode, categoryLabelOf } from '../utils/business-taxonomy';
@@ -393,7 +393,10 @@ export function manifestFromDesign(
     blocks: section.blocks.map((block, index) => ({
       block: block.block,
       instanceId: `${section.id}-${block.block.toLowerCase()}${index > 0 ? `-${index + 1}` : ''}`,
-      config: {},
+      // La config nace del `configSchema` del bloque, no vacia: asi el editor
+      // tiene controles que llenar y la siembra de medios encuentra la ranura
+      // `image`/`video` donde colocar la foto de ejemplo.
+      config: initialBlockConfig(block.block),
       hidden: false,
       emphasis: index === 0 ? block.emphasis : 'secondary',
     })),

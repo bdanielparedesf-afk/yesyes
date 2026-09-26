@@ -62,6 +62,11 @@ export async function createBusiness(req: AuthRequest, res: Response): Promise<v
     try {
       const { seedExampleContent } = await import('../services/business-example-content.service');
       await seedExampleContent(business.id, business.category);
+      // FOTOS Y VIDEOS: sin esto la pagina nace sin imagenes, que es lo que la
+      // hacia ver basica. Se siembran medios reales y se conectan al manifest.
+      const { seedExampleMedia, assignExampleMediaToManifest } = await import('../services/business-example-media.service');
+      const media = await seedExampleMedia(business.id, business.category);
+      await assignExampleMediaToManifest(business.id, media.bySlot);
       exampleSeeded = true;
     } catch (error) {
       logger.warn('[business] no se pudo sembrar el contenido de ejemplo', { businessId: business.id, error });

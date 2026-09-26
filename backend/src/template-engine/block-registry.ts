@@ -43,6 +43,8 @@ export interface BlockConfigField {
   options?: string[];
   min?: number;
   max?: number;
+  /** Valor inicial con el que se materializa la clave en el manifest. */
+  default?: string | number | boolean;
   dependsOn?: { field: string; equals: string | boolean };
 }
 
@@ -541,4 +543,48 @@ export function blocksForManifestVersion(manifestVersion: number): string[] {
  */
 export function mediaRequirementOf(blockId: string): BlockMediaRequirement | undefined {
   return getBlock(blockId)?.media;
+}
+
+/**
+ * Config INICIAL de un bloque, derivada de su `configSchema`.
+ *
+ * El schema del manifest declara `config` con default `{}`, asi que un bloque
+ * recien creado llega SIN ninguna clave. Eso hacia dos cosas malas: el editor no
+ * tenia donde escribir, y la siembra de medios no encontraba un campo `image` o
+ * `video` donde colocar la referencia (por eso la pagina salia vacia).
+ *
+ * Aqui se materializan todas las claves del schema con su valor por defecto:
+ *  - el editor muestra el control aunque este vacio (se puede elegir foto),
+ *  - la siembra tiene una ranura real donde poner la referencia,
+ *  - el renderer recibe `false`/`0` en vez de `undefined`.
+ *
+ * `media-ref` arranca en `null` a proposito: es la ranura que la siembra de
+ * medios de ejemplo o el propio dueño van a llenar.
+ *
+ * Solo rellena claves AUSENTES: nunca pisa un valor ya elegido por el usuario.
+ */
+export function initialBlockConfig(blockId: string | null | undefined): Record<string, unknown> {
+  const definition = getBlock(blockId);
+  if (!definition) return {};
+  const config: Record<string, unknown> = {};
+  for (const field of definition.configSchema) {
+    switch (field.type) {
+      case 'boolean':
+        config[field.key] = field.default !== undefined ? Boolean(field.default) : false;
+        break;
+      case 'number':
+        config[field.key] = field.default !== undefined ? Number(field.default) : 0;
+        break;
+      case 'select':
+        config[field.key] = field.default ?? field.options?.[0] ?? '';
+        break;
+      case 'media-ref':
+        config[field.key] = null;
+        break;
+      default:
+        config[field.key] = field.default ?? '';
+        break;
+    }
+  }
+  return config;
 }

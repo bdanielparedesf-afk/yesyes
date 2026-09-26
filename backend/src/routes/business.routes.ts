@@ -56,7 +56,12 @@ router.post('/:id/example-content', requireBusinessOwner, async (req: AuthReques
   const replace = (req.body as any)?.replace !== false;
   const { seedExampleContent } = await import('../services/business-example-content.service');
   const seeded = await seedExampleContent(business.id, business.category, { replace });
-  res.json({ seeded });
+  // Fotos y videos de ejemplo: es lo que hace que la pagina se vea completa y
+  // que el dueño tenga algo real que reemplazar desde el primer minuto.
+  const { seedExampleMedia, assignExampleMediaToManifest } = await import('../services/business-example-media.service');
+  const media = await seedExampleMedia(business.id, business.category, { replace });
+  const bound = await assignExampleMediaToManifest(business.id, media.bySlot);
+  res.json({ seeded, media: { created: media.created, reused: media.reused, assigned: bound.assigned } });
 });
 
 router.get('/templates', async (req: AuthRequest, res) => {
