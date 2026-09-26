@@ -191,6 +191,11 @@ export default function BusinessWizard() {
                 <span className="mt-5 inline-block rounded-full bg-white px-4 py-2 text-sm font-bold text-stone-950">{selectedDesign?.label || 'Diseño seleccionado'}</span>
               </div>
               <p className="text-sm text-stone-500">Al crear la página entrarás al editor. Podrás personalizarla y publicarla cuando el backend confirme los requisitos.</p>
+              <p className={`rounded-2xl p-4 text-sm ${withExample ? 'bg-emerald-50 text-emerald-900' : 'bg-stone-100 text-stone-600'}`}>
+                {withExample
+                  ? 'Tu página se creará con contenido de ejemplo del rubro, listo para que edites las palabras y las fotos.'
+                  : 'Tu página se creará vacía: agregarás tus servicios, productos y fotos desde el panel.'}
+              </p>
             </div>
           )}
 
