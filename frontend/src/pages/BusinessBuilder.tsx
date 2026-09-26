@@ -21,6 +21,7 @@ import BusinessPageRenderer from '@/business/BusinessPageRenderer';
 import BuilderTopBar from '@/business/builder/BuilderTopBar';
 import { BuilderSidebar } from '@/business/builder/BuilderSidebar';
 import BuilderInspector from '@/business/builder/BuilderInspector';
+import PublishPaymentDialog from '@/business/builder/PublishPaymentDialog';
 import { useBuilderState, createManifestAutosave, isUsableManifest, moveSection, removeSection, duplicateSection, setSectionHidden, undoRedoIntent, type ManifestAutosave } from '@/business/builder/useBuilderState';
 import { manifestSidebarSections, capabilityOfManifestSection, activeVariantBySection, canUndo, canRedo, type BuilderManifest, type BuilderManifestSection } from '@/business/builder/types';
 import { DesignGallery } from '@/business/builder/DesignGalleryPanel';
@@ -33,6 +34,8 @@ export default function BusinessBuilder() {
   const { state, dispatch, changeBusiness, setManifest, editManifest } = useBuilderState();
   const [content, setContent] = useState<any>(EMPTY_CONTENT);
   const [loadError, setLoadError] = useState(''); const [publishError, setPublishError] = useState('');
+  /** Modal de cobro: se abre cuando el backend responde PAYMENT_REQUIRED. */
+  const [showPayment, setShowPayment] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'structure' | 'inspector' | null>(null);
   const [showDesigns, setShowDesigns] = useState(false);
   /**
@@ -302,9 +305,13 @@ export default function BusinessBuilder() {
       }
       const result = await publishBusinessPage(id);
       dispatch({ type: 'LOAD', business: result.business, manifest: manifestRef.current, legacySections: state.legacySections });
+      setShowPayment(false);
       window.setTimeout(() => window.alert('Cambios publicados correctamente.'), 50);
     } catch (error: any) {
-      setPublishError(error?.response?.data?.message || 'El backend no permiti� publicar la p�gina.');
+      // El 409 con `PAYMENT_REQUIRED` no es un fallo de edicion: es que falta
+      // el plan. Se abre el modal de cobro en vez de pintar un error sin salida.
+      if (error?.response?.data?.code === 'PAYMENT_REQUIRED') { setShowPayment(true); return; }
+      setPublishError(error?.response?.data?.message || 'No se pudo publicar la página.');
     }
   };
 
@@ -395,6 +402,6 @@ export default function BusinessBuilder() {
         onApply={(next: any, stamp?: string | null) => { setPreviewManifest(null); setManifest(next); instanceStamp.current = stamp || instanceStamp.current; }}
         onClose={() => { setPreviewManifest(null); setShowDesigns(false); }}
       />
-    )}{addError && <p role="alert" className="fixed bottom-36 left-1/2 z-40 -translate-x-1/2 rounded-xl bg-amber-700 px-4 py-3 text-sm text-white">{addError}</p>}{state.error && <p role="alert" className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-xl bg-red-700 px-4 py-3 text-sm text-white">{state.error}</p>}{publishError && <div role="alert" className="fixed inset-x-4 top-24 z-50 mx-auto max-w-lg rounded-2xl bg-white p-5 shadow-2xl"><p>{publishError}</p><button type="button" onClick={() => setPublishError('')} className="mt-3 rounded-xl border px-3 py-2">Entendido</button></div>}</main>;
+    )}{showPayment && id && <PublishPaymentDialog businessId={id} onClose={() => setShowPayment(false)} onPaid={publish} />}{addError && <p role="alert" className="fixed bottom-36 left-1/2 z-40 -translate-x-1/2 rounded-xl bg-amber-700 px-4 py-3 text-sm text-white">{addError}</p>}{state.error && <p role="alert" className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-xl bg-red-700 px-4 py-3 text-sm text-white">{state.error}</p>}{publishError && <div role="alert" className="fixed inset-x-4 top-24 z-50 mx-auto max-w-lg rounded-2xl bg-white p-5 shadow-2xl"><p>{publishError}</p><button type="button" onClick={() => setPublishError('')} className="mt-3 rounded-xl border px-3 py-2">Entendido</button></div>}</main>;
 }
 

@@ -54,6 +54,18 @@ export async function getPublicBusinessPlan() {
 }
 
 /** Taxonomía pública de rubros (grupos + categorías canónicas, sin duplicados). */
+/**
+ * Inicia el cobro de la suscripcion y devuelve la URL de Mercado Pago.
+ *
+ * El backend es quien crea la preferencia (`POST /business/subscription/checkout`),
+ * por lo que el monto NO se manda desde aqui: se decide en el plan del servidor.
+ * Mandarlo desde el cliente seria permitir que el navegador elija lo que paga.
+ */
+export async function startBusinessCheckout(businessId: string): Promise<{ checkoutUrl: string }> {
+  const { data } = await api.post('/business/subscription/checkout', { businessId });
+  return data as { checkoutUrl: string };
+}
+
 export async function getBusinessTaxonomy() {
   const { data } = await api.get('/public/businesses/taxonomy');
   return data.groups as { group: { key: string; label: string; description: string }; categories: { code: string; label: string; description: string; cta: string }[] }[];

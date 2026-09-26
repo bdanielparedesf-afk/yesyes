@@ -1,9 +1,10 @@
 import { prisma } from '../lib/prisma';
 import { resolveCapabilities } from '../utils/business-capabilities';
 import { subscriptionAllowsPublishing, type SubscriptionLike } from './business-subscription-state';
-import { getSubscriptionForBusiness, toSubscriptionDTO } from './business-subscription.service';
+import { getSubscriptionForBusiness, toSubscriptionDTO, planSeedByCode } from './business-subscription.service';
 import { logBusinessAudit } from './business-audit.service';
 import { freezeDraftAsPublished } from './business-site-version.service';
+import { DEFAULT_PLAN_CODE } from '../config/business-plans';
 import { logger } from '../utils/logger';
 
 /**
@@ -114,8 +115,27 @@ export interface PublishGateError {
   message: string;
 }
 
-export const PAYMENT_REQUIRED_MESSAGE =
-  'Necesitas una suscripción activa para publicar tu página. Completa el pago y vuelve a intentarlo.';
+/**
+ * AVISO AL DUEÑO cuando la página todavía no tiene plan.
+ *
+ * El editor abre su propio modal de cobro con el precio, así que este texto es
+ * el respaldo: si el modal no llega a abrirse, el dueño igual tiene que saber
+ * que existe un plan, cuánto cuesta y que el pago es por su página. Decir solo
+ * "necesitas una suscripción activa" lo deja sin ninguna acción posible.
+ *
+ * El monto sale de la configuración central de planes, no de este archivo: si
+ * el precio cambia, este mensaje cambia solo.
+ */
+export function paymentRequiredMessage(): string {
+  const plan = planSeedByCode(DEFAULT_PLAN_CODE);
+  const amount = plan ? `$${new Intl.NumberFormat('es-CL').format(plan.amount)}` : null;
+  if (!amount) {
+    return 'Tu página está lista y solo falta activar el plan para publicarla.';
+  }
+  return `Tu página está lista y solo falta activar el plan para publicarla. Son ${amount} por página${
+    plan?.frequencyType === 'MONTH' ? ' al mes' : ''
+  }.`;
+}
 
 /** Contexto completo (business + template + suscripcion + capacidades + checklist). */
 export async function businessPublishContext(businessId: string) {
@@ -160,7 +180,7 @@ export function publishGate(input: { business: any; checklist: PublishChecklist 
     return { status: 409, code: 'ARCHIVED', message: 'Este negocio está archivado. Restáuralo antes de publicarlo.' };
   }
   if (input.checklist.missingRequired.includes('subscription')) {
-    return { status: 409, code: 'PAYMENT_REQUIRED', message: PAYMENT_REQUIRED_MESSAGE };
+    return { status: 409, code: 'PAYMENT_REQUIRED', message: paymentRequiredMessage() };
   }
   if (!input.checklist.ready) {
     return { status: 400, code: 'INCOMPLETE', message: 'Faltan datos obligatorios para publicar.' };

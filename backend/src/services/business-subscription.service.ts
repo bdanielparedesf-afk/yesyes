@@ -59,7 +59,13 @@ export function businessPublicBaseUrl(): string {
   const explicit = (process.env.BUSINESS_PUBLIC_BASE_URL || '').replace(/\/$/, '');
   if (explicit) return explicit;
   const frontend = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
-  if (frontend) return frontend;
+  // Mercado Pago RECHAZA `back_url` que no sea una URL absoluta y valida: con
+  // `FRONTEND_URL=http://localhost:5173` el checkout fallaba en produccion con
+  // "Invalid value for back_url". Solo se acepta localhost en desarrollo.
+  if (frontend && /^https?:\/\//i.test(frontend)) {
+    const isLocal = /localhost|127\.0\.0\.1/.test(frontend);
+    if (!isLocal || process.env.NODE_ENV !== 'production') return frontend;
+  }
   return 'https://yesyes.cl';
 }
 
