@@ -53,7 +53,21 @@ export async function createBusiness(req: AuthRequest, res: Response): Promise<v
     const { ensureBusinessSubscription } = await import('../services/business-subscription.service');
     await ensureBusinessSubscription(business.id);
   }
-  res.status(201).json({ business });
+  // "Arranca con un ejemplo y editalo": el contenido de ejemplo se siembra
+  // DESPUES de crear el negocio, en su propia transaccion. Si fallara, la
+  // pagina ya creada NO se pierde: se registra y el usuario sigue con una
+  // pagina vacia que puede llenar a mano.
+  let exampleSeeded = false;
+  if (parsed.data.withExampleContent) {
+    try {
+      const { seedExampleContent } = await import('../services/business-example-content.service');
+      await seedExampleContent(business.id, business.category);
+      exampleSeeded = true;
+    } catch (error) {
+      logger.warn('[business] no se pudo sembrar el contenido de ejemplo', { businessId: business.id, error });
+    }
+  }
+  res.status(201).json({ business, exampleSeeded });
 }
 
 export async function updateBusiness(req: AuthRequest, res: Response): Promise<void> {

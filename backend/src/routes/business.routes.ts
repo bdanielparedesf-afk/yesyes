@@ -40,6 +40,25 @@ router.post('/', createBusiness);
 // Listado de plantillas activas para el picker del dashboard.
 // IMPORTANTE: debe ir ANTES de GET /:id, si no '/templates' se captura como id.
 // `label`/`style` son legibles; `code` y `capabilities` se conservan por compatibilidad.
+/**
+ * Carga contenido de ejemplo en una página YA creada.
+ *
+ * Es el mismo servicio que usa la creación, así que el resultado es idéntico:
+ * filas normales, editables y borrables desde el panel. `replace` permite
+ * recargar el ejemplo sin duplicarlo, y solo borra el ejemplo previo.
+ */
+router.post('/:id/example-content', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const business = await prisma.business.findFirst({
+    where: ownerWhere(req, String(req.params.id)),
+    select: { id: true, category: true },
+  });
+  if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const replace = (req.body as any)?.replace !== false;
+  const { seedExampleContent } = await import('../services/business-example-content.service');
+  const seeded = await seedExampleContent(business.id, business.category, { replace });
+  res.json({ seeded });
+});
+
 router.get('/templates', async (req: AuthRequest, res) => {
   const category = req.query.category ? String(req.query.category) : undefined;
   const templates = await prisma.businessTemplate.findMany({

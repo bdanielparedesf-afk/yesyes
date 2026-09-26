@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { listServices, createService, updateService, deleteService, uploadBusinessImage } from '@/services/business';
+import { listServices, createService, updateService, deleteService, uploadBusinessImage, seedBusinessExampleContent } from '@/services/business';
 
 type Service = {
   id: string; name: string; description?: string | null; image?: string | null;
@@ -76,6 +76,25 @@ export default function ServicesSection({ businessId }: { businessId: string }) 
     }
   };
 
+  /**
+   * Carga el contenido de ejemplo del rubro para que el usuario no parta en
+   * blanco. Solo aparece cuando la lista está vacía: nunca se ofrece pisar
+   * contenido que ya escribió.
+   */
+  const loadExample = async () => {
+    if (!window.confirm('Se agregarán servicios de ejemplo del rubro. ¿Continuar?')) return;
+    setBusy(true);
+    try {
+      const seeded = await seedBusinessExampleContent(businessId);
+      setMsg(`Agregamos ${seeded.services} servicios de ejemplo`);
+      await load();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.message || 'No se pudo cargar el ejemplo');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const pickImage = async (service: Service, file: File | undefined) => {
     if (!file) return;
     setBusy(true);
@@ -135,9 +154,20 @@ export default function ServicesSection({ businessId }: { businessId: string }) 
           {[0, 1].map((i) => <div key={i} className="h-16 bg-neutral-200 rounded-xl animate-pulse" />)}
         </div>
       ) : !services.length ? (
-        <p className="bg-white border rounded-xl p-6 text-sm text-neutral-500 text-center">
-          Aún no tienes servicios. Agrega el primero con el formulario superior.
-        </p>
+        <div className="rounded-xl border bg-white p-6 text-center">
+          <p className="text-sm text-neutral-500">
+            Aún no tienes servicios. Agrega el primero con el formulario superior, o empieza con
+            servicios de ejemplo del tu rubro y edítalos.
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadExample()}
+            disabled={busy}
+            className="mt-3 rounded-xl bg-neutral-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Cargar servicios de ejemplo
+          </button>
+        </div>
       ) : (
         <ul className="space-y-2">
           {services.map((s) => (

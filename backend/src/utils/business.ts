@@ -70,6 +70,13 @@ export const businessUpsertSchema = z.object({
   seoDescription: z.string().max(320).nullable().optional(),
   ogImage: z.string().url().nullable().optional(),
   canonical: z.string().url().nullable().optional(),
+  /**
+   * "Arranca con un ejemplo y editalo": siembra contenido de ejemplo REAL
+   * (servicios, productos, testimonios, preguntas, equipo y propiedades segun
+   * el rubro) para que la pagina no nazca vacia. Es opt-in y solo afecta a la
+   * creacion: nunca pisa contenido existente.
+   */
+  withExampleContent: z.boolean().optional(),
 }).strict();
 
 export const safeUrlSchema = z.string().url().max(2048).refine(

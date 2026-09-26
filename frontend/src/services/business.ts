@@ -130,6 +130,12 @@ export async function createBusiness(payload: any) {
   const { data } = await api.post('/businesses', payload);
   return data.business as Business;
 }
+
+/** Carga contenido de ejemplo en una página ya creada (mismo efecto que el asistente). */
+export async function seedBusinessExampleContent(id: string, replace = true) {
+  const { data } = await api.post(`/businesses/${id}/example-content`, { replace });
+  return data.seeded as { services: number; products: number; properties: number; testimonials: number; faqs: number; team: number };
+}
 export async function updateBusiness(id: string, payload: any) {
   const { data } = await api.put(`/businesses/${id}`, payload);
   return data.business as Business;

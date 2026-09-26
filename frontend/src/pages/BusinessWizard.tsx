@@ -29,6 +29,12 @@ export default function BusinessWizard() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  /**
+   * "Arranca con un ejemplo y editalo": por defecto la página nace con
+   * contenido de ejemplo YA GUARDADO, listo para que el usuario solo cambie
+   * las palabras y las fotos que no le sirvan. Si lo desmarca, queda vacía.
+   */
+  const [withExample, setWithExample] = useState(true);
   const set = (key: keyof Form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   // Los diseños se piden al elegir el rubro: es lo primero que el usuario ve.
@@ -70,6 +76,7 @@ export default function BusinessWizard() {
         city: form.city.trim() || null,
         socials: form.socials ? Object.fromEntries(form.socials.split(',').map((value) => value.trim().split(/\s+/).slice(0, 2))) : null,
         cta: form.cta.trim() || ctaLabel(category),
+        withExampleContent: withExample,
       });
       navigate(`/negocio/editor?id=${business.id}`);
     } catch (cause: any) {
@@ -150,7 +157,27 @@ export default function BusinessWizard() {
               <Field label="Redes (Instagram, Facebook)" value={form.socials} onChange={(v) => set('socials', v)} placeholder="@usuario, https://facebook.com/..." />
               <Field label="Botón principal" value={form.cta} onChange={(v) => set('cta', v)} placeholder={ctaLabel(category)} />
               <div className="rounded-2xl bg-stone-50 p-4 text-sm text-stone-600 sm:col-span-2">
-                Logo, portada, fotos, servicios, productos y reservas los agregas después desde el editor. Tu página ya queda creada con este diseño.
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={withExample}
+                    onChange={(event) => setWithExample(event.target.checked)}
+                    className="mt-0.5 h-5 w-5 shrink-0 rounded border-stone-300 accent-stone-900"
+                  />
+                  <span>
+                    <span className="block font-semibold text-stone-900">Empezar con contenido de ejemplo</span>
+                    <span className="mt-1 block text-stone-600">
+                      Creamos servicios, productos, testimonios, preguntas frecuentes y equipo
+                      {category === 'REAL_ESTATE' ? ', además una propiedad' : ''} del rubro{' '}
+                      <strong>{categoryLabel(category)}</strong>, para que tu página se vea llena desde el
+                      primer momento. Todo queda guardado y lo editas o lo borras cuando quieras.
+                    </span>
+                  </span>
+                </label>
+                <p className="mt-3 border-t border-stone-200 pt-3 text-stone-500">
+                  Si lo dejas marcado, después solo tienes que cambiar las palabras y las fotos que no
+                  te sirvan. Logo, portada y fotos las subes en el editor.
+                </p>
               </div>
             </div>
           )}
