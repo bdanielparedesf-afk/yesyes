@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { sectionDefinition } from './sectionRegistry';
 import { MediaField } from './MediaField';
+import ContentListEditor from './ContentListEditor';
+import GalleryEditor from './GalleryEditor';
 import { mediaSlotsOfSection, setBlockConfigValue, type ManifestLike } from './useBuilderState';
 import { manifestSectionOfCapability } from './types';
 import type { BusinessMediaItem } from '@/services/business';
@@ -86,8 +88,14 @@ function SectionMedia({ business, manifest, selected, sectionId, onEditManifest 
   );
 }
 
-export default function BuilderInspector({ business, selected, onChange, manifest, sectionId, onEditManifest }: { business: any; selected: string; onChange: (patch: Record<string, unknown>) => void; manifest?: ManifestLike | null; sectionId?: string; onEditManifest?: (manifest: ManifestLike) => void }) {
+export default function BuilderInspector({ business, selected, onChange, manifest, sectionId, onEditManifest, content = {}, media = [], onRefreshContent, onGalleryChanged }: { business: any; selected: string; onChange: (patch: Record<string, unknown>) => void; manifest?: ManifestLike | null; sectionId?: string; onEditManifest?: (manifest: ManifestLike) => void; content?: any; media?: any[]; onRefreshContent?: () => void; onGalleryChanged?: () => void }) {
   const definition = sectionDefinition(selected); const cta = business.cta || {};
+  // Los dos son opcionales porque hay tests que montan el inspector sin ellos,
+  // pero los editores de lista los necesitan para refrescar la preview. Un
+  // no-op es preferible a propagar `undefined`: sin refresco la UI optimista
+  // igual funciona, solo la previsualizacion tarda en reflejar el alta.
+  const refresh = onRefreshContent || (() => {});
+  const galleryChanged = onGalleryChanged || (() => {});
   return <aside data-testid="builder-inspector" className="h-full overflow-auto bg-white"><header className="border-b p-5"><p className="text-xs font-bold uppercase tracking-widest text-stone-500">Estás editando</p><h2 className="text-xl font-bold">{definition?.label || 'Diseño'}</h2></header>
     {(selected === 'HERO' || selected === 'ABOUT') && <Group title="Contenido"><Field testId={selected === 'HERO' ? 'builder-name-input' : undefined} label={selected === 'HERO' ? 'Título' : 'Encabezado'} value={selected === 'HERO' ? business.name : business.aboutTitle} onChange={(value) => onChange(selected === 'HERO' ? { name: value } : { aboutTitle: value })} /><Field label="Descripción" value={business.description} onChange={(description) => onChange({ description })} /><Field label="Imagen" value={business.cover} type="url" onChange={(cover) => onChange({ cover })} /></Group>}
     {selected === 'HERO' && <><Group title="Llamadas a la acción"><Field label="Botón principal" value={cta.primaryLabel} onChange={(primaryLabel) => onChange({ cta: { ...cta, primaryLabel } })} /><Field label="Acción" value={cta.primaryAction} onChange={(primaryAction) => onChange({ cta: { ...cta, primaryAction } })} hint="WHATSAPP, CONTACT o URL." /><Field label="Botón secundario" value={cta.secondaryLabel} onChange={(secondaryLabel) => onChange({ cta: { ...cta, secondaryLabel } })} /></Group><Group title="Diseño" defaultOpen={false}><Field label="Alineación" value={cta.alignment || 'left'} onChange={(alignment) => onChange({ cta: { ...cta, alignment } })} /><Field label="Altura" value={cta.height || 'medium'} onChange={(height) => onChange({ cta: { ...cta, height } })} /></Group></>}
@@ -95,11 +103,17 @@ export default function BuilderInspector({ business, selected, onChange, manifes
     {['CONTACT', 'WHATSAPP', 'MAP', 'FOOTER'].includes(selected) && <Group title="Contacto"><Field label="Teléfono" value={business.phone} type="tel" onChange={(phone) => onChange({ phone })} /><Field label="WhatsApp" value={business.whatsapp} type="tel" onChange={(whatsapp) => onChange({ whatsapp })} /><Field label="Correo electrónico" value={business.email} type="email" onChange={(email) => onChange({ email })} /><Field label="Dirección" value={business.address} onChange={(address) => onChange({ address })} /><Field label="Ciudad" value={business.city} onChange={(city) => onChange({ city })} /><Field label="Referencia de ubicación" value={business.mapsUrl} type="url" onChange={(mapsUrl) => onChange({ mapsUrl })} /></Group>}
     <SocialFields business={business} selected={selected} onChange={onChange} /><HoursFields business={business} selected={selected} onChange={onChange} />
     {selected === 'SEO' && <Group title="Posicionamiento"><Field label="Título SEO" value={business.seoTitle} onChange={(seoTitle) => onChange({ seoTitle })} hint={`${String(business.seoTitle || '').length} de 60 caracteres`} /><Field label="Descripción SEO" value={business.seoDescription} onChange={(seoDescription) => onChange({ seoDescription })} hint={`${String(business.seoDescription || '').length} de 160 caracteres`} /><Field label="Dirección de la página" value={business.slug} onChange={(slug) => onChange({ slug })} /><Field label="Imagen social" value={business.ogImage} type="url" onChange={(ogImage) => onChange({ ogImage })} /></Group>}
-    {['SERVICES', 'PRODUCTS', 'CATALOG', 'GALLERY', 'TEAM', 'TESTIMONIALS', 'FAQ'].includes(selected) && <Group title="Contenido"><p className="text-sm leading-6 text-stone-600">Usa únicamente el contenido real de tu negocio.{dataEmpty(selected)}</p></Group>}
+    {['SERVICES', 'CATALOG'].includes(selected) && <ContentListEditor kind="services" businessId={business.id} items={content.services} media={media} onChanged={refresh} />}
+    {selected === 'PRODUCTS' && <ContentListEditor kind="products" businessId={business.id} items={content.products} media={media} onChanged={refresh} />}
+    {selected === 'GALLERY' && <GalleryEditor businessId={business.id} business={business} onChanged={galleryChanged} />}
+    {selected === 'TESTIMONIALS' && <ContentListEditor kind="testimonials" businessId={business.id} items={content.testimonials} media={media} onChanged={refresh} />}
+    {selected === 'FAQ' && <ContentListEditor kind="faqs" businessId={business.id} items={content.faqs} media={media} onChanged={refresh} />}
+    {selected === 'TEAM' && <ContentListEditor kind="team" businessId={business.id} items={content.team} media={media} onChanged={refresh} />}
+    {selected === 'PROMOTIONS' && <ContentListEditor kind="promotions" businessId={business.id} items={content.promotions} media={media} onChanged={refresh} />}
+
     <SectionMedia business={business} manifest={manifest ?? null} selected={selected} sectionId={sectionId} onEditManifest={onEditManifest} />
   </aside>;
 function SocialFields({ business, selected, onChange }: any) { if (!['SOCIALS', 'FOOTER', 'CONTACT'].includes(selected)) return null; const set = (key: string, value: string) => onChange({ socials: { ...business.socials, [key]: value } }); return <Group title="Redes sociales"><Field label="Instagram" value={business.socials?.instagram} onChange={(value) => set('instagram', value)} /><Field label="Facebook" value={business.socials?.facebook} onChange={(value) => set('facebook', value)} /><Field label="TikTok" value={business.socials?.tiktok} onChange={(value) => set('tiktok', value)} /><Field label="YouTube" value={business.socials?.youtube} onChange={(value) => set('youtube', value)} /><Field label="Sitio web" value={business.socials?.website} onChange={(value) => set('website', value)} /></Group>; }
 function HoursFields({ business, selected, onChange }: any) { if (selected !== 'OPENING_HOURS') return null; const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']; const set = (day: string, value: string) => onChange({ hours: { ...business.hours, [day]: value } }); return <Group title="Horarios">{days.map((day) => <Field key={day} label={day} value={business.hours?.[day]} onChange={(value) => set(day, value)} hint="Ejemplo: 09:00 - 18:00" />)}</Group>; }
 
 }
-function dataEmpty(id: string) { return ` No agregaremos ${id === 'FAQ' ? 'preguntas' : 'información'} automáticamente.`; }
