@@ -1,32 +1,32 @@
 ﻿/**
- * YESYES BUSINESS Â· TEMPLATE ENGINE V2 â€” DesignRegistry (Fase 4.1).
+ * YESYES BUSINESS · TEMPLATE ENGINE V2 â€” DesignRegistry (Fase 4.1).
  *
  * EL PROBLEMA QUE RESUELVE
  * ------------------------
- * Antes, elegir una plantilla era una decisiÃ³n DEFINITIVA: el negocio quedaba
- * atado al componente V3 de esa plantilla y no habÃ­a vuelta atrÃ¡s. Eso es
- * exactamente lo que la fase prohÃ­be.
+ * Antes, elegir una plantilla era una decisión DEFINITIVA: el negocio quedaba
+ * atado al componente V3 de esa plantilla y no había vuelta atrás. Eso es
+ * exactamente lo que la fase prohíbe.
  *
  * LA SOLUCIÃ“N
  * -----------
  * Una plantilla V3 deja de ser "el renderer del negocio" y pasa a ser un
  * PUNTO DE PARTIDA: un `DesignDefinition` que declara un layout, un tema y una
- * SECUENCIA DE BLOQUES. Al crear la pÃ¡gina, ese diseÃ±o se materializa como un
+ * SECUENCIA DE BLOQUES. Al crear la página, ese diseño se materializa como un
  * manifest V2 con bloques reales del BlockRegistry.
  *
- *   DiseÃ±o inicial (V3)  ->  manifest V2 con bloques  ->  sitio del negocio
+ *   Diseño inicial (V3)  ->  manifest V2 con bloques  ->  sitio del negocio
  *
- * El sitio SIEMPRE es V2. La plantilla V3 solo aportÃ³ la composiciÃ³n inicial.
- * DespuÃ©s el usuario puede cambiar de diseÃ±o, cambiar variantes de secciÃ³n,
+ * El sitio SIEMPRE es V2. La plantilla V3 solo aportó la composición inicial.
+ * Después el usuario puede cambiar de diseño, cambiar variantes de sección,
  * agregar, quitar y reordenar: nada de eso depende de la plantilla original.
  *
  * POR QUÃ‰ NO SE PIERDE CONTENIDO AL CAMBIAR DE DISEÃ‘O
  * ---------------------------------------------------
- * Porque el CONTENIDO (nombre, descripciÃ³n, servicios, productos, imÃ¡genes,
+ * Porque el CONTENIDO (nombre, descripción, servicios, productos, imágenes,
  * testimonios, equipo, FAQ, CTA, contacto) vive en la base de datos y en la
- * CONFIG de los bloques. El diseÃ±o solo decide QUÃ‰ bloques hay, en quÃ© orden y
- * con quÃ© layout. `applyDesignChange()` preserva la config y solo cambia
- * layout, tema y composiciÃ³n.
+ * CONFIG de los bloques. El diseño solo decide QUÃ‰ bloques hay, en qué orden y
+ * con qué layout. `applyDesignChange()` preserva la config y solo cambia
+ * layout, tema y composición.
  */
 
 import { LAYOUT_IDS, type LayoutId } from './layout-registry';
@@ -35,12 +35,12 @@ import { defaultVariantOf } from './variant-registry';
 import { suggestedLayoutsForCategory, industryProfileOf } from './capabilities';
 import { canonicalCategoryCode, categoryLabelOf } from '../utils/business-taxonomy';
 
-/** Capas que toda pÃ¡gina necesita para cumplir su funciÃ³n. */
+/** Capas que toda página necesita para cumplir su función. */
 const CORE_CAPABILITIES = ['HERO', 'CONTACT', 'FOOTER'] as const;
 
 /**
- * TraducciÃ³n CAPACIDAD -> BLOQUE. Es el puente entre el vocabulario del negocio
- * (SERVICES, CATALOG...) y el BlockRegistry, y es la razÃ³n por la que el
+ * Traducción CAPACIDAD -> BLOQUE. Es el puente entre el vocabulario del negocio
+ * (SERVICES, CATALOG...) y el BlockRegistry, y es la razón por la que el
  * editor, el manifest y el renderer hablan el mismo idioma.
  */
 export const CAPABILITY_TO_BLOCKS: Record<string, string[]> = {
@@ -76,7 +76,7 @@ export const CAPABILITY_TO_BLOCKS: Record<string, string[]> = {
   FOOTER: ['Footer'],
 };
 
-/** Orden legible de las secciones de una pÃ¡gina, por capacidad. */
+/** Orden legible de las secciones de una página, por capacidad. */
 const CAPABILITY_ORDER: string[] = [
   'HERO', 'ABOUT', 'SERVICES', 'PRICING', 'REPAIR', 'SUBJECTS', 'FEATURES', 'BRANDS', 'STATS',
   'PRODUCTS', 'CATALOG', 'PROPERTIES', 'GALLERY', 'PORTFOLIO', 'BEFORE_AFTER', 'VIDEO',
@@ -86,13 +86,13 @@ const CAPABILITY_ORDER: string[] = [
 
 const SECTION_LABELS: Record<string, string> = {
   HERO: 'Portada', ABOUT: 'Sobre el negocio', SERVICES: 'Servicios', PRICING: 'Precios',
-  REPAIR: 'Reparaciones', SUBJECTS: 'Materias', FEATURES: 'CaracterÃ­sticas', BRANDS: 'Marcas',
-  STATS: 'Cifras', PRODUCTS: 'Productos', CATALOG: 'CatÃ¡logo', PROPERTIES: 'Propiedades',
-  GALLERY: 'GalerÃ­a', PORTFOLIO: 'Portafolio', BEFORE_AFTER: 'Antes y despuÃ©s', VIDEO: 'Video',
-  PROMOTIONS: 'Promociones', TEAM: 'Equipo', TESTIMONIALS: 'Testimonios', REVIEWS: 'ReseÃ±as',
-  BOOKING: 'Reservas', FAQ: 'Preguntas frecuentes', MAP: 'UbicaciÃ³n', OPENING_HOURS: 'Horarios',
+  REPAIR: 'Reparaciones', SUBJECTS: 'Materias', FEATURES: 'Características', BRANDS: 'Marcas',
+  STATS: 'Cifras', PRODUCTS: 'Productos', CATALOG: 'Catálogo', PROPERTIES: 'Propiedades',
+  GALLERY: 'Galería', PORTFOLIO: 'Portafolio', BEFORE_AFTER: 'Antes y después', VIDEO: 'Video',
+  PROMOTIONS: 'Promociones', TEAM: 'Equipo', TESTIMONIALS: 'Testimonios', REVIEWS: 'Reseñas',
+  BOOKING: 'Reservas', FAQ: 'Preguntas frecuentes', MAP: 'Ubicación', OPENING_HOURS: 'Horarios',
   SOCIALS: 'Redes sociales', WHATSAPP: 'WhatsApp', CONTACT: 'Contacto', CONTACT_FORM: 'Formulario',
-  LEADS: 'Solicitudes', CTA: 'Llamado a la acciÃ³n', FOOTER: 'Pie de pÃ¡gina',
+  LEADS: 'Solicitudes', CTA: 'Llamado a la acción', FOOTER: 'Pie de página',
 };
 
 export interface TemplateManifestTheme {
@@ -103,14 +103,14 @@ export interface TemplateManifestTheme {
   bodyFont: 'sans' | 'serif';
 }
 
-/** Un bloque del diseÃ±o: identidad, variante y jerarquÃ­a. Nunca datos. */
+/** Un bloque del diseño: identidad, variante y jerarquía. Nunca datos. */
 export interface DesignBlock {
   block: string;
   variant: string | null;
   emphasis: 'primary' | 'secondary' | 'tertiary';
 }
 
-/** Una secciÃ³n del diseÃ±o: quÃ© bloques y con quÃ© jerarquÃ­a. Nunca contenido. */
+/** Una sección del diseño: qué bloques y con qué jerarquía. Nunca contenido. */
 export interface DesignSection {
   id: string;
   label: string;
@@ -135,7 +135,7 @@ export interface DesignDefinition {
   description: string;
 }
 
-/** Filas de `business_templates` que el backend usa para derivar diseÃ±os. */
+/** Filas de `business_templates` que el backend usa para derivar diseños. */
 export interface DesignSourceRow {
   /** Id de la fila en business_templates. Es lo que el editor envia al aplicar. */
   templateId?: string;
@@ -147,7 +147,7 @@ export interface DesignSourceRow {
 }
 
 /**
- * Paletas por layout. Un diseÃ±o cambia de verdad, no solo de color: la fuente,
+ * Paletas por layout. Un diseño cambia de verdad, no solo de color: la fuente,
  * el modo y el radio viajan con el layout.
  */
 const LAYOUT_THEME: Record<string, TemplateManifestTheme> = {
@@ -175,10 +175,10 @@ export function themeOfLayout(layoutId: string): TemplateManifestTheme {
 }
 
 const LAYOUT_STYLE_LABELS: Record<string, string> = {
-  editorial: 'Editorial', luxury: 'Lujo', cinematic: 'CinemÃ¡tico', minimal: 'Minimal',
-  bento: 'Bento', asymmetric: 'AsimÃ©trico', 'gallery-first': 'GalerÃ­a', 'video-first': 'Video',
+  editorial: 'Editorial', luxury: 'Lujo', cinematic: 'Cinemático', minimal: 'Minimal',
+  bento: 'Bento', asymmetric: 'Asimétrico', 'gallery-first': 'Galería', 'video-first': 'Video',
   'commerce-first': 'Comercio', portfolio: 'Portafolio', immersive: 'Inmersivo',
-  corporate: 'Corporativo', organic: 'OrgÃ¡nico', 'dark-premium': 'Premium oscuro',
+  corporate: 'Corporativo', organic: 'Orgánico', 'dark-premium': 'Premium oscuro',
   magazine: 'Revista', 'modern-commerce': 'Comercio moderno',
 };
 
@@ -197,18 +197,18 @@ const STYLE_TO_LAYOUT: Record<string, LayoutId> = {
 
 const DESIGN_DESCRIPTIONS: Record<string, string> = {
   editorial: 'Titulares grandes y ritmo de revista, con mucho aire entre secciones.',
-  luxury: 'Espacio, contenido escaso y acento en la imagen. Nada compite por atenciÃ³n.',
-  cinematic: 'Plena pantalla, contraste marcado y una sola acciÃ³n a la vista.',
-  minimal: 'Limpio y directo: la informaciÃ³n justo donde debe estar.',
-  bento: 'Tarjetas de tamaÃ±os diferentes que dan ritmo sin sentirse forzadas.',
-  asymmetric: 'ComposiciÃ³n asimÃ©trica: una pieza grande y el resto acompaÃ±ando.',
-  'gallery-first': 'Las imÃ¡genes llevan la pÃ¡gina; el texto las acompaÃ±a.',
-  'video-first': 'El video abre la pÃ¡gina y sostiene la narrativa.',
-  'commerce-first': 'CatÃ¡logo siempre visible y conversiÃ³n a la mano.',
+  luxury: 'Espacio, contenido escaso y acento en la imagen. Nada compite por atención.',
+  cinematic: 'Plena pantalla, contraste marcado y una sola acción a la vista.',
+  minimal: 'Limpio y directo: la información justo donde debe estar.',
+  bento: 'Tarjetas de tamaños diferentes que dan ritmo sin sentirse forzadas.',
+  asymmetric: 'Composición asimétrica: una pieza grande y el resto acompañando.',
+  'gallery-first': 'Las imágenes llevan la página; el texto las acompaña.',
+  'video-first': 'El video abre la página y sostiene la narrativa.',
+  'commerce-first': 'Catálogo siempre visible y conversión a la mano.',
   portfolio: 'Trabajo y proyectos al frente, texto al servicio de la imagen.',
   immersive: 'Pantalla completa y recorrido pausado.',
   corporate: 'Claro, estructurado y con datos a la vista.',
-  organic: 'CÃ¡lido, natural y con tipografÃ­a amable.',
+  organic: 'Cálido, natural y con tipografía amable.',
   'dark-premium': 'Oscuro, con acentos dorados y mucha profundidad.',
   magazine: 'Portadas, columnas y titulares de revista.',
   'modern-commerce': 'Grilla consistente con la tienda en primer plano.',
@@ -227,7 +227,7 @@ const titleCase = (value: string): string =>
 
 const SECTION_ID_OVERRIDES: Record<string, string> = { HERO: 'inicio', CTA: 'cierre', FOOTER: 'pie' };
 
-/** Id estable de secciÃ³n a partir de la capacidad. */
+/** Id estable de sección a partir de la capacidad. */
 function slugSectionId(capability: string): string {
   return SECTION_ID_OVERRIDES[capability] || capability.toLowerCase();
 }
@@ -247,7 +247,7 @@ function blocksForCapability(capability: string): DesignBlock[] {
     .map((block) => ({ block, variant: defaultVariantOf(block)?.id ?? null, emphasis: 'secondary' as const }));
 }
 
-/** Layout que le corresponde a un diseÃ±o segÃºn su estilo y rubro. */
+/** Layout que le corresponde a un diseño según su estilo y rubro. */
 function layoutForDesign(style: string, category: string): LayoutId {
   const byStyle = STYLE_TO_LAYOUT[normalizeStyle(style)];
   if (byStyle && (LAYOUT_IDS as string[]).includes(byStyle)) return byStyle;
@@ -263,18 +263,18 @@ const layoutNavigation = (layout: LayoutId): DesignDefinition['navigationStyle']
   return 'minimal';
 };
 
-/** Estilo legible de un diseÃ±o. Nunca vacÃ­o ni un cÃ³digo. */
+/** Estilo legible de un diseño. Nunca vacío ni un código. */
 export function styleLabelForLayout(layout: LayoutId): string {
   return LAYOUT_STYLE_LABELS[layout] || 'Personalizado';
 }
 
 /**
- * Construye un diseÃ±o a partir de una plantilla.
+ * Construye un diseño a partir de una plantilla.
  *
  * La plantilla aporta: el nombre, el estilo (que decide el layout y el tema) y
  * la lista de capacidades. De las capacidades sale la SECUENCIA DE BLOQUES.
- * No se copia ningÃºn contenido: el manifest que se genere estarÃ¡ vacÃ­o de
- * datos y el negocio lo llenarÃ¡ con lo suyo.
+ * No se copia ningún contenido: el manifest que se genere estará vacío de
+ * datos y el negocio lo llenará con lo suyo.
  */
 export function designFromTemplate(row: DesignSourceRow): DesignDefinition {
   const category = canonicalCategoryCode(row.category);
@@ -297,7 +297,7 @@ export function designFromTemplate(row: DesignSourceRow): DesignDefinition {
     const blocks = blocksForCapability(capability);
     if (!blocks.length) continue;
     // Si dos capacidades rinden el mismo bloque, la primera manda: evita
-    // duplicar "Servicios" y "Precios" como dos secciones idÃ©nticas.
+    // duplicar "Servicios" y "Precios" como dos secciones idénticas.
     if (sections.some((section) => section.blocks.some((block) => blocks.some((next) => next.block === block.block)))) continue;
     sections.push({
       id: slugSectionId(capability),
@@ -312,7 +312,7 @@ export function designFromTemplate(row: DesignSourceRow): DesignDefinition {
   return {
     id: String(row.code).toLowerCase(),
     templateId: row.templateId || String(row.code).toUpperCase(),
-    label: `${categoryLabelOf(category)} Â· ${resolvedStyle ? titleCase(resolvedStyle) : styleLabelForLayout(layout)}`,
+    label: `${categoryLabelOf(category)} · ${resolvedStyle ? titleCase(resolvedStyle) : styleLabelForLayout(layout)}`,
     styleLabel: resolvedStyle ? titleCase(resolvedStyle) : styleLabelForLayout(layout),
     category,
     layout,
@@ -322,11 +322,11 @@ export function designFromTemplate(row: DesignSourceRow): DesignDefinition {
     // nunca ids de bloque: el validador los contrasta con isCapabilityCode.
     capabilities: Array.from(new Set(wanted)),
     navigationStyle: layoutNavigation(layout),
-    description: DESIGN_DESCRIPTIONS[layout] || 'ComposiciÃ³n profesional lista para personalizar.',
+    description: DESIGN_DESCRIPTIONS[layout] || 'Composición profesional lista para personalizar.',
   };
 }
 
-/** CatÃ¡logo de diseÃ±os de un rubro, deduplicado por identidad visual. */
+/** Catálogo de diseños de un rubro, deduplicado por identidad visual. */
 export function designsForCategory(rows: DesignSourceRow[], category: string): DesignDefinition[] {
   const canonical = canonicalCategoryCode(category);
   const sameCategory = rows.filter((row) => canonicalCategoryCode(row.category) === canonical);
@@ -375,11 +375,11 @@ export interface TemplateManifestLike {
 }
 
 /**
- * Materializa un diseÃ±o como manifest V2 listo para una instancia nueva.
+ * Materializa un diseño como manifest V2 listo para una instancia nueva.
  *
- * El manifest sale VACÃO DE DATOS a propÃ³sito: los bloques existen, con su
- * variante y su jerarquÃ­a, pero sin textos. El negocio los llena con lo suyo
- * desde el editor. AsÃ­ el contenido nunca queda atrapado en la plantilla.
+ * El manifest sale VACÍO DE DATOS a propósito: los bloques existen, con su
+ * variante y su jerarquía, pero sin textos. El negocio los llena con lo suyo
+ * desde el editor. Así el contenido nunca queda atrapado en la plantilla.
  */
 export function manifestFromDesign(
   design: DesignDefinition,
@@ -427,7 +427,7 @@ export function manifestFromDesign(
     },
     seo: {
       titleTemplate: name,
-      description: `${name} Â· ${design.styleLabel}`,
+      description: `${name} · ${design.styleLabel}`,
       ogImageRequired: false,
       noIndexPreview: true,
     },
@@ -457,13 +457,13 @@ function applyVariantConfig(current: Record<string, unknown>, block: string): Re
 /**
  * APLICA UN CAMBIO DE DISEÃ‘O SIN PERDER CONTENIDO.
  *
- * Este es el corazon del requisito "cambiar de diseÃ±o sin perder nada".
+ * Este es el corazon del requisito "cambiar de diseño sin perder nada".
  *
  * Que hace:
  *  - cambia `layout`, `theme` y la composicion/orden de secciones;
  *  - CONSERVA la `config` de cada bloque que sobrevive al cambio;
  *  - conserva `hidden` y `emphasis` que eligio el usuario;
- *  - si el diseÃ±o nuevo no contempla un bloque que el usuario tenia, lo
+ *  - si el diseño nuevo no contempla un bloque que el usuario tenia, lo
  *    conserva al final en una seccion propia, con su config intacta.
  *
  * Que NUNCA hace:
@@ -524,7 +524,7 @@ export function applyDesignChange(current: TemplateManifestLike, design: DesignD
     });
   }
 
-  // Regla de no-perdida: todo bloque del usuario que el diseÃ±o nuevo no uso
+  // Regla de no-perdida: todo bloque del usuario que el diseño nuevo no uso
   // sobrevive, con su config intacta, en una seccion propia al final.
   const leftovers: TemplateManifestLike['sections'][number]['blocks'] = [];
   for (const section of current.sections || []) {
@@ -561,14 +561,3 @@ export function applyDesignChange(current: TemplateManifestLike, design: DesignD
 }
 
 export { CAPABILITY_ORDER, SECTION_LABELS };
-
-
-
-
-
-
-
-
-
-
-

@@ -7,6 +7,7 @@ import { BusinessButton, BusinessCard, BusinessContainer, BusinessHeading, Busin
 import type { TemplateProps } from './registry';
 
 import { signatureCategory, signatureVariant } from './signatureUtils';
+import { collectionGroupLabel, resolveCollectionGroups } from './collectionGroups';
 const money = (value: unknown) => value == null ? 'Consultar' : `$${Number(value).toLocaleString('es-CL')}`;
 const imageOf = (item: any) => item?.image || item?.images?.[0]?.url;
 
@@ -17,7 +18,10 @@ export default function SignatureTemplate({ business, services, products, proper
   const variant = signatureVariant(code);
   const composition = getIndustryComposition(null, category);
   const assets = thematicAssets(category);
-  const items = properties.length ? properties : products.length ? products : services;
+  // Productos y servicios son recursos INDEPENDIENTES: cada uno se muestra si
+  // tiene contenido. Nunca se eligen uno en lugar del otro.
+  const groups = resolveCollectionGroups({ properties, products, services });
+  const empty = groups.visible.length === 0;
   const name = business?.name || categoryLabel(category);
   const message = `Hola ${name}, quiero ${composition.cta.toLowerCase()}.`;
   const href = buildWaLink(business?.whatsapp, message);
@@ -37,12 +41,13 @@ export default function SignatureTemplate({ business, services, products, proper
       </div></BusinessContainer>
     </section>
 
-    <BusinessSection id="servicios" className="bg-white"><BusinessContainer><div className={`grid gap-10 ${variant === 'ATLAS' ? 'lg:grid-cols-[.8fr_1.2fr]' : 'lg:grid-cols-[1.15fr_.85fr]'}`}>
-      <div><BusinessHeading eyebrow="Una experiencia más simple" title={sectionName} text="Información clara, atención cercana y los detalles que necesitas para elegirnos." /></div>
-      <div className="grid gap-4 sm:grid-cols-2">{items.slice(0, 6).map((item: any) => <BusinessCard key={item.id} className="group overflow-hidden p-0">
+    {groups.visible.map((group) => <BusinessSection key={group.key} id={group.key} className="bg-white"><BusinessContainer><div className={`grid gap-10 ${variant === 'ATLAS' ? 'lg:grid-cols-[.8fr_1.2fr]' : 'lg:grid-cols-[1.15fr_.85fr]'}`}>
+      <div><BusinessHeading eyebrow="Una experiencia más simple" title={group.key === 'properties' ? sectionName : collectionGroupLabel(group.key)} text="Información clara, atención cercana y los detalles que necesitas para elegirnos." /></div>
+      <div className="grid gap-4 sm:grid-cols-2">{group.items.slice(0, 6).map((item: any) => <BusinessCard key={item.id} className="group overflow-hidden p-0">
         {imageOf(item) && <BusinessImage src={imageOf(item)} alt={item.name || item.title} className="aspect-[4/3] w-full object-cover transition duration-500 group-hover:scale-105" />}<div className="p-5"><h3 className="text-lg font-bold">{item.name || item.title}</h3><p className="mt-2 line-clamp-2 text-sm opacity-70">{item.shortDescription || item.description || item.bio}</p><p className="mt-4 font-bold text-[var(--biz-primary)]">{money(item.price ?? item.salePrice)}</p></div>
-      </BusinessCard>)}{!items.length && <BusinessCard className="sm:col-span-2 bg-[var(--biz-bg)]"><p className="font-semibold">Estamos preparando nuestra colección.</p><p className="mt-2 text-sm opacity-70">Escríbenos y te ayudaremos a encontrar la mejor opción.</p></BusinessCard>}</div>
-    </div></BusinessContainer></BusinessSection>
+      </BusinessCard>)}</div>
+    </div></BusinessContainer></BusinessSection>)}
+    {empty && <BusinessSection id="catalogo" className="bg-white"><BusinessContainer><div className="grid gap-4 sm:grid-cols-2"><BusinessCard className="sm:col-span-2 bg-[var(--biz-bg)]"><p className="font-semibold">Estamos preparando nuestra colección.</p><p className="mt-2 text-sm opacity-70">Escríbenos y te ayudaremos a encontrar la mejor opción.</p></BusinessCard></div></BusinessContainer></BusinessSection>}
 
     {!!gallery.length && <BusinessSection id="galeria" className="bg-[var(--biz-bg)]"><BusinessContainer><BusinessHeading eyebrow="Así se ve nuestro trabajo" title="Una mirada a lo que hacemos" align="center" /><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{gallery.slice(0, 6).map((photo: any, index: number) => <BusinessImage key={photo.id || photo.url} src={photo.url} alt={photo.alt || `Galería de ${name}`} className={`w-full rounded-[var(--biz-radius)] object-cover ${index === 0 ? 'aspect-[4/3] sm:col-span-2 lg:col-span-2' : 'aspect-square'}`} />)}</div></BusinessContainer></BusinessSection>}
 

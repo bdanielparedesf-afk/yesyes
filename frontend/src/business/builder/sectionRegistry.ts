@@ -1,3 +1,16 @@
+/**
+ * CATÁLOGO LEGACY DE SECCIONES DEL EDITOR (V3).
+ *
+ * AUDITADO EN FASE 4.2 · C (§9): este archivo ya NO es una fuente de verdad.
+ * El editor V2 determina qué existe en el sitio a partir de
+ *
+ *     manifest.sections        (lo que hay en la página)
+ *     GET /business/:id/addable-sections   (lo que se puede agregar)
+ *
+ * Se conserva únicamente porque la UI legacy del inspector y algunos tests lo
+ * usan para poner ETIQUETAS legibles. Si se agrega una sección aquí, el sitio no
+ * cambia: hay que cambiar el manifest (o el registro del backend).
+ */
 import type { ComponentType, SVGProps } from 'react';
 import { HelpCircle, Image, LayoutGrid, MapPin, MessageCircle, Star, Users, type LucideProps } from 'lucide-react';
 

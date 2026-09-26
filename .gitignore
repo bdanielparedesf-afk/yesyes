@@ -27,6 +27,13 @@ logs/
 .qa-chrome-profile/
 qa/.qa-chrome-profile/
 **/.qa-chrome-profile/
+logs/cert-chrome/
+
+# Certificacion E2E autonoma (Fases B-X).
+# qa/cert-negocio.json guarda la SESION REAL de una cuenta creada por la UI
+# (token JWT en claro). NUNCA debe versionarse.
+qa/cert-negocio.json
+qa/cert-captures/
 
 # Capturas de pantalla y artefactos temporales de certificación
 qa/final-responsive/
@@ -41,3 +48,21 @@ qa/git-diff-check-*.log
 
 # Scripts de depuración temporales
 qa/_orphan-sweep.mjs
+
+# Binarios generados para la certificacion (PNG/WebM) y capturas antiguas.
+# Se regeneran con `node qa/cert/make-images.mjs` / `make-video.mjs`.
+qa/cert-media/
+qa/business-captures/
+qa/f4-variants/
+qa/final-responsive/
+
+# Reportes por fase: contienen identificadores de la sesion real.
+qa/cert-phase-*.json
+
+# Artefactos de compilacion de TypeScript.
+*.tsbuildinfo
+frontend/dist/
+qa/*.log
+qa/*.exit
+qa/run-backend-tests.cmd
+qa/commit-msg.txt

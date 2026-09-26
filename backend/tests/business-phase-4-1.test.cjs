@@ -75,9 +75,9 @@ test('paridad: las secciones agregables del backend tienen bloque real', () => {
   }
 });
 
-test('paridad: el frontend llama a las rutas de diseÃ±o del backend', () => {
+test('paridad: el frontend llama a las rutas de diseño del backend', () => {
   const routes = read('backend/src/routes/index.ts');
-  assert.ok(routes.includes('designRoutes'), 'las rutas de diseÃ±o deben estar montadas');
+  assert.ok(routes.includes('designRoutes'), 'las rutas de diseño deben estar montadas');
   const service = read('frontend/src/services/business.ts');
   for (const call of ['getBusinessDesigns', 'applyBusinessDesign', 'setBusinessBlockVariant', 'addBusinessSection', 'updateBusinessSections']) {
     assert.ok(service.includes(call), `falta el servicio ${call}`);
@@ -86,7 +86,7 @@ test('paridad: el frontend llama a las rutas de diseÃ±o del backend', () => {
 
 // â”€â”€ DISEÃ‘OS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-test('disenos: cada rubro produce al menos un diseÃ±o vÃ¡lido', () => {
+test('disenos: cada rubro produce al menos un diseño válido', () => {
   for (const category of ['PET', 'BARBER', 'FOOD', 'FLOWERS', 'REAL_ESTATE', 'PHOTO', 'HAIR', 'BOUTIQUE']) {
     const design = designs.designFromTemplate(template(`${category}_01`, category, 'Editorial', ['HERO', 'CTA', 'FOOTER']));
     const manifest = designs.manifestFromDesign(design, { instanceId: `site-${category}`, businessName: 'Negocio' });
@@ -96,8 +96,8 @@ test('disenos: cada rubro produce al menos un diseÃ±o vÃ¡lido', () => {
   }
 });
 
-test('disenos: el manifest generado es vÃ¡lido y renderizable de verdad', () => {
-  const design = designs.designFromTemplate(template('PETS_01', 'PET', 'CinemÃ¡tico', ['HERO', 'SERVICES', 'GALLERY', 'CTA']));
+test('disenos: el manifest generado es válido y renderizable de verdad', () => {
+  const design = designs.designFromTemplate(template('PETS_01', 'PET', 'Cinemático', ['HERO', 'SERVICES', 'GALLERY', 'CTA']));
   const manifest = designs.manifestFromDesign(design, { instanceId: 'site-x', businessName: 'Clinica' });
   const result = engine.validateTemplateManifest(manifest);
   assert.deepStrictEqual(result.errors, []);
@@ -118,7 +118,7 @@ test('disenos: el catalogo deduplica disenos con la misma identidad visual', () 
   const rows = [
     template('PETS_01', 'PET', 'Amigable', ['HERO', 'SERVICES']),
     template('PETS_02', 'PET', 'Amigable', ['HERO', 'SERVICES']),
-    template('PETS_03', 'PET', 'CinemÃ¡tico', ['HERO', 'SERVICES']),
+    template('PETS_03', 'PET', 'Cinemático', ['HERO', 'SERVICES']),
   ];
   const list = designs.designsForCategory(rows, 'PET');
   assert.strictEqual(list.length, 2, 'dos plantillas identicas deben colapsar en un diseno');
@@ -127,12 +127,12 @@ test('disenos: el catalogo deduplica disenos con la misma identidad visual', () 
 
 // â”€â”€ NO PERDIDA DE CONTENIDO (requisito central) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-test('no-perdida: cambiar de diseÃ±o conserva TODO el contenido configurado', () => {
+test('no-perdida: cambiar de diseño conserva TODO el contenido configurado', () => {
   const before = manifestConContenido();
-  const target = designs.designFromTemplate(template('PETS_02', 'PET', 'CinemÃ¡tico', ['HERO', 'SERVICES', 'GALLERY']));
+  const target = designs.designFromTemplate(template('PETS_02', 'PET', 'Cinemático', ['HERO', 'SERVICES', 'GALLERY']));
   const after = designs.applyDesignChange(before, target);
 
-  assert.notStrictEqual(after.layout, before.layout, 'el diseÃ±o debe cambiar de verdad');
+  assert.notStrictEqual(after.layout, before.layout, 'el diseño debe cambiar de verdad');
 
   const heroAfter = after.sections.find((section) => section.id === 'inicio');
   assert.strictEqual(heroAfter.blocks[0].config.ctaLabel, 'Agendar hora', 'el CTA escrito por el usuario debe sobrevivir');
@@ -143,14 +143,14 @@ test('no-perdida: cambiar de diseÃ±o conserva TODO el contenido configurado', 
   assert.strictEqual(servicesAfter.blocks[0].config.limit, 6, 'la configuracion del bloque debe sobrevivir');
 });
 
-test('no-perdida: el bloque que el diseÃ±o nuevo no contempla se conserva', () => {
+test('no-perdida: el bloque que el diseño nuevo no contempla se conserva', () => {
   const before = manifestConContenido();
   const target = designs.designFromTemplate(template('PETS_09', 'PET', 'Minimal', ['HERO', 'SERVICES']));
   const after = designs.applyDesignChange(before, target);
 
   const surviving = after.sections.flatMap((section) => section.blocks.map((block) => block.block));
   for (const block of before.sections.flatMap((section) => section.blocks.map((entry) => entry.block))) {
-    assert.ok(surviving.includes(block), `el bloque ${block} se perdio al cambiar de diseÃ±o`);
+    assert.ok(surviving.includes(block), `el bloque ${block} se perdio al cambiar de diseño`);
   }
 });
 
@@ -178,13 +178,13 @@ test('no-perdida: applyDesignChange no muta el manifest original', () => {
   assert.strictEqual(JSON.stringify(before), snapshot, 'el manifest de entrada no puede mutarse');
 });
 
-test('no-perdida: el manifest resultante sigue siendo valido para todo diseÃ±o', () => {
+test('no-perdida: el manifest resultante sigue siendo valido para todo diseño', () => {
   const before = manifestConContenido();
-  for (const style of ['Minimal', 'CinemÃ¡tico', 'Bento', 'Editorial', 'Organico', 'Comercio moderno']) {
+  for (const style of ['Minimal', 'Cinemático', 'Bento', 'Editorial', 'Organico', 'Comercio moderno']) {
     const target = designs.designFromTemplate(template('X_01', 'PET', style, ['HERO', 'SERVICES', 'GALLERY', 'FAQ']));
     const after = designs.applyDesignChange(before, target);
     const result = engine.validateTemplateManifest(after);
-    assert.deepStrictEqual(result.errors, [], `el diseÃ±o ${style} produjo un manifest invalido`);
+    assert.deepStrictEqual(result.errors, [], `el diseño ${style} produjo un manifest invalido`);
   }
 });
 
@@ -218,19 +218,58 @@ test('variantes: la presentacion es la unica diferencia entre variantes', () => 
 test('variantes: las secciones clave tienen la composicion que pide la fase', () => {
   const required = {
     Hero: ['fullscreen', 'split', 'editorial', 'centered', 'cinematic'],
-    Services: ['cards', 'editorial', 'split', 'bento'],
-    Products: ['grid', 'featured', 'editorial', 'asymmetric', 'bento'],
-    ImageGallery: ['masonry', 'grid', 'fullscreen', 'editorial', 'collage'],
-    Testimonials: ['cards', 'slider', 'quote'],
-    Team: ['grid', 'featured', 'editorial', 'cards'],
-    FAQ: ['accordion', 'split', 'editorial'],
-    CTA: ['fullscreen', 'split', 'image', 'minimal', 'premium'],
+    HeroVideo: ['cinematic', 'fullscreen', 'split'],
+    Services: ['cards', 'editorial', 'split', 'bento', 'featured', 'minimal'],
+    Products: ['grid', 'editorial', 'magazine', 'commerce', 'featured'],
+    ImageGallery: ['masonry', 'grid', 'fullscreen', 'editorial', 'carousel'],
+    Testimonials: ['cards', 'quote', 'editorial', 'slider', 'minimal', 'featured'],
+    Team: ['grid', 'editorial', 'portrait', 'cards', 'minimal'],
+    FAQ: ['accordion', 'editorial', 'minimal'],
+    CTA: ['fullscreen', 'split', 'banner', 'minimal', 'editorial'],
+    Promotions: ['cards', 'banner', 'featured'],
+    Properties: ['grid', 'featured', 'editorial'],
+    Video: ['fullscreen', 'split', 'gallery'],
+    Booking: ['cards', 'calendar', 'cta'],
+    Contact: ['split', 'cards', 'minimal'],
+    Map: ['split', 'fullscreen', 'inline'],
   };
   for (const [block, expected] of Object.entries(required)) {
     const ids = variants.variantsSupported(block);
     for (const variant of expected) {
       assert.ok(ids.includes(variant), `a ${block} le falta la variante ${variant}`);
     }
+  }
+});
+
+test('variantes: el catalogo no ofrece ninguna variante sin composicion real', () => {
+  // Guarda contra la reaparicion del bug de FASE A: una variante declarada pero
+  // no compuesta es funcionalidad FALSA (el editor la ofrece y se ve igual).
+  assert.deepStrictEqual(
+    variants.findVariantsWithoutImplementation(),
+    [],
+    'hay variantes declaradas que el renderer no compone',
+  );
+});
+
+test('variantes: el override de cada variante ES el presentation que lee el renderer', () => {
+  for (const entry of variants.VARIANT_DEFINITIONS) {
+    for (const variant of entry.variants) {
+      assert.strictEqual(
+        variant.config.presentation,
+        variant.id,
+        `${entry.block}/${variant.id}: el override debe ser presentation === id`,
+      );
+    }
+  }
+});
+
+test('variantes: el id por defecto de cada bloque existe en su catalogo', () => {
+  for (const entry of variants.VARIANT_DEFINITIONS) {
+    const ids = entry.variants.map((v) => v.id);
+    assert.ok(
+      ids.includes(entry.defaultVariant),
+      `${entry.block}: defaultVariant "${entry.defaultVariant}" no esta en su catalogo`
+    );
   }
 });
 
@@ -262,7 +301,7 @@ test('cta: el renderer usa la fuente unica y no el texto hardcodeado del rubro',
   const blocksFile = read('frontend/src/business/engine/blocks.tsx');
   const heroBlock = blocksFile.slice(blocksFile.indexOf('function Hero('), blocksFile.indexOf('function HeroVideo('));
   assert.ok(heroBlock.includes('resolveBusinessCta'), 'el Hero debe usar la fuente unica de CTA');
-  assert.ok(!/text\(config, 'ctaLabel', '[A-Za-zÃÃ‰ÃÃ“ÃšÃ¡Ã©Ã­Ã³Ãº]/.test(heroBlock), 'el Hero no puede hardcodear el texto del boton');
+  assert.ok(!/text\(config, 'ctaLabel', '[A-Za-zÃÃ‰ÃÃ“Ãšáéíóú]/.test(heroBlock), 'el Hero no puede hardcodear el texto del boton');
 
   const ctaBlock = blocksFile.slice(blocksFile.indexOf('function CTA('), blocksFile.indexOf('function Products('));
   assert.ok(ctaBlock.includes('resolveBusinessCta'), 'el bloque CTA debe usar la fuente unica');
@@ -280,9 +319,14 @@ test('cta: la configuracion del usuario tiene prioridad sobre cualquier default'
 // â”€â”€ DRAFT Y PUBLICADO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 test('draft/publicado: la pagina publica lee la revision publicada, no el borrador', () => {
+  const version = read('backend/src/services/business-site-version.service.ts');
+  assert.ok(version.includes('publishedManifestOf'), 'debe existir la resolucion del manifest publicado');
+  assert.ok(version.includes('isPublishedRevisionReason'), 'debe distinguir la revision publicada por su estado');
   const routes = read('backend/src/routes/public-business.routes.ts');
-  assert.ok(routes.includes('publishedManifestOf'), 'debe existir la resolucion del manifest publicado');
-  assert.ok(routes.includes("reason: { startsWith: 'PUBLICADO' }"), 'debe leer la ultima revision publicada');
+  assert.ok(routes.includes('publishedManifestOf'), 'la ruta publica usa esa resolucion');
+  // La ruta pública no puede quedarse con el borrador si no pasa por el servicio.
+  assert.ok(routes.includes('publishedSiteInstance'), 'todo endpoint publico filtra por la version publicada');
+  assert.ok(!routes.includes("reason: { startsWith: 'PUBLICADO' }"), 'la consulta cruda salio de la ruta publica');
 });
 
 test('draft/publicado: la vista previa si lleva el borrador', () => {
@@ -293,14 +337,18 @@ test('draft/publicado: la vista previa si lleva el borrador', () => {
 
 test('draft/publicado: publicar congela la revision del manifest', () => {
   const publish = read('backend/src/services/business-publish.service.ts');
-  assert.ok(publish.includes('PUBLICADO'), 'publicar debe marcar la revision como publicada');
-  assert.ok(publish.includes('businessSiteRevision.create'), 'publicar debe congelar el manifest');
+  assert.ok(publish.includes('freezeDraftAsPublished'), 'publicar delega la congelacion');
+  const version = read('backend/src/services/business-site-version.service.ts');
+  assert.ok(version.includes('publishedRevisionReason'), 'debe marcar la revision como publicada');
+  assert.ok(version.includes('businessSiteRevision.create'), 'publicar debe congelar el manifest');
 });
 
 test('draft/publicado: editar no escribe en la revision publicada', () => {
   const routes = read('backend/src/routes/design.routes.ts');
   assert.ok(!/startsWith: 'PUBLICADO'/.test(routes), 'el editor nunca escribe en la revision publicada');
   assert.ok(routes.includes('businessSiteRevision.create'), 'cada cambio de edicion abre su revision');
+  // El motivo lo decide el backend: un `reason` del cliente no puede publicar.
+  assert.ok(routes.includes('sanitizeRevisionReason'), 'el motivo del cliente se neutraliza');
 });
 
 // â”€â”€ ERRORES EXPLICITOS, NUNCA SILENCIOSOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -351,4 +399,3 @@ test('renderer unico: el manifest V2 ya no es codigo muerto', () => {
   assert.ok(read('backend/src/controllers/business.controller.ts').includes('ensureSiteInstance'),
     'crear una pagina debe materializar su manifest V2');
 });
-

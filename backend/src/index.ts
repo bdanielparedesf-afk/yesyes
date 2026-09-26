@@ -48,6 +48,18 @@ if (isVercel) {
 
 app.use(errorHandler);
 
+// E §14 — Una excepción en un handler async no debe tumbar la API. Express 4 no
+// captura rechazos de handlers async, así que un error puntual (pool de base de
+// datos, tiempo de espera) se convertía en un `unhandledRejection` y mataba el
+// proceso, dejando al editor sin servidor. Se registra y se sigue sirviendo.
+// Solo `unhandledRejection`: un `uncaughtException` sí indica estado indefinido
+// y debe terminar el proceso (por ejemplo, un puerto ocupado al escuchar).
+if (!isVercel) {
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`Rechazo no manejado: ${reason instanceof Error ? reason.message : String(reason)}`);
+  });
+}
+
 if (!isVercel) {
   app.listen(PORT, () => {
     logger.info(`YESYES Backend running on port ${PORT}`);

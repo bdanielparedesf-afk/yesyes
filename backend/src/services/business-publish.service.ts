@@ -3,6 +3,7 @@ import { resolveCapabilities } from '../utils/business-capabilities';
 import { subscriptionAllowsPublishing, type SubscriptionLike } from './business-subscription-state';
 import { getSubscriptionForBusiness, toSubscriptionDTO } from './business-subscription.service';
 import { logBusinessAudit } from './business-audit.service';
+import { freezeDraftAsPublished } from './business-site-version.service';
 import { logger } from '../utils/logger';
 
 /**
@@ -203,29 +204,11 @@ export async function publishBusiness(params: {
   // Congelar el borrador actual como revisión PUBLICADA. La página pública
   // renderiza esta revisión, así que el usuario puede seguir experimentando
   // con el diseño sin que el sitio en vivo cambie hasta volver a publicar.
+  // Es la única operación DRAFT → PUBLISHED del sistema.
   try {
-    const instance = await prisma.businessSiteInstance.findUnique({
-      where: { businessId: params.businessId },
-      select: { id: true, manifest: true, manifestVersion: true },
-    });
-    if (instance) {
-      const alreadyFrozen = await prisma.businessSiteRevision.findFirst({
-        where: { instanceId: instance.id, reason: { startsWith: 'PUBLICADO' } },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, manifest: true },
-      });
-      const sameAsPublished = JSON.stringify(alreadyFrozen?.manifest ?? null) === JSON.stringify(instance.manifest);
-      if (!sameAsPublished) {
-        await prisma.businessSiteRevision.create({
-          data: {
-            id: `rev-${params.businessId}-pub-${Date.now()}`,
-            instanceId: instance.id,
-            manifestVersion: instance.manifestVersion,
-            manifest: instance.manifest as any,
-            reason: `PUBLICADO ${new Date().toISOString()}`,
-          },
-        });
-      }
+    const frozen = await freezeDraftAsPublished({ businessId: params.businessId });
+    if (frozen.frozen) {
+      logger.info('[business] borrador congelado como versión publicada', { businessId: params.businessId, revisionId: frozen.revisionId });
     }
   } catch {
     // Publicar el negocio nunca falla por la congelación del manifest: el

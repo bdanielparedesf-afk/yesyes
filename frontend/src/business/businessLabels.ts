@@ -87,7 +87,51 @@ export function resolveCtaHref(business: any, action?: unknown): string {
   return href;
 }
 export const categoryDescription = (code?: string | null) => CATEGORY_DESCRIPTIONS[String(code || '').toUpperCase()] || 'Una página hecha para presentar y crecer tu negocio.';
-export const sectionLabel = (id: string) => SECTION_LABELS[id] || 'Sección';
+
+/**
+ * Etiqueta humana de una sección.
+ *
+ * Acepta DOS formas, porque las dos existen en el sistema y confundirlas
+ * rompía la galería de diseños:
+ *   1. el código de capacidad (`HERO`, `CATALOG`, `OPENING_HOURS`...), que es
+ *      lo que usa el manifest y el sidebar del editor;
+ *   2. el nombre ya traducido que devuelve el backend en `functions`
+ *      (`Productos`, `Catalogo`, `Mapa y ubicacion`...).
+ *
+ * Antes solo resoltaba (1): al pintar la galería de diseños, donde el backend ya
+ * entrega (2), TODOS los chips caían en el fallback y se leía cuatro veces
+ * "Sección" en cada diseño, sin decir qué offering la página tenía.
+ */
+/** Compara dos textos sin tildes ni mayúsculas: "CATÁLOGO" ~ "CATALOG". */
+const strip = (value: string) => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+export const sectionLabel = (id: string) => {
+  const value = String(id || '').trim();
+  if (!value) return 'Sección';
+  if (SECTION_LABELS[value]) return SECTION_LABELS[value];
+  const upper = value.toUpperCase();
+  if (SECTION_LABELS[upper]) return SECTION_LABELS[upper];
+  // El backend entrega los `functions` YA en castellano ("Galeria", "Mapa y
+  // ubicacion"). Se buscan contra las etiquetas legibles ya traducidas para que
+  // "Galeria" y "Galería" muestren lo mismo, sin depender del idioma del código.
+  const plain = strip(value).toLowerCase();
+  for (const label of Object.values(SECTION_LABELS)) {
+    if (strip(String(label).toLowerCase()) === plain) return String(label);
+  }
+  // Los `functions` del backend son compuestos ("Mapa y ubicacion", "Reservar
+  // mesa"). Si contienen una etiqueta conocida, esa es la que se muestra.
+  for (const label of Object.values(SECTION_LABELS)) {
+    const candidate = strip(String(label).toLowerCase());
+    if (candidate.length > 4 && plain.includes(candidate)) return String(label);
+  }
+  // Última capa: si parece texto humano, se conserva capitalizado en vez de
+  // perderlo. Un código desconocido (MAYUSCULAS sin espacios) degrada a
+  // "Sección" como antes.
+  if (/[a-záéíóúñ]/.test(value) || value.includes(' ')) {
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+  return 'Sección';
+};
 export const statusLabel = (status: string) => STATUS_LABELS[status] || 'En revisión';
 export const ctaLabel = (category?: string | null) => CTA_LABELS[String(category || '').toUpperCase()] || 'Contactar por WhatsApp';
 /** Códigos que el usuario puede elegir al crear una página (sin duplicados). */

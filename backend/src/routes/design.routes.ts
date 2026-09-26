@@ -19,6 +19,7 @@ import { prisma } from '../lib/prisma';
 import {
   CURRENT_MANIFEST_VERSION,
   validateTemplateManifest,
+  migrateManifest,
   designFromTemplate,
   designsForCategory,
   applyDesignChange,
@@ -33,51 +34,111 @@ import {
 } from '../template-engine';
 import { ensureSiteInstance, loadDesignSources } from '../template-engine/bootstrap';
 import { getBlock } from '../template-engine/block-registry';
+import { blockAllowedForCategory } from '../template-engine/capabilities';
 import { canonicalCategoryCode, categoryLabelOf } from '../utils/business-taxonomy';
+import { logger } from '../utils/logger';
+import { sanitizeRevisionReason } from '../services/business-site-version.service';
 
 const router = Router();
 router.use(authenticate);
 
-async function ownedInstance(req: AuthRequest): Promise<{ businessId: string; manifest: TemplateManifestLike } | null> {
+/**
+ * Genera un `instanceId` de bloque libre en TODO el manifest.
+ *
+ * La unicidad es GLOBAL, no por sección: el validador (`validateTemplateManifest`)
+ * rechaza el manifest entero si dos bloques comparten `instanceId`, y hay una
+ * sección `extras` (regla de no-pérdida al cambiar de diseño) que apila bloques
+ * antiguos con sus instanceIds. Por eso el id no puede derivarse solo de la
+ * capability: si el bloque ya vive en `extras`, se agrega un sufijo.
+ */
+export function uniqueBlockInstanceId(manifest: TemplateManifestLike, base: string): string {
+  const used = new Set<string>();
+  for (const section of manifest.sections || []) {
+    for (const item of section.blocks || []) if (item.instanceId) used.add(String(item.instanceId));
+  }
+  const candidate = base.toLowerCase();
+  if (!used.has(candidate)) return candidate;
+  let suffix = 2;
+  while (used.has(`${candidate}-${suffix}`)) suffix += 1;
+  return `${candidate}-${suffix}`;
+}
+
+async function ownedInstance(req: AuthRequest): Promise<{ businessId: string; manifest: TemplateManifestLike; updatedAt: Date | null; category: string } | null> {
   const business = await prisma.business.findFirst({
     where: ownerWhere(req, String(req.params.id)),
-    select: { id: true, category: true, name: true, templateId: true, siteInstance: { select: { manifest: true } } },
+    select: { id: true, category: true, name: true, templateId: true, siteInstance: { select: { manifest: true, updatedAt: true } } },
   });
   if (!business) return null;
+  // FASE 5 §10 — La categoría viaja en el contexto: TODAS las operaciones
+  // estructurales la necesitan para rechazar capabilities ajenas al rubro.
+  const category = canonicalCategoryCode(business.category);
   // Si el negocio es anterior a esta fase y no tiene instancia, se construye
   // una a partir del diseño de su plantilla: nunca se deja sin manifest.
   if (!business.siteInstance) {
     await ensureSiteInstance(business.id);
-    const fresh = await prisma.businessSiteInstance.findUnique({ where: { businessId: business.id }, select: { manifest: true } });
+    const fresh = await prisma.businessSiteInstance.findUnique({ where: { businessId: business.id }, select: { manifest: true, updatedAt: true } });
     if (!fresh) return null;
-    return { businessId: business.id, manifest: fresh.manifest as unknown as TemplateManifestLike };
+    return { businessId: business.id, manifest: fresh.manifest as unknown as TemplateManifestLike, updatedAt: fresh.updatedAt, category };
   }
-  return { businessId: business.id, manifest: business.siteInstance.manifest as unknown as TemplateManifestLike };
+  return { businessId: business.id, manifest: business.siteInstance.manifest as unknown as TemplateManifestLike, updatedAt: business.siteInstance.updatedAt, category };
 }
 
+/**
+ * E §14 — Un fallo de base de datos al guardar (pool agotado, timeout) NO puede
+ * tumbar el proceso: Express 4 no captura rechazos de handlers async, así que una
+ * excepción sin manejar se convierte en un `unhandledRejection` y se cae el
+ * servidor entero. Se traduce a un resultado explícito y el cliente reintenta.
+ */
 async function saveManifest(
   businessId: string,
   manifest: TemplateManifestLike,
   reason: string,
-): Promise<{ ok: true } | { ok: false; errors: string[] }> {
+): Promise<{ ok: true } | { ok: false; errors: string[]; transient?: boolean }> {
   const result = validateTemplateManifest(manifest);
   if (!result.valid) return { ok: false, errors: result.errors };
-  await prisma.$transaction(async (tx) => {
-    await tx.businessSiteInstance.update({
-      where: { businessId },
-      data: { manifest: manifest as any, manifestVersion: CURRENT_MANIFEST_VERSION },
+  try {
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.businessSiteInstance.update({
+        where: { businessId },
+        data: { manifest: manifest as any, manifestVersion: CURRENT_MANIFEST_VERSION },
+        select: { id: true },
+      });
+      await tx.businessSiteRevision.create({
+        data: {
+          id: `rev-${businessId}-${Date.now()}`,
+          // ID real de la instancia, no una convención de nombres.
+          instanceId: updated.id,
+          manifestVersion: CURRENT_MANIFEST_VERSION,
+          // Copia profunda: la revisión es un histórico inmutable y no puede
+          // quedar aliasada al objeto que el editor sigue mutando.
+          manifest: JSON.parse(JSON.stringify(manifest)) as any,
+          // El backend decide el motivo: un `reason` de cliente no puede
+          // disfrazarse de publicación.
+          reason: sanitizeRevisionReason(reason, 'Guardado del editor'),
+        },
+      });
     });
-    await tx.businessSiteRevision.create({
-      data: {
-        id: `rev-${businessId}-${Date.now()}`,
-        instanceId: `site-${businessId}`,
-        manifestVersion: CURRENT_MANIFEST_VERSION,
-        manifest: manifest as any,
-        reason: reason.slice(0, 200),
-      },
-    });
-  });
+  } catch (error: any) {
+    logger.error(`No se pudo guardar el manifest (${businessId}): ${error?.code || 'sin codigo'} ${error?.message || error}`);
+    return { ok: false, errors: ['No se pudo guardar el manifest en este momento.'], transient: true };
+  }
   return { ok: true };
+}
+
+/**
+ * FASE 5 §7 — Id de sección único al duplicar.
+ *
+ * `base-copia` no es suficiente: al duplicar la misma sección por segunda vez
+ * (`base-copia` -> `base-copia-copia`) se repite, y dos ids iguales hacen que
+ * el manifest se rechace por duplicado. Aquí se prueba en orden y se garantiza
+ * que el id devuelto no está en uso.
+ */
+export function uniqueSectionId(taken: string[], base: string): string {
+  const used = new Set(taken);
+  if (!used.has(`${base}-copia`)) return `${base}-copia`;
+  let n = 2;
+  while (used.has(`${base}-copia-${n}`)) n += 1;
+  return `${base}-copia-${n}`;
 }
 
 /** Catálogo de diseños del rubro, con nombre legible y sin códigos técnicos. */
@@ -136,8 +197,10 @@ router.post('/:id/design', requireBusinessOwner, async (req: AuthRequest, res) =
   const next = applyDesignChange(context.manifest, design);
   const saved = await saveManifest(context.businessId, next, `Diseño: ${design.label}`);
   if (!saved.ok) { res.status(422).json({ message: 'No se pudo aplicar el diseño', errors: saved.errors }); return; }
+  // FASE 5 §12 — El sello se refresca: aplicar un diseño también cambia la fila.
+  const fresh = await prisma.businessSiteInstance.findUnique({ where: { businessId: context.businessId }, select: { updatedAt: true } });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ manifest: next, design: { id: design.id, label: design.label } });
+  res.json({ manifest: next, design: { id: design.id, label: design.label }, updatedAt: fresh?.updatedAt || null });
 });
 
 /** Cambia la VARIANTE de un bloque sin tocar su contenido. */
@@ -164,8 +227,10 @@ router.put('/:id/block/:instanceId/variant', requireBusinessOwner, async (req: A
   if (!found) { res.status(404).json({ message: 'Bloque no encontrado' }); return; }
   const saved = await saveManifest(context.businessId, manifest, `Variante: ${variantId}`);
   if (!saved.ok) { res.status(422).json({ message: 'No se pudo aplicar la variante', errors: saved.errors }); return; }
+  // FASE 5 §12 — El sello se refresca también al cambiar de variante.
+  const fresh = await prisma.businessSiteInstance.findUnique({ where: { businessId: context.businessId }, select: { updatedAt: true } });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ manifest });
+  res.json({ manifest, updatedAt: fresh?.updatedAt || null });
 });
 
 /** Agrega, quita, oculta o reordena una sección del manifest. */
@@ -175,41 +240,69 @@ router.put('/:id/sections', requireBusinessOwner, async (req: AuthRequest, res) 
   const manifest = context.manifest;
   const payload = (req.body as any) || {};
 
+  // FASE 5 §4 — Se trabaja sobre una COPIA, nunca sobre el objeto que vino de
+  // Prisma. Si una operación fallara más abajo (validación, base de datos), el
+  // manifest en memoria ya no coincidía con el que hay en la base y un guardado
+  // posterior podía persistir un estado a medias. Además garantiza que la
+  // sección eliminada no se "deshaga" al releer.
+  const working = JSON.parse(JSON.stringify(manifest)) as typeof manifest;
+
   if (Array.isArray(payload.order)) {
     // Reordenar: se reescribe SOLO el `order`. Nada más se toca.
     for (const entry of payload.order as Array<{ id: string; order: number }>) {
-      const section = manifest.sections.find((item) => item.id === String(entry.id));
+      const section = working.sections.find((item) => item.id === String(entry.id));
       if (section) section.order = Math.max(0, Math.floor(Number(entry.order) || 0));
     }
-    manifest.sections.sort((a, b) => a.order - b.order);
+    working.sections.sort((a, b) => a.order - b.order);
   }
 
   if (typeof payload.hidden === 'string') {
-    const section = manifest.sections.find((item) => item.id === payload.hidden);
+    const section = working.sections.find((item) => item.id === payload.hidden);
     if (section) section.hidden = Boolean((req.body as any)?.value);
   }
 
   if (typeof payload.remove === 'string') {
-    manifest.sections = manifest.sections.filter((item) => item.id !== payload.remove);
+    working.sections = working.sections.filter((item) => item.id !== payload.remove);
   }
 
   if (typeof payload.duplicate === 'string') {
-    const source = manifest.sections.find((item) => item.id === payload.duplicate);
+    const source = working.sections.find((item) => item.id === payload.duplicate);
     if (source) {
-      const copy = JSON.parse(JSON.stringify(source));
-      copy.id = `${source.id}-copia`;
+      // FASE 5 §7 — COPIA PROFUNDA REAL.
+      //
+      // `JSON.parse(JSON.stringify(source))` ya corta toda referencia con el
+      // original. Antes se hacía `{ ...block }` sobre los bloques, que deja el
+      // `config` COMPARTIDO: editar la copia modificaba el original (aliasing)
+      // y un Undo podía devolver un config ya mutado. Ahora los bloques se
+      // reconstruyen con un `config` clonado, objeto por objeto.
+      const copy = JSON.parse(JSON.stringify(source)) as typeof source;
       copy.label = `${source.label} (copia)`;
       copy.order = (source.order || 0) + 5;
-      copy.blocks = copy.blocks.map((block: any, index: number) => ({ ...block, instanceId: `${copy.id}-${index + 1}` }));
-      manifest.sections.push(copy);
-      manifest.sections.sort((a, b) => a.order - b.order);
+      // Id ÚNICO garantizado: duplicar dos veces la MISMA sección no puede
+      // producir dos `id` iguales (el manifest lo rechazaría por duplicado y
+      // el usuario perdería la segunda copia sin explicación).
+      copy.id = uniqueSectionId(working.sections.map((item) => item.id), source.id);
+      copy.blocks = (copy.blocks || []).map((block: any, index: number) => ({
+        ...block,
+        // La sección copia ya tiene id único, pero el bloque puede existir con
+        // ese instanceId en otra sección (`extras`), así que se valida igual.
+        instanceId: uniqueBlockInstanceId(working, `${copy.id}-${index + 1}-${block.block}`),
+        config: block.config && typeof block.config === 'object' ? JSON.parse(JSON.stringify(block.config)) : {},
+      }));
+      working.sections.push(copy);
+      working.sections.sort((a, b) => a.order - b.order);
     }
   }
 
-  const saved = await saveManifest(context.businessId, manifest, 'Secciones actualizadas');
+  // FASE 5 §12 — Tras cualquier operación estructural se devuelve el `updatedAt`
+  // REAL de la instancia. El editor lo usa como sello de optimistic locking: si
+  // no se refrescara, el siguiente autosave enviaría un `baseUpdatedAt` viejo y
+  // el backend respondería 409, aunque nadie más hubiera escrito nada.
+  const saved = await saveManifest(context.businessId, working, 'Secciones actualizadas');
   if (!saved.ok) { res.status(422).json({ message: 'No se pudo actualizar la estructura', errors: saved.errors }); return; }
+  const fresh = await prisma.businessSiteInstance.findUnique({ where: { businessId: context.businessId }, select: { updatedAt: true } });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ manifest });
+  res.json({ manifest: working, updatedAt: fresh?.updatedAt || null });
 });
 
 /**
@@ -257,6 +350,26 @@ router.post('/:id/sections', requireBusinessOwner, async (req: AuthRequest, res)
     res.status(422).json({ message: `No se puede agregar la sección "${capability}"` });
     return;
   }
+  // FASE 5 §10 — La capability DEBE ser legal para el rubro de este negocio.
+  //
+  // Sin esta guarda, un cliente (o un bug) podría meter `PROPERTIES` en una
+  // veterinaria: el bloque PASA `renderInV2`, así que entraba al manifest y
+  // quedaba un catálogo de propiedades en una página que no lo admite. El
+  // problema histórico era peor: el backend lo BORRABA en silencio y la UI
+  // seguía mostrando que la sección existía.
+  //
+  // Ahora la capability prohibida se RECHAZA con un 422 y el manifest no se
+  // modifica: la UI puede mostrar el error y el estado local sigue siendo
+  // exactamente el del servidor.
+  if (!blockAllowedForCategory(block, context.category)) {
+    res.status(422).json({
+      message: `La sección "${SECTION_LABELS[capability] || capability}" no está disponible para ${categoryLabelOf(context.category)}`,
+      capability,
+      block,
+      reason: 'CAPABILITY_NOT_ALLOWED_FOR_CATEGORY',
+    });
+    return;
+  }
   const variant = variantId ? variantsForBlock(block).find((entry) => entry.id === String(variantId)) : defaultVariantOf(block);
   if (variantId && !variant) {
     res.status(422).json({ message: `La variante "${variantId}" no existe para ${block}` });
@@ -278,7 +391,14 @@ router.post('/:id/sections', requireBusinessOwner, async (req: AuthRequest, res)
     hidden: false,
     blocks: [{
       block,
-      instanceId: `${id}-${block.toLowerCase()}`,
+      // El instanceId debe ser ÚNICO en TODO el manifest, no solo dentro de la
+      // sección nueva. Antes se derivaba de forma determinista
+      // (`${id}-${block}`), y eso rompía en cuanto el mismo bloque ya existía
+      // en otra sección: es exactamente lo que hace la sección `extras`
+      // (regla de no-pérdida al cambiar de diseño), donde quedan.blocks con
+      // instanceIds viejos. El POST devolvía 422 "instanceId duplicado" y la
+      // UI no explicaba nada: el usuario no podía volver a agregar la sección.
+      instanceId: uniqueBlockInstanceId(manifest, `${id}-${block}`),
       config: variant ? { ...variant.config } : {},
       hidden: false,
       emphasis: 'secondary',
@@ -288,8 +408,11 @@ router.post('/:id/sections', requireBusinessOwner, async (req: AuthRequest, res)
 
   const saved = await saveManifest(context.businessId, manifest, `Sección agregada: ${capability}`);
   if (!saved.ok) { res.status(422).json({ message: 'No se pudo agregar la sección', errors: saved.errors }); return; }
+  // FASE 5 §12 — Se devuelve el sello real: sin esto, el siguiente autosave del
+  // editor enviaría el `baseUpdatedAt` de la carga y el backend respondería 409.
+  const fresh = await prisma.businessSiteInstance.findUnique({ where: { businessId: context.businessId }, select: { updatedAt: true } });
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ manifest });
+  res.json({ manifest, updatedAt: fresh?.updatedAt || null });
 });
 
 /** Rutas de lectura del manifest, para que el editor no adivine la estructura. */
@@ -297,8 +420,62 @@ router.get('/:id/manifest', requireBusinessOwner, async (req: AuthRequest, res) 
   const context = await ownedInstance(req);
   if (!context) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ manifest: context.manifest });
+  res.json({ manifest: context.manifest, updatedAt: context.updatedAt });
 });
+
+/**
+ * PERSISTENCIA PRINCIPAL DEL EDITOR (Fase 4.2 · C).
+ *
+ * Todo cambio de contenido o configuracion del manifest termina aqui:
+ *
+ *   Manifest V2 -> saveManifest() -> BusinessSiteInstance -> revision
+ *
+ * NO se usa `PUT /businesses/:id/capabilities` para la estructura de la pagina:
+ * esa ruta sigue existiendo solo para la compatibilidad V3.
+ *
+ * Optimismo de concurrencia: el editor envia `baseUpdatedAt` (el `updatedAt` de la
+ * instancia que cargo). Si la instancia cambio en el meantime (otra pestana u
+ * otro dispositivo) se responde 409 CONFLICTO: el editor detiene el guardado y
+ * recarga, en lugar de pisar una modificacion mas reciente.
+ */
+router.put('/:id/manifest', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const context = await ownedInstance(req);
+  if (!context) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+
+  const body = (req.body || {}) as { manifest?: unknown; baseUpdatedAt?: unknown; reason?: unknown };
+  if (body.manifest === undefined) { res.status(400).json({ message: 'Falta el manifest' }); return; }
+
+  const baseUpdatedAt = body.baseUpdatedAt ? new Date(String(body.baseUpdatedAt)) : null;
+  if (baseUpdatedAt && !Number.isNaN(baseUpdatedAt.getTime())) {
+    const current = context.updatedAt ? new Date(context.updatedAt) : null;
+    // La instancia no tiene marca de tiempo (no deberia pasar): se acepta el save.
+    if (current && Math.abs(current.getTime() - baseUpdatedAt.getTime()) > 1) {
+      res.status(409).json({
+        conflict: true,
+        message: 'La pagina cambio en otra pestana. Recargamos la version mas reciente.',
+        manifest: context.manifest,
+        updatedAt: context.updatedAt,
+      });
+      return;
+    }
+  }
+
+  const candidate = migrateManifest(body.manifest) ?? body.manifest;
+  const validation = validateTemplateManifest(candidate);
+  if (!validation.valid) {
+    res.status(422).json({ message: 'Manifest invalido', errors: validation.errors });
+    return;
+  }
+
+  const saved = await saveManifest(context.businessId, candidate as TemplateManifestLike, String(body.reason || 'Guardado del editor').slice(0, 200));
+  // 503 = reintentable: el autosave del editor lo reintenta en el próximo cambio.
+  if (!saved.ok) { res.status(saved.transient ? 503 : 422).json({ message: 'No se pudo guardar el manifest', errors: saved.errors }); return; }
+
+  const fresh = await prisma.businessSiteInstance.findUnique({ where: { businessId: context.businessId }, select: { updatedAt: true } });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ manifest: candidate, updatedAt: fresh?.updatedAt || null, warnings: validation.warnings });
+});
+
 
 /** Preview de un diseño SIN aplicarlo: sirve para "ver antes de decidir". */
 router.post('/:id/design/preview', requireBusinessOwner, async (req: AuthRequest, res) => {

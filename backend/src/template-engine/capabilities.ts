@@ -1,14 +1,14 @@
 ﻿/**
- * YESYES BUSINESS Â· TEMPLATE ENGINE V2 â€” Capacidades por rubro (Fase 3).
+ * YESYES BUSINESS · TEMPLATE ENGINE V2 â€” Capacidades por rubro (Fase 3).
  *
- * El motor NO convierte todos los negocios en la misma pÃ¡gina. Cada rubro
- * declara quÃ© capacidades tiene sentido, quÃ© bloques puede usar un template
- * suyo y quÃ© bloques quedan PROHIBIDOS (asÃ­ no aparecen bloques irrelevantes
- * solo para inflar el nÃºmero de componentes).
+ * El motor NO convierte todos los negocios en la misma página. Cada rubro
+ * declara qué capacidades tiene sentido, qué bloques puede usar un template
+ * suyo y qué bloques quedan PROHIBIDOS (así no aparecen bloques irrelevantes
+ * solo para inflar el número de componentes).
  *
  * `CORE_BLOCKS` se aplican siempre: sin portada o sin contacto, el sitio no
- * cumple su funciÃ³n. El resto es sugerencia por rubro, no un lÃ­mite duro: el
- * master template de la categorÃ­a decide la composiciÃ³n final.
+ * cumple su función. El resto es sugerencia por rubro, no un límite duro: el
+ * master template de la categoría decide la composición final.
  */
 
 import { canonicalCategoryCode, categoryDef } from '../utils/business-taxonomy';
@@ -30,10 +30,10 @@ const CORE_BLOCKS = ['Hero', 'CTA', 'Contact', 'Footer'];
 /**
  * Servicio: agenda, precios, equipo, confianza.
  *
- * PRODUCTS estÃ¡ PERMITIDO a propÃ³sito. La fase 4.1 exige que servicios y
- * productos sean capacidades INDEPENDIENTES: una peluquerÃ­a vende productos y
- * ofrece servicios, una veterinaria idem. Prohibir el catÃ¡logo aquÃ­ obligaba al
- * renderer a ocultar una secciÃ³n que el usuario habÃ­a configurado.
+ * PRODUCTS está PERMITIDO a propósito. La fase 4.1 exige que servicios y
+ * productos sean capacidades INDEPENDIENTES: una peluquería vende productos y
+ * ofrece servicios, una veterinaria idem. Prohibir el catálogo aquí obligaba al
+ * renderer a ocultar una sección que el usuario había configurado.
  */
 const SERVICE: IndustryProfile = {
   shape: 'service',
@@ -44,10 +44,10 @@ const SERVICE: IndustryProfile = {
   suggestedLayouts: ['luxury', 'minimal', 'dark-premium', 'organic', 'editorial', 'cinematic'],
 };
 
-/** Comercio: catÃ¡logo, promociones, galerÃ­a. */
+/** Comercio: catálogo, promociones, galería. */
 const COMMERCE: IndustryProfile = {
   shape: 'commerce',
-  primaryAction: 'Ver catÃ¡logo',
+  primaryAction: 'Ver catálogo',
   capabilities: ['CATALOG', 'PRODUCTS', 'SERVICES', 'PROMOTIONS', 'GALLERY', 'WHATSAPP', 'CONTACT', 'MAP', 'SOCIALS', 'FAQ', 'TESTIMONIALS'],
   allowedBlocks: [...CORE_BLOCKS, 'Products', 'ProductFeatured', 'Promotions', 'ImageGallery', 'FAQ', 'Testimonials', 'WhatsApp', 'Map', 'SocialLinks', 'LeadForm', 'Text', 'Image', 'Video', 'VideoGallery', 'HeroVideo', 'Button', 'Services'],
   forbiddenBlocks: ['Properties', 'PropertyFeatured', 'Booking', 'Team'],
@@ -64,7 +64,7 @@ const REALESTATE: IndustryProfile = {
   suggestedLayouts: ['editorial', 'luxury', 'corporate', 'minimal', 'asymmetric', 'immersive'],
 };
 
-/** GastronomÃ­a: menÃº, pedidos, ubicaciÃ³n, reserva de mesa. */
+/** Gastronomía: menú, pedidos, ubicación, reserva de mesa. */
 const FOOD: IndustryProfile = {
   shape: 'food',
   primaryAction: 'Pedir',
@@ -93,7 +93,7 @@ const BY_SHAPE: Record<BusinessShape, IndustryProfile> = {
 };
 
 /**
- * QuÃ© rubro es cada categorÃ­a canÃ³nica. Fuente Ãºnica de verdad: el frontend
+ * Qué rubro es cada categoría canónica. Fuente única de verdad: el frontend
  * replica esta tabla y un test de parity la compara.
  */
 const CATEGORY_SHAPE: Record<string, BusinessShape> = {
@@ -106,7 +106,7 @@ const CATEGORY_SHAPE: Record<string, BusinessShape> = {
   PHOTO: 'creative',
 };
 
-/** Perfil del rubro. Una categorÃ­a desconocida cae en `service`. */
+/** Perfil del rubro. Una categoría desconocida cae en `service`. */
 export function industryProfileOf(category?: string | null): IndustryProfile {
   const canonical = canonicalCategoryCode(category);
   const base = BY_SHAPE[CATEGORY_SHAPE[canonical] || 'service'];
@@ -135,5 +135,3 @@ export function capabilitiesForCategory(category?: string | null): string[] {
 export function suggestedLayoutsForCategory(category?: string | null): string[] {
   return industryProfileOf(category).suggestedLayouts;
 }
-
-

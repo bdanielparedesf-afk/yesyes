@@ -1,23 +1,23 @@
 ﻿/**
- * YESYES BUSINESS Â· TEMPLATE ENGINE V2 â€” VariantRegistry (Fase 4.1).
+ * YESYES BUSINESS · TEMPLATE ENGINE V2 â€” VariantRegistry (Fase 4.1).
  *
  * QUÃ‰ ES UNA VARIANTE
  * -------------------
  * Una variante cambia CÃ“MO se muestra un bloque, NUNCA QUÃ‰ contiene.
  *
  *   Servicios â€” Tarjetas   -> grilla de tarjetas
- *   Servicios â€” Editorial  -> lista con tipografÃ­a protagonista
- *   Servicios â€” Bento      -> tamaÃ±os distintos
+ *   Servicios â€” Editorial  -> lista con tipografía protagonista
+ *   Servicios â€” Bento      -> tamaños distintos
  *
  * Reglas duras:
  *  - Una variante es un CONJUNTO DE OVERRIDES DE CONFIG. Nunca guarda datos.
- *    Por eso cambiar de variante preserva el contenido por construcciÃ³n: los
+ *    Por eso cambiar de variante preserva el contenido por construcción: los
  *    servicios, productos o testimonios viven en la base, no en el manifest.
- *  - Toda variante declara `renderInV2`. Una variante sin implementaciÃ³n real
- *    NO se ofrece: serÃ­a funcionalidad falsa (mismo criterio que los bloques).
+ *  - Toda variante declara `renderInV2`. Una variante sin implementación real
+ *    NO se ofrece: sería funcionalidad falsa (mismo criterio que los bloques).
  *  - Las variantes son TRANSVERSALES al rubro: las puede usar cualquier
  *    negocio que tenga el bloque. El rubro decide QUÃ‰ bloques existen, no
- *    cÃ³mo se ven.
+ *    cómo se ven.
  */
 
 import { getBlock } from './block-registry';
@@ -29,7 +29,7 @@ export interface BlockVariant {
   description: string;
   /** Overrides que se aplican sobre la config del bloque. */
   config: Record<string, unknown>;
-  /** true si el renderer Ãºnico ya compone esta variante de verdad. */
+  /** true si el renderer único ya compone esta variante de verdad. */
   renderInV2: boolean;
 }
 
@@ -43,7 +43,7 @@ const v = (id: string, label: string, description: string, config: Record<string
   id, label, description, config, renderInV2: true,
 });
 
-/** CATÃLOGO DE VARIANTES. Solo se declara lo que el renderer compone. */
+/** CATÁLOGO DE VARIANTES. Solo se declara lo que el renderer compone. */
 export const VARIANT_DEFINITIONS: BlockVariants[] = [
   {
     block: 'Hero',
@@ -53,14 +53,14 @@ export const VARIANT_DEFINITIONS: BlockVariants[] = [
       v('fullscreen', 'Pantalla completa', 'La imagen ocupa toda la primera pantalla.', { presentation: 'fullscreen' }),
       v('centered', 'Centrado', 'Todo centrado, sin imagen lateral.', { presentation: 'centered' }),
       v('editorial', 'Editorial', 'Titular enorme y bajada amplia.', { presentation: 'editorial' }),
-      v('cinematic', 'CinemÃ¡tico', 'SuperposiciÃ³n oscura sobre la imagen.', { presentation: 'cinematic' }),
+      v('cinematic', 'Cinemático', 'Superposición oscura sobre la imagen.', { presentation: 'cinematic' }),
     ],
   },
   {
     block: 'HeroVideo',
     defaultVariant: 'cinematic',
     variants: [
-      v('cinematic', 'CinemÃ¡tico', 'Video de fondo a pantalla completa con velo oscuro.', { presentation: 'cinematic' }),
+      v('cinematic', 'Cinemático', 'Video de fondo a pantalla completa con velo oscuro.', { presentation: 'cinematic' }),
       v('fullscreen', 'Pantalla completa', 'Video de fondo y texto sobreimpreso.', { presentation: 'fullscreen' }),
       v('split', 'Dividido', 'Video a un lado y el texto al otro.', { presentation: 'split' }),
     ],
@@ -70,44 +70,45 @@ export const VARIANT_DEFINITIONS: BlockVariants[] = [
     defaultVariant: 'cards',
     variants: [
       v('cards', 'Tarjetas', 'Grilla de tarjetas con imagen, nombre y precio.', { presentation: 'cards' }),
-      v('editorial', 'Editorial', 'Lista con tipografÃ­a protagonista, una lÃ­nea por servicio.', { presentation: 'editorial' }),
+      v('editorial', 'Editorial', 'Lista con tipografía protagonista, una línea por servicio.', { presentation: 'editorial' }),
       v('split', 'Imagen y servicios', 'Imagen grande al lado y la lista al frente.', { presentation: 'split' }),
-      v('bento', 'Bento', 'Tarjetas de tamaÃ±os distintos con jerarquÃ­a.', { presentation: 'bento' }),
+      v('bento', 'Bento', 'Tarjetas de tamaños distintos con jerarquía.', { presentation: 'bento' }),
       v('featured', 'Servicio destacado', 'El primero destacado y el resto en lista.', { presentation: 'featured' }),
-      v('minimal', 'Minimal', 'Solo nombre y precio, sin imÃ¡genes.', { presentation: 'minimal' }),
+      v('minimal', 'Minimal', 'Solo nombre y precio, sin imágenes.', { presentation: 'minimal' }),
     ],
   },
   {
     block: 'Products',
     defaultVariant: 'grid',
     variants: [
-      v('grid', 'Grilla', 'Grilla uniforme de productos.', { presentation: 'grid' }),
-      v('featured', 'Destacado', 'El primero grande y el resto en grilla.', { presentation: 'featured' }),
-      v('editorial', 'Editorial', 'Filas horizontales con imagen a la izquierda.', { presentation: 'editorial' }),
-      v('asymmetric', 'AsimÃ©trico', 'TamaÃ±os alternos sin repetir el mismo mÃ³dulo.', { presentation: 'asymmetric' }),
-      v('bento', 'Bento', 'Mosaico de tarjetas de tamaÃ±o variable.', { presentation: 'bento' }),
+      v('grid', 'Grilla', 'Catalogo uniforme de tarjetas.', { presentation: 'grid' }),
+      v('editorial', 'Editorial', 'El primero abre la seccion y el resto son filas.', { presentation: 'editorial' }),
+      v('magazine', 'Revista', 'Mosaico asimetrico con imagenes a sangre.', { presentation: 'magazine' }),
+      v('commerce', 'Tienda', 'Tarjetas con precio y disponibilidad.', { presentation: 'commerce' }),
+      v('featured', 'Destacado', 'Un producto protagonista y el resto en tira.', { presentation: 'featured' }),
     ],
   },
   {
     block: 'ImageGallery',
-    defaultVariant: 'masonry',
+    defaultVariant: 'grid',
     variants: [
-      v('masonry', 'Mosaico', 'Mosaico de altura variable.', { presentation: 'masonry' }),
-      v('grid', 'Grilla', 'Grilla pareja de imÃ¡genes.', { presentation: 'grid' }),
-      v('fullscreen', 'Pantalla completa', 'Una imagen grande por vez.', { presentation: 'fullscreen' }),
-      v('editorial', 'Editorial', 'Imagen grande con pie de foto.', { presentation: 'editorial' }),
-      v('collage', 'Collage', 'Varias imÃ¡genes juntas en un bloque.', { presentation: 'collage' }),
+      v('grid', 'Grilla', 'Grilla pareja de imagenes.', { presentation: 'grid' }),
+      v('masonry', 'Mosaico', 'Columnas de altura variable, sin recortes.', { presentation: 'masonry' }),
+      v('editorial', 'Editorial', 'Una imagen grande y el resto en tira.', { presentation: 'editorial' }),
+      v('fullscreen', 'Pantalla completa', 'Una imagen por pantalla.', { presentation: 'fullscreen' }),
+      v('carousel', 'Deslizador', 'Tira horizontal desplazable.', { presentation: 'carousel' }),
     ],
   },
   {
     block: 'Testimonials',
     defaultVariant: 'cards',
     variants: [
-      v('cards', 'Tarjetas', 'Opiniones en tarjetas con estrellas.', { presentation: 'cards' }),
-      v('quote', 'Cita grande', 'Una opiniÃ³n protagonista y el resto en lista.', { presentation: 'quote' }),
-      v('editorial', 'Editorial', 'Texto corrido con autor pequeÃ±o.', { presentation: 'editorial' }),
-      v('social', 'Prueba social', 'Fila de opiniones cortas con marca del negocio.', { presentation: 'social' }),
-      v('slider', 'Deslizador', 'Opiniones en fila deslizable.', { presentation: 'slider' }),
+      v('cards', 'Tarjetas', 'Opiniones en tarjetas.', { presentation: 'cards' }),
+      v('quote', 'Cita grande', 'Una opinion protagonista y el resto en columna.', { presentation: 'quote' }),
+      v('editorial', 'Editorial', 'Texto corrido con autor pequeno.', { presentation: 'editorial' }),
+      v('slider', 'Deslizador', 'Opiniones en fila desplazable.', { presentation: 'slider' }),
+      v('minimal', 'Minimal', 'Corta y la inicial del autor, sin cajas.', { presentation: 'minimal' }),
+      v('featured', 'Destacado', 'Una opinion a sangre y el resto en grilla.', { presentation: 'featured' }),
     ],
   },
   {
@@ -115,9 +116,10 @@ export const VARIANT_DEFINITIONS: BlockVariants[] = [
     defaultVariant: 'grid',
     variants: [
       v('grid', 'Grilla', 'Retratos en grilla pareja.', { presentation: 'grid' }),
+      v('portrait', 'Retrato', 'Fichas verticales con imagen alta.', { presentation: 'portrait' }),
       v('cards', 'Tarjetas', 'Tarjetas con foto, nombre y rol.', { presentation: 'cards' }),
-      v('featured', 'Persona destacada', 'La primera persona grande y el resto en lista.', { presentation: 'featured' }),
-      v('editorial', 'Editorial', 'Nombres en columna con texto breve.', { presentation: 'editorial' }),
+      v('editorial', 'Editorial', 'Una fila por persona, con relato.', { presentation: 'editorial' }),
+      v('minimal', 'Minimal', 'Solo nombre y rol, sin imagenes.', { presentation: 'minimal' }),
     ],
   },
   {
@@ -125,19 +127,19 @@ export const VARIANT_DEFINITIONS: BlockVariants[] = [
     defaultVariant: 'accordion',
     variants: [
       v('accordion', 'Preguntas', 'Lista desplegable, una respuesta a la vez.', { presentation: 'accordion' }),
-      v('split', 'Dividido', 'Titulo a un lado y preguntas al otro.', { presentation: 'split' }),
-      v('editorial', 'Editorial', 'Pregunta grande y respuesta amplia.', { presentation: 'editorial' }),
+      v('editorial', 'Editorial', 'Respuestas siempre visibles en columna.', { presentation: 'editorial' }),
+      v('minimal', 'Minimal', 'Solo la pregunta, se despliega al hacer clic.', { presentation: 'minimal' }),
     ],
   },
   {
     block: 'CTA',
     defaultVariant: 'fullscreen',
     variants: [
-      v('fullscreen', 'Cierre potente', 'Seccion de cierre a pantalla completa.', { presentation: 'fullscreen' }),
+      v('fullscreen', 'Cierre potente', 'Banda oscura con titular grande.', { presentation: 'fullscreen' }),
       v('split', 'Dividido', 'Texto a un lado y boton grande al otro.', { presentation: 'split' }),
-      v('image', 'Con imagen', 'Fondo con imagen y llamada encima.', { presentation: 'image' }),
-      v('minimal', 'Minimal', 'Una linea y un boton.', { presentation: 'minimal' }),
-      v('premium', 'Premium', 'Cierre con marco fino y mucho aire.', { presentation: 'premium' }),
+      v('banner', 'Banner', 'Franja centrada sobre fondo claro.', { presentation: 'banner' }),
+      v('minimal', 'Minimal', 'Una linea y un boton al costado.', { presentation: 'minimal' }),
+      v('editorial', 'Editorial', 'Titular protagonista y cuerpo a la derecha.', { presentation: 'editorial' }),
     ],
   },
   {
@@ -145,8 +147,8 @@ export const VARIANT_DEFINITIONS: BlockVariants[] = [
     defaultVariant: 'cards',
     variants: [
       v('cards', 'Tarjetas', 'Ofertas en tarjetas.', { presentation: 'cards' }),
-      v('ribbon', 'Cinta', 'Oferta destacada en una franja.', { presentation: 'ribbon' }),
-      v('editorial', 'Editorial', 'Titulo grande y detalle.', { presentation: 'editorial' }),
+      v('banner', 'Franja', 'Ofertas como lista continua sin cajas.', { presentation: 'banner' }),
+      v('featured', 'Destacada', 'La primera oferta a doble ancho.', { presentation: 'featured' }),
     ],
   },
   {
@@ -160,11 +162,11 @@ export const VARIANT_DEFINITIONS: BlockVariants[] = [
   },
   {
     block: 'Video',
-    defaultVariant: 'inline',
+    defaultVariant: 'fullscreen',
     variants: [
-      v('inline', 'Reproductor', 'Video con controles dentro de la pagina.', { presentation: 'inline' }),
-      v('story', 'Relato', 'Video con texto y puntos destacados al lado.', { presentation: 'story' }),
-      v('fullscreen', 'Pantalla completa', 'Video a pantalla completa con poster.', { presentation: 'fullscreen' }),
+      v('fullscreen', 'Pantalla completa', 'Video a todo el ancho con poster.', { presentation: 'fullscreen' }),
+      v('split', 'Dividido', 'Video a un lado y texto al otro.', { presentation: 'split' }),
+      v('gallery', 'Galeria', 'Video principal y el resto en tira.', { presentation: 'gallery' }),
     ],
   },
   {
@@ -172,8 +174,8 @@ export const VARIANT_DEFINITIONS: BlockVariants[] = [
     defaultVariant: 'cards',
     variants: [
       v('cards', 'Tarjetas', 'Horarios disponibles en tarjetas.', { presentation: 'cards' }),
-      v('split', 'Dividido', 'Agenda a un lado y accion al otro.', { presentation: 'split' }),
-      v('inline', 'Compacto', 'Lista breve con boton de reserva.', { presentation: 'inline' }),
+      v('calendar', 'Calendario', 'Horarios agrupados por dia.', { presentation: 'calendar' }),
+      v('cta', 'Solo accion', 'Sin listado: solo la llamada a reservar.', { presentation: 'cta' }),
     ],
   },
   {
@@ -233,7 +235,7 @@ export function defaultVariantOf(blockId: string | null | undefined): BlockVaria
 /**
  * Variantes que el renderer unico NO compone. Un catalogo sano devuelve
  * SIEMPRE `[]` (lo exige un test): es la guarda contra ofrecer al usuario un
- * diseÃ±o que despues se veria como el mismo.
+ * diseño que despues se veria como el mismo.
  */
 export function findVariantsWithoutImplementation(): Array<{ block: string; variant: string }> {
   const out: Array<{ block: string; variant: string }> = [];

@@ -24,3 +24,4 @@ export * from './capabilities';
 export * from './template-manifest';
 export * from './site-instance';
 export * from './render-plan';
+export * from './media-ref';

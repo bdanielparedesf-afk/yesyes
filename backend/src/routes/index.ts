@@ -22,6 +22,7 @@ import { refreshAliexpressToken } from '../jobs/aliexpress-token-refresh';
 import aliexpressRoutes from './aliexpress.routes';
 
 import businessRoutes from './business.routes';
+import businessMediaRoutes from './business-media.routes';
 import publicBusinessRoutes from './public-business.routes';
 import businessSubscriptionRoutes from './business-subscription.routes';
 import templateEngineRoutes from './template-engine.routes';
@@ -34,6 +35,10 @@ router.use('/auth', authRoutes);
 // (el frontend llama exactamente a estas rutas; ninguna ruta de
 // business.routes coincide con estos segmentos, en cualquier orden de mount).
 router.use('/businesses', mpOAuthRoutes);
+// FASE 6 — MEDIOS (imagenes y video). Montado ANTES de `businessRoutes` para
+// que sus rutas `/:id/media*` queden registradas; ninguna ruta existente
+// coincide con esos segmentos, asi que no cambia el comportamiento anterior.
+router.use('/businesses', businessMediaRoutes);
 router.use('/businesses', businessRoutes);
 router.use('/business', businessSubscriptionRoutes);
 // TEMPLATE ENGINE V2 (Fase 3). Montado aparte de `business.routes` para no

@@ -1,5 +1,5 @@
-﻿// Tests de carga masiva (bulk import) AliExpress: categorÃ­as por producto,
-// reutilizaciÃ³n, aislamiento de errores, duplicados, reintento y concurrencia.
+﻿// Tests de carga masiva (bulk import) AliExpress: categorías por producto,
+// reutilización, aislamiento de errores, duplicados, reintento y concurrencia.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 require('tsx/cjs');
@@ -113,7 +113,7 @@ function seed(db, spec) {
   });
 }
 
-test('bulk: cada producto resuelve su categorÃ­a individualmente y reutiliza ae-{id}', async () => {
+test('bulk: cada producto resuelve su categoría individualmente y reutiliza ae-{id}', async () => {
   const db = freshDb();
   const calls = [];
   const spec = {
@@ -128,17 +128,17 @@ test('bulk: cada producto resuelve su categorÃ­a individualmente y reutiliza a
   assert.equal(products.length, 3);
   const slug = aeId => products.find(p => p.aliexpressId === aeId).categoryId;
   const cat1 = slug('1001'), cat2 = slug('1002'), cat3 = slug('1003');
-  assert.equal(cat1, cat3, 'mismo category_id AliExpress â†’ misma categorÃ­a');
-  assert.notEqual(cat1, cat2, 'category_id distinto â†’ categorÃ­a distinta');
+  assert.equal(cat1, cat3, 'mismo category_id AliExpress â†’ misma categoría');
+  assert.notEqual(cat1, cat2, 'category_id distinto â†’ categoría distinta');
   const aeCat = db._state.categories.get('ae-1501');
-  assert.ok(aeCat, 'categorÃ­a ae-1501 creada/reutilizada');
+  assert.ok(aeCat, 'categoría ae-1501 creada/reutilizada');
   assert.equal(cat1, aeCat.id);
   assert.ok(db._state.categories.get('ae-2002'));
   assert.equal([...db._state.categories.values()].filter(c => c.slug === 'ae-1501').length, 1,
-    'no duplicar categorÃ­a');
+    'no duplicar categoría');
 });
 
-test('bulk: publica productos PUBLISHED visibles en el catÃ¡logo', async () => {
+test('bulk: publica productos PUBLISHED visibles en el catálogo', async () => {
   const db = freshDb();
   const calls = [];
   const spec = { 'https://x/p1': { aeId: '1001', name: 'Producto 1', categoryId: '1501' } };
@@ -150,7 +150,7 @@ test('bulk: publica productos PUBLISHED visibles en el catÃ¡logo', async () =>
   assert.equal(db._state.job.succeeded, 1);
 });
 
-test('bulk: un Ã­tem con error no detiene la cola y registra el motivo', async () => {
+test('bulk: un ítem con error no detiene la cola y registra el motivo', async () => {
   const db = freshDb();
   const calls = [];
   const spec = {
@@ -189,7 +189,7 @@ test('bulk: duplicado falla de inmediato sin publicar y sin frenar la cola', asy
   assert.equal(db._state.items.find(i => i.sourceUrl === 'https://x/p3').status, 'DONE');
 });
 
-test('bulk: reintento procesa el Ã­tem fallido sin crear duplicados', async () => {
+test('bulk: reintento procesa el ítem fallido sin crear duplicados', async () => {
   const db = freshDb();
   const calls = [];
   const spec = { 'https://x/p1': { aeId: '1001', name: 'Producto 1', categoryId: '1501', throw: true } };
@@ -207,7 +207,7 @@ test('bulk: reintento procesa el Ã­tem fallido sin crear duplicados', async ()
   assert.equal(db._state.items[0].status, 'DONE');
 });
 
-test('bulk: workers concurrentes no duplican productos ni Ã­tems', async () => {
+test('bulk: workers concurrentes no duplican productos ni ítems', async () => {
   const db = freshDb();
   const calls = [];
   const spec = {
@@ -221,13 +221,13 @@ test('bulk: workers concurrentes no duplican productos ni Ã­tems', async () =>
   assert.equal(db._state.products.length, 3, 'cada producto creado exactamente una vez');
   const ids = db._state.products.map(p => p.aliexpressId).sort();
   assert.deepEqual(ids, ['1001', '1002', '1003']);
-  assert.equal(calls.length, 3, 'ninguna publicaciÃ³n doble');
+  assert.equal(calls.length, 3, 'ninguna publicación doble');
   const p1 = db._state.products.find(p => p.aliexpressId === '1001');
   const p3 = db._state.products.find(p => p.aliexpressId === '1003');
-  assert.notEqual(p1.categoryId, p3.categoryId, 'categorÃ­as no mezcladas');
+  assert.notEqual(p1.categoryId, p3.categoryId, 'categorías no mezcladas');
 });
 
-test('bulk: imÃ¡genes y variantes de cada producto quedan aisladas', async () => {
+test('bulk: imágenes y variantes de cada producto quedan aisladas', async () => {
   const db = freshDb();
   const calls = [];
   const spec = {
@@ -245,4 +245,3 @@ test('bulk: imÃ¡genes y variantes de cada producto quedan aisladas', async () 
   assert.equal(p1.salePrice, 18000, 'precio del motor de precios intacto');
   assert.equal(p2.salePrice, 18000);
 });
-

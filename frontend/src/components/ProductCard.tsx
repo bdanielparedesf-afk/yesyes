@@ -33,7 +33,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
   const isOutOfStock = product.stock <= 0;
   const lowStock = !isOutOfStock && product.stock <= 5;
 
-  // ProporciÃ³n consistente en todos los tamaÃ±os: evita alturas desiguales en la grilla.
+  // Proporción consistente en todos los tamaños: evita alturas desiguales en la grilla.
   const sizeClasses = {
     sm: 'aspect-[4/5]',
     md: 'aspect-[4/5]',
@@ -81,7 +81,7 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
           )}
           {lowStock && (
             <span className="absolute top-3 right-3 bg-amber-500/90 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm">
-              Â¡Ãšltimas {product.stock}!
+              ¡Últimas {product.stock}!
             </span>
           )}
         </div>
@@ -122,4 +122,3 @@ export default function ProductCard({ product, size = 'md' }: ProductCardProps) 
     </Link>
   );
 }
-

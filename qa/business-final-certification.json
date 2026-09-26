@@ -1,0 +1,162 @@
+{
+  "generadoEn": "2026-09-26T19:47:24.010Z",
+  "alcance": "YesYes Business V2 - certificacion E2E real por UI",
+  "estado": "PARCIAL",
+  "nota": "Las fases ejecutadas tienen evidencia real. Lo no ejecutado queda en `pendientes`; no se declara aprobado lo que no se probo.",
+  "verificacion": {
+    "uiReal": {
+      "nota": "Chrome/CDP real contra la pagina creada por la UI. Sin SQL, Prisma, seeds ni estado inventado.",
+      "fasesB_D": {
+        "runId": "cert-1790449369595",
+        "pasos": 12,
+        "fallos": 0,
+        "detalle": []
+      },
+      "fasesE_J": {
+        "runId": "cert-ej-1790449423947",
+        "pasos": 10,
+        "fallos": 2,
+        "detalle": [
+          "G5-galeria-editor :: Galeria del editor ofrece 0 disenos",
+          "H1-undo-redo :: UNDO/REDO: add=17 undo=16 redo=17 (undo deshabilitado al inicio=false)"
+        ]
+      },
+      "fasesE_F_medios": {
+        "runId": "cert-ef-1790451423198",
+        "pasos": 17,
+        "fallos": 0,
+        "evidencia": [
+          {
+            "paso": "E0-editor",
+            "ok": true,
+            "detalle": "Editor abierto para la fase de medios"
+          },
+          {
+            "paso": "E1-campos-media",
+            "ok": true,
+            "detalle": "El inspector ofrece 1 campos de medio: media-field-imagen-de-portada"
+          },
+          {
+            "paso": "E2-subir-hero",
+            "ok": true,
+            "detalle": "Seleccionado el archivo real hero-aurora.png en el campo de imagen"
+          },
+          {
+            "paso": "E3-almacenada",
+            "ok": true,
+            "detalle": "Storage guardo 4 imagen(es) del negocio"
+          },
+          {
+            "paso": "E4-url-publica",
+            "ok": true,
+            "detalle": "La imagen se sirve desde Storage (HTTP 200)"
+          },
+          {
+            "paso": "F0-agregar-video",
+            "ok": true,
+            "detalle": "La seccion de Video ya existia (ejecucion idempotente)"
+          },
+          {
+            "paso": "F1-campo-video",
+            "ok": true,
+            "detalle": "Campo de video en la seccion \"video\" (media-field-video)"
+          },
+          {
+            "paso": "F2-subir-video",
+            "ok": true,
+            "detalle": "Seleccionado el video real cocina-aurora.webm (431598 bytes)"
+          },
+          {
+            "paso": "F3-video-almacenado",
+            "ok": true,
+            "detalle": "Video en Storage: https://iavjqxuetbryygivvwfz.supabase.co/storage/v1/object/public/business-media/f397dabc-"
+          },
+          {
+            "paso": "F4-video-servido",
+            "ok": true,
+            "detalle": "El video se sirve por HTTP (200)"
+          },
+          {
+            "paso": "F5-video-reproduce",
+            "ok": true,
+            "detalle": "Decodifica y reproduce: {\"ok\":true,\"w\":960,\"h\":540,\"d\":2.959999,\"played\":true,\"t\":1.2}"
+          },
+          {
+            "paso": "F6-contrato-galeria",
+            "ok": true,
+            "detalle": "ImageGallery declara [\"text\",\"select\"]: sin media-ref, sus imagenes salen de business.gallery (campos en pantalla: 2)"
+          },
+          {
+            "paso": "F6-subir-galeria-salon.png",
+            "ok": true,
+            "detalle": "imagenes en Storage: 5"
+          },
+          {
+            "paso": "F6-subir-galeria-jardin.png",
+            "ok": true,
+            "detalle": "imagenes en Storage: 6"
+          },
+          {
+            "paso": "F6-subir-equipo-cocina.png",
+            "ok": true,
+            "detalle": "imagenes en Storage: 7"
+          },
+          {
+            "paso": "F7-medios-persisten",
+            "ok": true,
+            "detalle": "Tras F5 conserva 7 imagenes y 2 video(s)"
+          },
+          {
+            "paso": "F8-red-limpia",
+            "ok": true,
+            "detalle": "errores de red en medios: []"
+          }
+        ],
+        "videoReal": {
+          "url": "https://iavjqxuetbryygivvwfz.supabase.co/storage/v1/object/public/business-media/f397dabc-e10e-4750-a75a-12faf48b1c02/video/cdaba467-b4a3-432d-af6e-162b53b57d5a.webm",
+          "decode": {
+            "ok": true,
+            "w": 960,
+            "h": 540,
+            "d": 2.959999,
+            "played": true,
+            "t": 1.2
+          }
+        },
+        "mediosDespuesDeF5": {
+          "imagenes": 7,
+          "videos": 2
+        }
+      }
+    },
+    "suites": {
+      "backend": {
+        "tests": 610,
+        "pass": 607,
+        "fail": 0,
+        "skipped": 3,
+        "exitCode": "0"
+      },
+      "frontend": {
+        "tests": 174,
+        "pass": 174,
+        "fail": 0,
+        "skipped": 0
+      },
+      "backendTypecheck": "OK",
+      "frontendBuild": "OK"
+    },
+    "higiene": {
+      "gitDiffCheck": "limpio (solo avisos LF/CRLF)",
+      "escaneoSecretos": "0 hallazgos en 443 archivos (JWT, claves privadas, claves AWS/GitHub/Stripe)"
+    }
+  },
+  "pendientes": [
+    "Suscripcion y checkout: no existe UI de plan/pago en el frontend, solo rutas de backend. Bloquea la publicacion.",
+    "Mercado Pago sandbox: credenciales no validadas de forma segura; no se imprimieron ni exposieron.",
+    "Publicacion y URL publica: no ejecutada (depende de la suscripcion anterior).",
+    "Segunda pagina V2 y pruebas cruzadas de rubro: no ejecutadas.",
+    "E-J G5 (galeria de disenos) y H1 (undo/redo): siguen reportando fallo; pendientes de analisis.",
+    "Galeria de imagenes editable desde el editor V2: ImageGallery no declara media-ref."
+  ]
+}

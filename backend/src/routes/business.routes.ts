@@ -7,6 +7,7 @@ import { businessUpsertSchema, cleanDescription, serviceSchema, propertySchema, 
 import { uniqueBusinessSlugFor, businessCompleteness } from '../services/business.service';
 import { createBusiness, updateBusiness } from '../controllers/business.controller';
 import { uploadBusinessImage, MAX_UPLOAD_BYTES } from '../lib/storage';
+import { mediaOwnerDTO } from '../services/business-media.service';
 import {
   publishBusiness,
   pauseBusiness,
@@ -161,10 +162,14 @@ router.get('/:id', requireBusinessOwner, async (req: AuthRequest, res) => {
       // La instancia de sitio es el manifest que compone el renderer. Sin esto
       // el editor no podría cambiar diseño, variantes ni secciones.
       siteInstance: { select: { manifest: true, manifestVersion: true, legacyCompatibility: true, updatedAt: true } },
+      // FASE 6 — el catálogo de medios del negocio. El editor lo necesita para
+      // que el picker de imagen/video ofrezca lo que ya está subido, y para
+      // resolver `media:<id>` al pintar el borrador.
+      media: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
     },
   });
   if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  res.json({ business: b, completeness: businessCompleteness(b) });
+  res.json({ business: { ...(b as any), media: (b as any).media.map((row: any) => mediaOwnerDTO(row)) }, completeness: businessCompleteness(b) });
 });
 router.put('/:id', requireBusinessOwner, updateBusiness);
 router.delete('/:id', requireBusinessOwner, async (req: AuthRequest, res) => {

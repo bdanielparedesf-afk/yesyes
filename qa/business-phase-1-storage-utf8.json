@@ -1,0 +1,95 @@
+{
+  "phase": "1 — STORAGE + UTF-8",
+  "status": "PASS",
+  "generatedAt": "2026-09-26",
+  "actualizado": "2026-09-26 — S-00 resuelto: SUPABASE_SERVICE_ROLE_KEY provista por el usuario. Storage verificado con archivo real.",
+  "reglaAplicada": "Storage se declara PASS solo tras ejecutar el round-trip real con un archivo real (subido, descargado por red y comparado por hash). El video NO se declara PASS: sigue sin implementarse y queda para Fase 6.",
+
+  "storage": {
+    "status": "PASS",
+    "configActual": {
+      "SUPABASE_SERVICE_ROLE_KEY": "CONFIGURADA (valor nunca impreso ni versionado; vive solo en backend/.env, que esta en .gitignore y no esta trackeado)",
+      "SUPABASE_URL": "AUSENTE — se deriva de DATABASE_URL",
+      "projectRefDerivado": "iavjqxuetbryygivvwfz",
+      "URLDerivada": "https://iavjqxuetbryygivvwfz.supabase.co",
+      "bucket": "business-images (creado idempotentemente por ensureBucket() si no existia)",
+      "limiteUpload": "5 MB"
+    },
+    "verificacionReal": {
+      "script": "backend/scripts/qa-storage-verify.mjs",
+      "exitCode": 0,
+      "resultado": "PASS",
+      "pasos": [
+        "sniff por magic bytes: PNG 78 bytes, sha256:05913d5c23d88fb2",
+        "upload al bucket: OK -> https://iavjqxuetbryygivvwfz.supabase.co/storage/v1/object/public/business-images/qa-fase1-.../gallery/....png",
+        "URL publica responde 200: OK",
+        "bytes integros tras la red: OK — esperado sha256:05913d5c23d88fb2, obtenido sha256:05913d5c23d88fb2 (coinciden)",
+        "content-type correcto: image/png",
+        "limpieza: 1 objeto de QA eliminado del bucket"
+      ],
+      "nota": "La coincidencia de hash prueba que el archivo subido es el mismo que vuelve por la URL publica: no es una copia truncada ni un placeholder."
+    },
+    "hallazgoRealCorregido": {
+      "id": "S-01",
+      "severidad": "BLOCKER",
+      "estado": "CORREGIDO Y VERIFICADO CON ARCHIVO REAL",
+      "titulo": "La derivacion de la URL de Supabase producia un host inexistente",
+      "causa": "resolveConfig() derivaba https://<primera-etiqueta-del-host>.supabase.co. Con el pooler de region de este proyecto (aws-0-sa-east-1.pooler.supabase.com) eso daba https://aws-0-sa-east-1.supabase.co: un host que no existe. Ademas el project ref de este proyecto NO esta en el host, sino en el USUARIO (postgres.<ref>).",
+      "solucion": "Nueva funcion projectRefFromUrl() en backend/src/lib/storage.ts: busca el ref (20 chars [a-z0-9]) en el usuario (postgres.<ref>), en las etiquetas del host (db.<ref>, <ref>.pooler) o como host suelto; ademas acepta DIRECT_URL como fallback. Si no encuentra ref, devuelve null en vez de adivinar un host.",
+      "verificado": "Con la credencial real, el upload llego al project correcto (iavjqxuetbryygivvwfz), lo que confirma que la derivacion del ref es correcta. Sin este fix, el upload habria fallado contra un host inexistente.",
+      "regresionCubierta": "backend/tests/business-storage.test.cjs (10 tests), incluido 'NUNCA inventa un host a partir de una region'."
+    },
+    "otrosHallazgos": [
+      {
+        "id": "S-02",
+        "severidad": "MEDIUM",
+        "estado": "PENDIENTE — Fase 6",
+        "titulo": "No existe endpoint de upload de video",
+        "detalle": "sniffImageType() acepta JPG/PNG/WEBP/GIF/AVIF y rechaza MP4. uploadBusinessImage solo expone kinds de imagen. La Fase 6 exige subir video: hoy no existe ese endpoint. Es correcto que no se finja soporte. La verificacion registra video como 'skip / no implementado', nunca como PASS."
+      }
+    ]
+  },
+
+  "utf8": {
+    "status": "PASS",
+    "metodo": "Escaneo por FIRMA de fallo de codificacion (no por 'tiene tilde'), y reparacion por round-trip Windows-1252 -> UTF-8 con guardas de no-destruccion. Se corrigio la CAUSA (archivos mal decodificados), no se hizo reemplazo de texto a ciegas.",
+    "antes": "10 archivos, 235 ocurrencias (131 visibles al usuario, 104 en comentarios)",
+    "despues": "8 archivos quedan marcados; 52 lineas NO se tocan de forma segura",
+    "lineasReparadas": 233,
+    "verificadoEnCodigo": [
+      "frontend/src/business/builder/BuilderTopBar.tsx — 'Cambiar diseÃ±o' -> 'Cambiar diseño' (boton del editor)",
+      "backend/src/template-engine/design-registry.ts — 'Llamado a la acciÃ³n' -> 'Llamado a la acción' (etiqueta de seccion)",
+      "backend/src/template-engine/capabilities.ts — 'Ver catÃ¡logo' -> 'Ver catálogo' (CTA por rubro)",
+      "backend/src/template-engine/variant-registry.ts — 'CinemÃ¡tico' -> 'Cinemático' (nombre de variante)",
+      "frontend/src/components/ProductCard.tsx — 'Â¡Ãšltimas 50!' -> '¡Últimas 50!' (badge de stock)"
+    ],
+    "guardasDeNoDestruccion": [
+      "Solo se acepta un round-trip sin U+FFFD (sin perdida de bytes).",
+      "Solo se acepta si NO quedan rastros de mojibake en el resultado (evita decodificar a medias y empeorar el texto).",
+      "Solo se acepta si el resultado no introduce '?' ni caracteres de control (byte huerfano).",
+      "Un texto ya correcto en espanol ('generación', 'ñÑáéíóú') se deja intacto: sus test/demo.",
+      "52 lineas irresolubles de forma segura quedaron SIN TOCAR y reportadas, no destrozadas."
+    ],
+    "notaSobreLoIrrecuperable": "Las 52 lineas pendientes son casi todas rayas decorativas de caja en comentarios de test, o firmas de triple codificacion donde la decodificacion parcial empeoraba el texto. Se dejan para una pasada manual; NO afectan lo que ve el usuario.",
+    "efectoSecundarioDocumentado": "Al reescribir los archivos reparados, el script tambien normalizo la linea en blanco final de 8 de ellos (git diff --check los reporta como 'new blank line at EOF'). Es cosmético, no cambia comportamiento ni contenido, y queda visible en el diff para revision."
+  },
+
+  "tests": {
+    "backend": "PASS — 553 pass / 0 fail / 3 skipped (los 3 skips son fixtures que requieren servicios externos: freight live, rotacion PostgreSQL, fixture Supabase)",
+    "frontend": "PASS — 101 pass / 0 fail",
+    "nuevos": "backend/tests/business-storage.test.cjs — 10 tests, todos verdes",
+    "typecheck": "backend PASS",
+    "build": "backend PASS / frontend PASS"
+  },
+
+  "git": "SIN commit. SIN push. Cambios en el working tree unicamente.",
+
+  "issuesAbiertos": [
+    { "id": "S-00", "severidad": "BLOCKER", "problema": "Bucket de Storage sin credencial", "impacto": "No se puede probar el ciclo real de imagen ni de video", "estado": "RESUELTO — credencial provista y verificada con upload real (sha256 coincide). CLOSED en Fase 1." },
+    { "id": "S-01", "severidad": "BLOCKER", "problema": "Derivacion de URL de Supabase producia host inexistente", "impacto": "El upload habria fallado siempre", "estado": "CORREGIDO y verificado con archivo real. Cubierto por 10 tests." },
+    { "id": "S-02", "severidad": "MEDIUM", "problema": "No existe endpoint de upload de video (solo imagenes)", "impacto": "Fase 6 dependera de implementarlo", "estado": "PENDIENTE — Fase 6. Reportado como 'skip', nunca como PASS." },
+    { "id": "UTF8-L1", "severidad": "LOW", "problema": "52 lineas con mojibake decorativo en comentarios de test, no reparables de forma automatica segura", "impacto": "Ninguno para el usuario", "estado": "PENDIENTE — pasada manual en Fase 23 (Limpieza)" }
+  ],
+
+  "next": "Fase 2 — Crear una pagina real desde la UI (Clínica Veterinaria Los Robles, rubro Veterinaria). Requiere sesion de navegador. Si S-00 no se resuelve, marcar imagenes/video como BLOCKED_EXTERNAL_DEPENDENCY y seguir con el resto del flujo."
+}

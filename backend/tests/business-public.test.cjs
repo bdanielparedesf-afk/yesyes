@@ -13,12 +13,18 @@ test('public: solo negocios PUBLISHED son visibles', () => {
 
 test('public: PUBLIC_SELECT no expone datos internos', () => {
   const start = src.indexOf('const PUBLIC_SELECT = {');
-  const end = src.indexOf('} as const;', start);
+  // El bloque termina en el primer `};` en beginning de linea. No se busca
+  // `} as const;` porque Prisma no acepta `orderBy` en readonly y el objeto
+  // ya no lleva `as const`: el test debe depender del bloque, no de su forma.
+  const end = src.indexOf('\n};', start);
   assert.ok(start >= 0 && end > start, 'PUBLIC_SELECT no encontrado');
   const block = src.slice(start, end);
   for (const forbidden of ['ownerId', 'password', 'token', 'settings', 'leads', 'orders', 'payments', 'mpUserId', 'accessToken']) {
     assert.ok(!block.includes(forbidden), `PUBLIC_SELECT expone ${forbidden}`);
   }
+  // FASE 6: los medios salen por el DTO publico, no como filas crudas.
+  assert.ok(block.includes('media:'), 'PUBLIC_SELECT debe incluir media para el renderer');
+  assert.ok(!block.includes('metadata'), 'PUBLIC_SELECT no debe pedir metadata cruda de medios');
 });
 
 test('public: leads validados con Zod, rate limit y antispam', () => {

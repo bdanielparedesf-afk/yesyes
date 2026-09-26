@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma';
 import { leadSchema, bookingCreateSchema } from '../utils/business';
 import { checkSpam } from '../utils/business-antispam';
 import { validatePreviewToken } from '../services/business-preview.service';
+import { mediaPublicDTO } from '../services/business-media.service';
+import { publishedManifestOf as publishedManifest } from '../services/business-site-version.service';
 import { listActivePlans } from '../services/business-subscription.service';
 import { groupedCategories, templateFamilyCodes, templateDisplayName, templateStyleOf, canonicalCategoryCode, dedupeDesigns, normalizeTemplateCode } from '../utils/business-taxonomy';
 import { CAPABILITY_CATALOG } from '../utils/business-capabilities';
@@ -72,10 +74,15 @@ const PUBLIC_SELECT = {
   seoTitle: true, seoDescription: true, ogImage: true, canonical: true,
   templateId: true, publishedAt: true,
   template: { select: { code: true, name: true, category: true, capabilities: true } },
-  // El manifest que compone la página pública. Se elige la revisión PUBLICADA
-  // más reciente, nunca el borrador: editar no cambia el sitio en vivo.
-  siteInstance: { select: { manifest: true, manifestVersion: true, legacyCompatibility: true } },
-} as const;
+  // El manifest que compone la página pública. Se resuelve contra la última
+  // revisión PUBLICADA, nunca contra el borrador (ver publishedSiteInstance).
+  siteInstance: { select: { id: true, manifest: true, manifestVersion: true, legacyCompatibility: true } },
+  // FASE 6 — medios. Sin esto el renderer recibía SIEMPRE `media: []` y los
+  // bloques de video (HeroVideo, Video, VideoGallery) no tenían con qué
+  // reproducirse. Se serializan con el DTO público: sin `storagePath` ni datos
+  // internos (6.11).
+  media: { orderBy: [{ position: 'asc' as const }, { createdAt: 'asc' as const }] },
+};
 
 /**
  * Manifest que debe renderizar la PÁGINA PÚBLICA.
@@ -85,16 +92,36 @@ const PUBLIC_SELECT = {
  * marcada como publicada, para que el borrador del editor no altere el sitio.
  */
 async function publishedManifestOf(instanceId: string | null | undefined): Promise<unknown | null> {
-  if (!instanceId) return null;
-  const published = await prisma.businessSiteRevision.findFirst({
-    where: { instanceId, reason: { startsWith: 'PUBLICADO' } },
-    orderBy: { createdAt: 'desc' },
-    select: { manifest: true },
-  });
-  return published ? published.manifest : null;
+  return publishedManifest(instanceId);
 }
+
+/**
+ * Reemplaza el borrador por la versión publicada en la carga pública.
+ *
+ * TODO endpoint público que devuelva el negocio pasa por aquí. Si alguno
+ * leyera `siteInstance.manifest` sin pasar por esta función, el borrador se
+ * filtraría al sitio en vivo.
+ */
+async function publishedSiteInstance<T extends { siteInstance: { id: string; manifest: unknown; manifestVersion: number; legacyCompatibility: boolean } | null } | null>(business: T): Promise<T> {
+  if (!business || !business.siteInstance) return business;
+  const manifest = await publishedManifestOf(business.siteInstance.id);
+  if (manifest === null) return { ...business, siteInstance: null };
+  return { ...business, siteInstance: { ...business.siteInstance, manifest } };
+}
+/**
+ * Convierte las filas de `BusinessMedia` en el DTO público ANTES de que salgan
+ * del servidor. Se aplica en cada respuesta que las include: si una ruta nueva
+ * olvida llamarla, las filas crudas quedarían expuestas (con `storagePath`).
+ */
+function withPublicMedia<T>(business: T): T {
+  if (!business || !Array.isArray((business as { media?: unknown }).media)) return business;
+  const rows = (business as unknown as { media: unknown[] }).media;
+  return { ...business, media: rows.map((row) => mediaPublicDTO(row as any)) } as T;
+}
+
 async function publishedBySlug(slug: string) {
-  return prisma.business.findFirst({ where: { slug: String(slug), status: 'PUBLISHED' as any }, select: PUBLIC_SELECT });
+  const found = await prisma.business.findFirst({ where: { slug: String(slug), status: 'PUBLISHED' as any }, select: PUBLIC_SELECT });
+  return withPublicMedia(found);
 }
 async function previewPayload(businessId: string) {
   const b = await prisma.business.findUnique({
@@ -118,15 +145,20 @@ async function previewPayload(businessId: string) {
       promotions: { where: { active: true }, orderBy: { order: 'asc' } },
       teamMembers: { where: { active: true }, orderBy: { order: 'asc' } },
       bookingSlots: { where: { active: true }, orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }] },
+      // FASE 6 — la vista previa usa EXACTAMENTE el mismo catálogo de medios
+      // que la página pública, con el mismo DTO. Si el preview y la publicación
+      // tuvieran listas distintas, el editor probaría una cosa y se vería otra.
+      media: { orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
     },
   });
   if (!b) return null;
+  const media = (b as any).media.map((row: any) => mediaPublicDTO(row));
   const products = await prisma.businessCatalogItem.findMany({
     where: { businessId: b.id, active: true },
     orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { createdAt: 'desc' }],
     take: 100,
   });
-  return { business: b, services: b.services, products, properties: b.properties, gallery: b.gallery, testimonials: b.testimonials, faqs: b.faqs, promotions: b.promotions, team: b.teamMembers, bookingSlots: b.bookingSlots };
+  return { business: { ...(b as any), media }, services: b.services, products, properties: b.properties, gallery: b.gallery, testimonials: b.testimonials, faqs: b.faqs, promotions: b.promotions, team: b.teamMembers, bookingSlots: b.bookingSlots };
 }
 router.get('/:slug/preview', async (req, res) => {
   const token = String(req.query.token || '');
@@ -165,13 +197,15 @@ router.get('/:slug/page', async (req, res) => {
     },
   });
   if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const { catalogItems, teamMembers, siteInstance, ...data } = business;
+  const { catalogItems, teamMembers, siteInstance, media: mediaRows, ...data } = business;
   // La página pública renderiza la ÚLTIMA REVISIÓN PUBLICADA. El borrador del
   // editor nunca se filtra aquí: probar un diseño no cambia el sitio en vivo.
-  const published = await publishedManifestOf(siteInstance ? `site-${business.id}` : null);
+  // La instancia se resuelve por su ID real, no por convención de nombres.
+  const published = await publishedManifestOf(siteInstance ? siteInstance.id : null);
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     ...data,
+    media: mediaRows.map((row) => mediaPublicDTO(row as any)),
     siteInstance: published ? { manifest: published, manifestVersion: siteInstance?.manifestVersion || 1 } : null,
     products: catalogItems,
     team: teamMembers,
@@ -179,8 +213,10 @@ router.get('/:slug/page', async (req, res) => {
 });
 
 router.get('/:slug', async (req, res) => {
-  const b = await publishedBySlug(String(req.params.slug));
-  if (!b) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const found = await publishedBySlug(String(req.params.slug));
+  if (!found) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  // Ídem: el resumen público jamás entrega el borrador editable.
+  const b = await publishedSiteInstance(found);
   res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
   res.json({ business: b });
 });

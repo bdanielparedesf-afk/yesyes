@@ -144,7 +144,34 @@ describe('OAuth - Cifrado', () => {
 
   test('reject tampered envelope', () => {
     const encrypted = encryptSecret('token', key, 'biz-1', 'access');
-    const tampered = encrypted.slice(0, -2) + '00';
+    // Se altera un byte del CIPHERTEXT de forma DETERMINISTA. Un tamper de la
+    // forma `slice(0,-2) + '00'` es un no-op cuando el ciphertext ya termina en
+    // 0x00 (~1/256 de las ejecuciones) y el test fallaba de forma intermitente,
+    // dando la falsa impresion de que la criptografia no detectaba la alteracion.
+    const parts = encrypted.split(':');
+    const bytes = Buffer.from(parts[3], 'hex');
+    // Ultimo byte del ciphertext con el bit 0 siempre invertido -> nunca 0x00.
+    bytes[bytes.length - 1] ^= 0x01;
+    const tampered = [parts[0], parts[1], parts[2], bytes.toString('hex')].join(':');
+    assert.notEqual(tampered, encrypted);
+    assert.throws(() => decryptSecret(tampered, key, 'biz-1', 'access'));
+  });
+
+  test('reject tampered authTag', () => {
+    const encrypted = encryptSecret('token', key, 'biz-1', 'access');
+    const parts = encrypted.split(':');
+    const tag = Buffer.from(parts[2], 'hex');
+    tag[0] ^= 0x01;
+    const tampered = [parts[0], parts[1], tag.toString('hex'), parts[3]].join(':');
+    assert.throws(() => decryptSecret(tampered, key, 'biz-1', 'access'));
+  });
+
+  test('reject tampered iv', () => {
+    const encrypted = encryptSecret('token', key, 'biz-1', 'access');
+    const parts = encrypted.split(':');
+    const iv = Buffer.from(parts[1], 'hex');
+    iv[0] ^= 0x01;
+    const tampered = [parts[0], iv.toString('hex'), parts[2], parts[3]].join(':');
     assert.throws(() => decryptSecret(tampered, key, 'biz-1', 'access'));
   });
 

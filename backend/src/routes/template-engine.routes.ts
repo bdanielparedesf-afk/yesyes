@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { createHash } from 'crypto';
 import { authenticate, type AuthRequest } from '../middlewares/auth';
 import { requireBusinessOwner, ownerWhere } from '../middlewares/businessAuth';
 import { prisma } from '../lib/prisma';
@@ -18,6 +19,7 @@ import {
   layoutFingerprint,
 } from '../template-engine';
 import { canonicalCategoryCode } from '../utils/business-taxonomy';
+import { sanitizeRevisionReason, latestPublishedRevision } from '../services/business-site-version.service';
 
 const router = Router();
 router.use(authenticate);
@@ -193,7 +195,9 @@ router.put('/:id/site-instance', requireBusinessOwner, async (req: AuthRequest, 
         instanceId: instance.id,
         manifestVersion: CURRENT_MANIFEST_VERSION,
         manifest: nextManifest as any,
-        reason: String(body.reason || 'actualizacion del negocio').slice(0, 200),
+        // El motivo lo decide el backend: un `reason` del cliente no puede
+        // disfrazarse de publicación y publicar la página sin el gate de pago.
+        reason: sanitizeRevisionReason(body.reason),
       },
     });
     return instance;
@@ -202,6 +206,47 @@ router.put('/:id/site-instance', requireBusinessOwner, async (req: AuthRequest, 
   res.setHeader('Cache-Control', 'no-store');
   res.json({ instance: updated, warnings: result.warnings });
 });
+
+/**
+ * ESTADO DE VERSIONES del sitio: qué es el borrador, cuál es la versión
+ * publicada y si divergen.
+ *
+ * Es la fuente de verdad observable del contrato DRAFT ≠ PUBLISHED: el editor
+ * (y las pruebas de esta fase) comparan estas dos identificaciones en vez de
+ * suponer que el historial implica separación.
+ */
+router.get('/:id/site-versions', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const business = await prisma.business.findFirst({
+    where: ownerWhere(req, String(req.params.id)),
+    select: { id: true, status: true, siteInstance: { select: { id: true, manifest: true, manifestVersion: true, updatedAt: true } } },
+  });
+  if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+  const instance = business.siteInstance;
+  if (!instance) { res.json({ draft: null, published: null, inSync: false, status: business.status }); return; }
+
+  const revisionCount = await prisma.businessSiteRevision.count({ where: { instanceId: instance.id } });
+  const published = await latestPublishedRevision(instance.id);
+  const draft = { revision: 'DRAFT', manifestVersion: instance.manifestVersion, fingerprint: fingerprintOf(instance.manifest), updatedAt: instance.updatedAt };
+  const publishedView = published
+    ? { revision: published.id, manifestVersion: published.manifestVersion, fingerprint: fingerprintOf(published.manifest), publishedAt: published.createdAt }
+    : null;
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    status: business.status,
+    instanceId: instance.id,
+    draft,
+    published: publishedView,
+    // `inSync: true` significa que el borrador coincide con lo publicado: el
+    // sitio en vivo ya muestra exactamente lo que se está editando.
+    inSync: Boolean(published && JSON.stringify(published.manifest) === JSON.stringify(instance.manifest)),
+    revisionCount,
+  });
+});
+
+/** Huella estable de un manifest: permite comparar sin volcar el contenido. */
+function fingerprintOf(manifest: unknown): string {
+  return createHash('sha256').update(JSON.stringify(manifest ?? null)).digest('hex').slice(0, 16);
+}
 
 /** Historial de revisiones: auditoría de qué cambió y cuándo. */
 router.get('/:id/site-instance/revisions', requireBusinessOwner, async (req: AuthRequest, res) => {

@@ -1,0 +1,87 @@
+{
+  "phase": "0 — AUDIT / BASELINE",
+  "status": "PASS",
+  "generatedAt": "2026-09-26",
+  "git": {
+    "branch": "main",
+    "head": "8b0a578 feat(business): checkpoint template engine v2 and phase 4.1",
+    "workingTree": "23 archivos modificados, 3211 inserciones, 626 eliminaciones (trabajo previo sin commitear)",
+    "commit": "NINGUNO. No se hizo commit ni push, segun la regla de la Fase 0/5."
+  },
+  "toolchain": {
+    "backendTypecheck": "PASS (tsc --noEmit)",
+    "backendBuild": "PASS (tsc)",
+    "backendTests": "PASS — 553 pass / 0 fail / 3 skipped (baseline: 543 pass / 0 fail; +10 tests nuevos de Storage)",
+    "frontendBuild": "PASS (tsc && vite build)",
+    "frontendTests": "PASS — 101 pass / 0 fail",
+    "eslint": "NO CONFIGURADO en el repo; la validacion real es tsc + tests"
+  },
+  "prisma": {
+    "validate": "PASS — schema valido",
+    "migrateStatus": "PASS — 16 migraciones, base de datos al dia",
+    "migrations": [
+      "20260906021823_init",
+      "20260906030000_add_collection_and_cj_fields",
+      "20260909000000_add_product_source_fields",
+      "20260910000000_add_alerts_hidden",
+      "20260910000000_add_hidden_alert_fields",
+      "20260916190000_aliexpress_token_security",
+      "20260917000000_aliexpress_dropship_catalog",
+      "20260917180000_aliexpress_oauth_attempts",
+      "20260918000000_aliexpress_sync_engine",
+      "20260919120000_add_variant_commercial_fields",
+      "20260922000000_business_base",
+      "20260923000000_business_platform",
+      "20260924000000_business_catalog",
+      "20260924190000_business_categories_2026",
+      "20260926090000_business_v5_fase2_ux_foundation",
+      "20260927090000_business_template_engine_v2"
+    ]
+  },
+  "database": {
+    "business": 28,
+    "businessTemplate": 98,
+    "businessTemplateVersion": 0,
+    "businessSiteInstance": 9,
+    "businessSiteRevision": 34,
+    "businessMedia": 0,
+    "businessService": 39,
+    "businessCatalogItem": 32,
+    "businessGalleryImage": 6,
+    "businessTestimonial": 15,
+    "businessFaq": 21,
+    "businessLead": 4,
+    "businessCategory": 22,
+    "businessPlan": 1,
+    "businessCapability": 0,
+    "businessPromotion": 1
+  },
+  "templates": {
+    "total": 98,
+    "legacy": 98,
+    "v2": 0,
+    "active": 98,
+    "nota": "El plan fala de 97 templates; la base real tiene 98 filas. Se registra el dato real, no el esperado."
+  },
+  "hallazgosCriticosFase0": [
+    {
+      "id": "F0-01",
+      "severidad": "HIGH",
+      "titulo": "Las 9 SiteInstance existentes estan en manifestVersion 1 y 0 BusinessTemplateVersion",
+      "detalle": "BusinessTemplateVersion = 0 filas y las 9 instancias tienen manifestVersion 1. El versionado inmutable de manifests V2 (la base de la migracion V3 -> V2) esta vacio: hoy no existe el historial de manifests por version de plantilla que la Fase 21 necesita.",
+      "impacto": "La migracion V3 -> V2 no tiene de donde leer un manifest maestro por version."
+    },
+    {
+      "id": "F0-02",
+      "severidad": "MEDIUM",
+      "titulo": "BusinessMedia = 0 filas",
+      "detalle": "No hay ningun medio persistido. Los bloques de video hoy caen a poster/fallback estatico, que es correcto, pero significa que no hay evidencia de la cadena media en DB.",
+      "impacto": "Fase 6 (Media + Video) arranca desde cero y depende de Phase 1 (Storage)."
+    }
+  ],
+  "notas": [
+    "No se creo, modifico ni borro ninguna pagina en esta fase.",
+    "El inventario se genero con backend/scripts/qa-baseline-inventory.mjs (solo lectura).",
+    "No se imprimieron secretos: el .env se leyo enmascarando KEY/SECRET/TOKEN/PASSWORD/DATABASE."
+  ]
+}

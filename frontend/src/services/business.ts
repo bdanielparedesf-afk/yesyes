@@ -53,13 +53,13 @@ export async function getPublicBusinessPlan() {
   return data.plan as { name: string; amount: number; currency: string; frequency: number; frequencyType: string; features: string[] } | null;
 }
 
-/** TaxonomÃ­a pÃºblica de rubros (grupos + categorÃ­as canÃ³nicas, sin duplicados). */
+/** Taxonomía pública de rubros (grupos + categorías canónicas, sin duplicados). */
 export async function getBusinessTaxonomy() {
   const { data } = await api.get('/public/businesses/taxonomy');
   return data.groups as { group: { key: string; label: string; description: string }; categories: { code: string; label: string; description: string; cta: string }[] }[];
 }
 
-/** GalerÃ­a de diseÃ±os de un rubro: nombre, estilo y funciones en lenguaje humano. */
+/** Galería de diseños de un rubro: nombre, estilo y funciones en lenguaje humano. */
 export async function getPublicTemplates(category?: string) {
   const { data } = await api.get('/public/businesses/templates', { params: category ? { category } : {} });
   return data.templates as { id: string; code: string; category: string; label: string; style: string; legacy: boolean; previewImage?: string | null; functions: string[] }[];
@@ -150,11 +150,11 @@ export async function getBusinessCapabilities(id: string) {
  * DISEÃ‘O Y VARIANTES (Fase 4.1).
  *
  * Estas llamadas son lo que convierte el editor en un constructor visual: el
- * usuario puede cambiar de diseÃ±o, cambiar la variante de una secciÃ³n y
+ * usuario puede cambiar de diseño, cambiar la variante de una sección y
  * agregar/quitar/reordenar, sin salir de la interfaz ni editar JSON.
  */
 
-/** CatÃ¡logo de diseÃ±os del rubro, con nombres legibles y sin cÃ³digos. */
+/** Catálogo de diseños del rubro, con nombres legibles y sin códigos. */
 export async function getBusinessDesigns(id: string) {
   const { data } = await api.get(`/business/${id}/designs`);
   return data as {
@@ -175,16 +175,52 @@ export async function getBusinessDesigns(id: string) {
 /** Manifest actual del negocio (borrador). */
 export async function getBusinessManifest(id: string) {
   const { data } = await api.get(`/business/${id}/manifest`);
-  return (data as { manifest: any }).manifest;
+  return (data as { manifest: any; updatedAt?: string | null }).manifest;
 }
 
-/** Cambia el diseÃ±o global conservando el contenido. */
+/**
+ * Carga la instancia + manifest de edicion en una sola llamada.
+ *
+ * El backend garantiza la instancia (`ensureSiteInstance`) antes de responder:
+ * una pagina nueva SIEMPRE entra al editor con manifest V2, y una pagina V3
+ * antigua sin instancia tambien lo recibe (derivado de su diseño, nunca de
+ * `visual.sections`).
+ */
+export async function loadBusinessSite(id: string) {
+  const { data } = await api.get(`/business/${id}/manifest`);
+  return data as { manifest: any; updatedAt: string | null };
+}
+
+/**
+ * PERSISTENCIA PRINCIPAL DEL EDITOR (Fase 4.2 · C).
+ *
+ * Guarda el manifest V2 completo: el backend lo revalida, escribe la
+ * BusinessSiteInstance y abre una revision. `baseUpdatedAt` habilita la
+ * deteccion de conflictos: si otra pestana guardo antes, responde 409 y aqui se
+ * propaga como error de conflicto (el editor detiene el autosave y recarga).
+ */
+export async function saveBusinessManifest(id: string, manifest: any, baseUpdatedAt?: string | null, reason?: string) {
+  const { data } = await api.put(`/business/${id}/manifest`, {
+    manifest,
+    baseUpdatedAt: baseUpdatedAt || undefined,
+    reason,
+  });
+  return data as { manifest: any; updatedAt: string | null; warnings?: string[] };
+}
+
+/**
+ * Cambia el diseño global conservando el contenido.
+ *
+ * FASE 5 §12 — devuelve `updatedAt`: aplicar un diseño escribe la instancia, así
+ * que el editor debe refrescar su sello de optimistic locking. Si no, el
+ * siguiente autosave manda el sello viejo y recibe un 409 sin motivo real.
+ */
 export async function applyBusinessDesign(id: string, templateId: string) {
   const { data } = await api.post(`/business/${id}/design`, { templateId });
-  return data as { manifest: any; design: { id: string; label: string } };
+  return data as { manifest: any; design: { id: string; label: string }; updatedAt: string | null };
 }
 
-/** Vista previa de un diseÃ±o SIN aplicarlo: cancelar no cambia nada. */
+/** Vista previa de un diseño SIN aplicarlo: cancelar no cambia nada. */
 export async function previewBusinessDesign(id: string, templateId: string) {
   const { data } = await api.post(`/business/${id}/design/preview`, { templateId });
   return data as { manifest: any; design: { id: string; label: string } };
@@ -193,7 +229,7 @@ export async function previewBusinessDesign(id: string, templateId: string) {
 /** Cambia la variante de un bloque. El contenido nunca se toca. */
 export async function setBusinessBlockVariant(id: string, instanceId: string, variant: string) {
   const { data } = await api.put(`/business/${id}/block/${instanceId}/variant`, { variant });
-  return (data as { manifest: any }).manifest;
+  return data as { manifest: any; updatedAt: string | null };
 }
 
 /** Secciones que este rubro puede agregar, con sus variantes. */
@@ -204,16 +240,22 @@ export async function getAddableSections(id: string) {
   };
 }
 
-/** Agrega una secciÃ³n al manifest. Falla explÃ­citamente si ya existe. */
+/**
+ * Agrega una sección al manifest. Falla explícitamente si ya existe.
+ *
+ * FASE 5 §10 — el backend RECHAZA (422) una capability que el rubro no admite,
+ * sin modificar el manifest. FASE 5 §12 — devuelve `updatedAt` para refrescar el
+ * sello de optimistic locking del editor.
+ */
 export async function addBusinessSection(id: string, capability: string, variant?: string) {
   const { data } = await api.post(`/business/${id}/sections`, { capability, variant });
-  return (data as { manifest: any }).manifest;
+  return data as { manifest: any; updatedAt: string | null };
 }
 
 /** Reordena, oculta, quita o duplica secciones. */
 export async function updateBusinessSections(id: string, payload: Record<string, unknown>) {
   const { data } = await api.put(`/business/${id}/sections`, payload);
-  return (data as { manifest: any }).manifest;
+  return data as { manifest: any; updatedAt: string | null };
 }
 export async function saveBusinessCapabilities(id: string, sections: Array<{ id: string; enabled: boolean; order: number }>) {
   const { data } = await api.put(`/businesses/${id}/capabilities`, { sections });
@@ -231,7 +273,7 @@ export async function pauseBusinessPage(id: string, reason = 'owner') {
 }
 
 
-/** Reemplaza la galerÃ­a completa (el backend borra y recrea). */
+/** Reemplaza la galería completa (el backend borra y recrea). */
 export async function saveGallery(businessId: string, images: { url: string; alt?: string | null }[]) {
   const { data } = await api.put(`/businesses/${businessId}/gallery`, { images });
   return data.gallery as any[];
@@ -246,6 +288,112 @@ export async function uploadBusinessImage(businessId: string, kind: UploadKind, 
     transformRequest: [(d) => d],
   });
   return data.url as string;
+}
+
+/* ============================ FASE 6 · MEDIOS ============================ */
+
+/**
+ * Un medio del negocio (imagen o video). Es la unidad a la que apunta el
+ * manifest mediante `media:<id>`: nunca a una URL suelta.
+ */
+export interface BusinessMediaItem {
+  id: string;
+  businessId?: string;
+  kind: 'IMAGE' | 'VIDEO';
+  url: string;
+  posterUrl: string | null;
+  alt: string | null;
+  title: string | null;
+  sizeBytes: number | null;
+  position: number;
+  mimeType?: string | null;
+  durationSec?: number | null;
+}
+
+export const VIDEO_MIME_ALLOWLIST = ['video/mp4', 'video/webm', 'video/quicktime'];
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
+
+/** Lista los medios del negocio. */
+export async function listBusinessMedia(businessId: string): Promise<BusinessMediaItem[]> {
+  const { data } = await api.get(`/businesses/${businessId}/media`);
+  return (data.media || []) as BusinessMediaItem[];
+}
+
+/**
+ * Sube un medio real y devuelve el registro del catálogo.
+ *
+ * El `Content-Type` que se manda es el del archivo, pero el servidor lo ignora
+ * para decidir el tipo: lo deduce de los magic bytes. Un `.mp4` que en realidad
+ * sea un texto se rechaza igual en el servidor.
+ */
+export async function uploadBusinessMedia(
+  businessId: string,
+  file: File,
+  options: { kind?: 'IMAGE' | 'VIDEO'; imageKind?: UploadKind; alt?: string | null; title?: string | null; posterMediaId?: string } = {},
+): Promise<BusinessMediaItem> {
+  const params = new URLSearchParams();
+  const kind = options.kind || 'IMAGE';
+  params.set('kind', kind);
+  if (kind === 'IMAGE') params.set('imageKind', options.imageKind || 'gallery');
+  if (options.alt) params.set('alt', options.alt);
+  if (options.title) params.set('title', options.title);
+  if (options.posterMediaId) params.set('posterMediaId', options.posterMediaId);
+  const { data } = await api.post(`/businesses/${businessId}/media?${params.toString()}`, file, {
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    transformRequest: [(d) => d],
+  });
+  return data.media as BusinessMediaItem;
+}
+
+/**
+ * Reemplaza el ARCHIVO de un medio conservando su `id`.
+ *
+ * Es lo que hace que las secciones que ya lo usan se actualicen solas: el
+ * manifest sigue apuntando al mismo medio, solo cambia lo que hay detrás.
+ */
+export async function replaceBusinessMedia(businessId: string, mediaId: string, file: File): Promise<BusinessMediaItem> {
+  const { data } = await api.post(`/businesses/${businessId}/media/${mediaId}/replace`, file, {
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    transformRequest: [(d) => d],
+  });
+  return data.media as BusinessMediaItem;
+}
+
+/** Edita los metadatos de un medio (alt, titulo, orden, poster). */
+export async function updateBusinessMedia(
+  businessId: string,
+  mediaId: string,
+  patch: { alt?: string | null; title?: string | null; position?: number; posterMediaId?: string | null },
+): Promise<BusinessMediaItem> {
+  const { data } = await api.patch(`/businesses/${businessId}/media/${mediaId}`, patch);
+  return data.media as BusinessMediaItem;
+}
+
+export interface MediaUsage {
+  draft: Array<{ sectionId: string; blockId: string; field: string }>;
+  published: Array<{ sectionId: string; blockId: string; field: string }>;
+  hasPublished: boolean;
+}
+
+/** Donde se usa un medio: secciones del borrador y de la pagina publicada. */
+export async function businessMediaUsage(businessId: string, mediaId: string): Promise<MediaUsage> {
+  const { data } = await api.get(`/businesses/${businessId}/media/${mediaId}/usage`);
+  return data.usage as MediaUsage;
+}
+
+/**
+ * Borra un medio. El servidor se NEGA a borrarlo si algo lo usa, y devuelve
+ * 409 con las referencias. `detach` suelta primero las del borrador; nunca
+ * toca la revisión publicada.
+ */
+export async function deleteBusinessMedia(
+  businessId: string,
+  mediaId: string,
+  options: { detach?: boolean } = {},
+): Promise<{ ok: boolean; detached: number; storageRemoved: boolean | null }> {
+  const { data } = await api.delete(`/businesses/${businessId}/media/${mediaId}${options.detach ? '?detach=1' : ''}`);
+  return data;
 }
 
 export async function getPublicProperty(slug: string, propertyId: string) {
@@ -303,7 +451,7 @@ export async function deleteService(businessId: string, serviceId: string) {
   return data as { deleted: boolean };
 }
 
-// CatÃ¡logo propio del Business. No usa Product, Category ni carrito de la tienda.
+// Catálogo propio del Business. No usa Product, Category ni carrito de la tienda.
 export async function listBusinessProducts(businessId: string) {
   const { data } = await api.get(`/businesses/${businessId}/products`);
   return data.products as any[];
@@ -382,4 +530,3 @@ export async function getBusinessStats(businessId: string) {
     };
   };
 }
-

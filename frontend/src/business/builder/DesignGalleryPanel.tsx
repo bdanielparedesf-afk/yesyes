@@ -16,13 +16,23 @@ export interface DesignGalleryProps {
   businessId: string;
   /** Manifest que se está mostrando. Solo se usa para pintar la vista previa. */
   business: any;
-  /** Recibe el manifest resultante. NO se persiste hasta que el usuario aplica. */
-  onApply: (manifest: any) => void;
+  /** Recibe el manifest resultante. SOLO se llama al APLICAR, nunca al previsualizar. */
+  onApply: (manifest: any, updatedAt?: string | null) => void;
+  /**
+   * FASE 5 §9 — Manifest de la VISTA PREVIA, en memoria.
+   *
+   * Antes el preview llamaba a `onApply`, y como `onApply` en el editor hace
+   * `setManifest` + `autosave`, previsualizar un diseño GUARDABA ese diseño: el
+   * usuario cerraba la galería creyendo que no había pasado nada y su página ya
+   * había cambiado (y persistido). Ahora el preview es un estado local efímero y
+   * el manifest real no se toca hasta que se pulsa "Aplicar".
+   */
+  onPreview?: (manifest: any) => void;
   onClose: () => void;
 }
 
 /**
- * GALERÍA DE DISEÑOS DENTRO DEL EDITOR (Fase 4.1).
+ * GALERÍA DE DISEÑOS DENTRO DEL EDITOR (Fase 4.1 · FASE 5 §9).
  *
  * Es el requisito central de la fase: la plantilla elegida al crear la página
  * es solo un PUNTO DE PARTIDA. Desde acá el usuario puede cambiar de diseño
@@ -36,7 +46,7 @@ export interface DesignGalleryProps {
  * backend y solo se usa para pintar. El manifest real no se toca hasta que el
  * usuario pulsa "Aplicar".
  */
-export function DesignGallery({ businessId, onApply, onClose }: DesignGalleryProps) {
+export function DesignGallery({ businessId, onApply, onPreview, onClose }: DesignGalleryProps) {
   const [designs, setDesigns] = useState<EditorDesign[]>([]);
   const [categoryLabel, setCategoryLabel] = useState('');
   const [loading, setLoading] = useState(true);
@@ -58,14 +68,15 @@ export function DesignGallery({ businessId, onApply, onClose }: DesignGalleryPro
     return () => { active = false; };
   }, [businessId]);
 
-  // Vista previa SIN aplicar: el backend calcula el manifest resultante y lo
-  // devuelve. Nada se guarda hasta que el usuario confirma.
+  // FASE 5 §9 — Vista previa SIN aplicar: el backend calcula el manifest
+  // resultante y lo devuelve, pero solo se PINTA (`onPreview`). No entra al
+  // documento ni al autosave: cerrar la galería sin aplicar no deja rastro.
   const startPreview = async (design: EditorDesign) => {
     setPreviewing(true);
     setError('');
     try {
       const result = await previewBusinessDesign(businessId, design.templateId);
-      onApply(result.manifest);
+      onPreview?.(result.manifest);
       setSelected(design);
     } catch {
       setError('No se pudo generar la vista previa de ese diseño.');
@@ -79,7 +90,9 @@ export function DesignGallery({ businessId, onApply, onClose }: DesignGalleryPro
     setError('');
     try {
       const result = await applyBusinessDesign(businessId, design.templateId);
-      onApply(result.manifest);
+      // FASE 5 §12 — se propaga el sello real de la instancia para que el editor
+      // refresque su optimistic locking y el siguiente autosave no se choque.
+      onApply(result.manifest, result.updatedAt);
       onClose();
     } catch (caught: any) {
       setError(caught?.response?.data?.message || 'No se pudo aplicar el diseño.');
