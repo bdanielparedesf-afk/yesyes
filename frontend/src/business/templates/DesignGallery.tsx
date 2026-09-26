@@ -4,6 +4,28 @@ import BusinessShell from '../BusinessShell';
 import BusinessPageRenderer from '../BusinessPageRenderer';
 import { buildPreviewFixture } from '../fixtures/previewFixture';
 import { categoryLabel, sectionLabel } from '../businessLabels';
+import ErrorBoundary from '@/components/ErrorBoundary';
+
+/** Si la plantilla del diseño no se pudo cargar, se avisa SIN romper el flujo. */
+function PreviewFallback({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 bg-stone-50 p-8 text-center">
+      <p className="text-lg font-bold text-stone-900">No pudimos mostrar este diseño</p>
+      <p className="max-w-sm text-sm text-stone-600">
+        Puede ser que tu navegador tenga guardada una versión anterior de la página.
+        Recarga para intentarlo de nuevo, o elige otro diseño.
+      </p>
+      <div className="flex flex-wrap justify-center gap-2">
+        <button type="button" onClick={() => window.location.reload()} className="min-h-10 rounded-xl bg-stone-900 px-4 text-sm font-bold text-white">
+          Recargar
+        </button>
+        <button type="button" onClick={onClose} className="min-h-10 rounded-xl border border-stone-300 px-4 text-sm font-semibold text-stone-800">
+          Elegir otro diseño
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** Diseño que la galería necesita mostrar, ya con nombre y estilo legibles. */
 export interface DesignOption {
@@ -47,9 +69,13 @@ function DesignThumbnail({ design, category }: { design: DesignOption; category:
     <div ref={ref} className="relative h-56 overflow-hidden bg-stone-100" aria-hidden="true">
       {visible && (
         <div className="pointer-events-none absolute left-1/2 top-0 w-[1280px] -translate-x-1/2 origin-top scale-[0.28]">
-          <BusinessShell business={fixture.business}>
-            <BusinessPageRenderer {...fixture} preview />
-          </BusinessShell>
+          {/* Una miniatura rota no puede dejar la tarjeta en blanco para
+              siempre: se muestra un marcador y el diseño sigue siendo elegible. */}
+          <ErrorBoundary fallback={<div className="h-56 w-[1280px] bg-stone-100" />}>
+            <BusinessShell business={fixture.business}>
+              <BusinessPageRenderer {...fixture} preview />
+            </BusinessShell>
+          </ErrorBoundary>
         </div>
       )}
     </div>
@@ -89,9 +115,13 @@ export function DesignFullPreview({ design, category, onClose, onSelect }: {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="mx-auto overflow-hidden rounded-2xl bg-white shadow-2xl transition-all" style={{ width, maxWidth: '100%' }}>
           <Suspense fallback={<div className="min-h-[60vh] animate-pulse bg-stone-100" />}>
-            <BusinessShell business={fixture.business}>
-              <BusinessPageRenderer {...fixture} preview />
-            </BusinessShell>
+            {/* Si una plantilla no carga, el preview se cae SOLO: el asistente
+                sigue vivo y el usuario puede elegir otro diseño o continuar. */}
+            <ErrorBoundary fallback={<PreviewFallback onClose={onClose} />}>
+              <BusinessShell business={fixture.business}>
+                <BusinessPageRenderer {...fixture} preview />
+              </BusinessShell>
+            </ErrorBoundary>
           </Suspense>
         </div>
       </div>

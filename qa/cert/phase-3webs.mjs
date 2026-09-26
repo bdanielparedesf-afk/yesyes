@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Crea negocios de rubros DISTINTOS usando el creador de paginas REAL
  * (/negocio/nuevo) y los publica, todo por la UI con Chrome/CDP.
  *
@@ -22,21 +22,8 @@ const paso = (n, ok, d) => {
 
 /** Tres rubros bien distintos: comida, mascotas e inmobiliaria. */
 const NEGOCIOS = [
-  {
-    categoria: 'FOOD', nombre: 'Sabor del Maipo',
-    descripcion: 'Comida casera chilena, masas y pasteles en Macul.',
-    tel: '+56 9 5511 2233', ciudad: 'Santiago',
-  },
-  {
-    categoria: 'PET', nombre: 'Huellas Felinas',
-    descripcion: 'Veterinaria, peluqueria canina y hospedaje para mascotas.',
-    tel: '+56 9 6622 8899', ciudad: 'Concepcion',
-  },
-  {
-    categoria: 'REAL_ESTATE', nombre: 'Inmobiliaria Los Robles',
-    descripcion: 'Propiedades en venta y arriendo con asesoria integral.',
-    tel: '+56 9 7733 4455', ciudad: 'Valparaiso',
-  },
+  { categoria: 'BARBER', nombre: 'Barberia Don Nico', descripcion: 'Corte clasico y afeitado a navaja.', tel: '+56 9 3344 5566', ciudad: 'Valparaiso' },
+  { categoria: 'HAIR', nombre: 'Estudio Cabello Vivo', descripcion: 'Color, corte y tratamiento capilar.', tel: '+56 9 7788 9900', ciudad: 'Rancagua' },
 ];
 
 /** Escribe en un input por su etiqueta visible, como haria el usuario. */
@@ -89,16 +76,23 @@ async function main() {
       await page.screenshot(SHOTS, `${item.categoria}-1-rubro`);
 
       await clickText(page, 'Continuar');
-      await sleep(4500);
+      await sleep(1500);
+      // La galeria se pide al backend y se pinta despues: hay que esperarla.
+      await page.waitFor('[data-testid="design-gallery"]', 45_000).catch(() => {});
+      await sleep(1500);
       // Cada diseno es un HIJO DIRECTO de la galeria. La miniatura renderiza la
       // pagina real, y esa pagina trae sus propios <article> (productos,
       // testimonios...): hay que contar solo los hijos, no los descendientes,
       // o la galeria parece duplicada cuando no lo esta.
-      const disenos = await page.eval(`[...document.querySelector('[data-testid="design-gallery"]').children].map((a) => ({
-        etiqueta: (a.querySelector('h3') || {}).textContent || '',
-        estilo: (a.querySelector('h3 + span') || a.querySelector('span') || {}).textContent || '',
-        testid: a.getAttribute('data-testid') || '',
-      }))`);
+      const disenos = await page.eval(`(() => {
+        const grid = document.querySelector('[data-testid="design-gallery"]');
+        if (!grid) return [];
+        return [...grid.children].map((a) => ({
+          etiqueta: (a.querySelector('h3') || {}).textContent || '',
+          estilo: (a.querySelector('span') || {}).textContent || '',
+          testid: a.getAttribute('data-testid') || '',
+        }));
+      })()`);
       paso(`${item.categoria}-2-disenos`, disenos.length > 0,
         `La galeria ofrece ${disenos.length} diseno(s) de ejemplo para ${item.categoria}: ${disenos.map((d) => d.etiqueta).join(' | ')}`);
       await page.screenshot(SHOTS, `${item.categoria}-2-disenos`);

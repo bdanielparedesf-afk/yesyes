@@ -1,22 +1,22 @@
-import { getIndustryComposition } from '../industryComposition';
-import { thematicAssets } from '../assets';
+﻿import { getIndustryComposition } from '../industryComposition';
+import { heroAsset } from '../assets';
 import { buildWaLink, trackEvent } from '@/services/business';
 import { clp, productImage, waMessage, type TemplateProps } from '../shared/templateUtils';
 import WhatsAppButton from '../shared/WhatsAppButton';
 import Socials from '../shared/Socials';
 
 const OCCASIONS = [
-  { emoji: '❤️', label: 'Amor & aniversario', msg: 'busco un ramo para alguien especial' },
-  { emoji: '🎂', label: 'Cumpleaños', msg: 'quiero un ramo de cumpleaños' },
-  { emoji: '💒', label: 'Bodas', msg: 'necesito flores para una boda' },
-  { emoji: '🕊️', label: 'Condolencias', msg: 'necesito un arreglo de condolencias' },
+  { emoji: 'â¤ï¸', label: 'Amor & aniversario', msg: 'busco un ramo para alguien especial' },
+  { emoji: 'ðŸŽ‚', label: 'CumpleaÃ±os', msg: 'quiero un ramo de cumpleaÃ±os' },
+  { emoji: 'ðŸ’’', label: 'Bodas', msg: 'necesito flores para una boda' },
+  { emoji: 'ðŸ•Šï¸', label: 'Condolencias', msg: 'necesito un arreglo de condolencias' },
 ];
 
-/** FLOWERS_01 — Ocasiones: filtros por evento como eje + catálogo. */
+/** FLOWERS_01 â€” Ocasiones: filtros por evento como eje + catÃ¡logo. */
 export default function Flowers01({ business, products, gallery }: TemplateProps) {
   const slug = business?.slug;
   const composition = getIndustryComposition(business?.template?.code, business?.category);
-  const hero = business?.cover || thematicAssets(composition.category)[0];
+  const hero = heroAsset(business, composition.category);
   const waHref = buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${composition.cta.toLowerCase()}.`);
   return (
     <div className="space-y-12">
@@ -24,7 +24,7 @@ export default function Flowers01({ business, products, gallery }: TemplateProps
         <img src={hero?.src} alt={hero?.alt || `Arreglo floral de ${business?.name}`} className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-transparent" />
         <div className="relative mx-auto max-w-5xl">
-          <p className="uppercase tracking-[0.35em] text-xs text-white/75">Floristería editorial</p>
+          <p className="uppercase tracking-[0.35em] text-xs text-white/75">FloristerÃ­a editorial</p>
           <h1 className="mt-3 max-w-3xl font-serif text-5xl font-normal leading-[.95] sm:text-7xl">{business?.name}</h1>
           <p className="mt-5 max-w-xl text-lg text-white/85">{business?.description}</p>
           <a href={waHref} target="_blank" rel="noreferrer" onClick={() => trackEvent(slug, 'WHATSAPP_CLICK')} className="mt-7 inline-block rounded-full bg-white px-7 py-3 font-bold text-stone-900 focus-visible:outline focus-visible:ring-2">{composition.cta}</a>
@@ -33,7 +33,7 @@ export default function Flowers01({ business, products, gallery }: TemplateProps
       </header>
 
       <section>
-        <h2 className="text-xl font-bold mb-4">Flores para…</h2>
+        <h2 className="text-xl font-bold mb-4">Flores paraâ€¦</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {OCCASIONS.map((o) => (
             <a
@@ -46,7 +46,7 @@ export default function Flowers01({ business, products, gallery }: TemplateProps
             >
               <span className="text-3xl">{o.emoji}</span>
               <p className="mt-2 text-sm font-semibold">{o.label}</p>
-              <p className="text-xs text-green-700 mt-1">Pedir →</p>
+              <p className="text-xs text-green-700 mt-1">Pedir â†’</p>
             </a>
           ))}
         </div>
@@ -82,7 +82,7 @@ export default function Flowers01({ business, products, gallery }: TemplateProps
 
       {!!gallery?.length && (
         <section>
-          <h2 className="text-xl font-bold mb-3">Galería</h2>
+          <h2 className="text-xl font-bold mb-3">GalerÃ­a</h2>
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
             {gallery.map((g: any) => (
               <img key={g.id} src={g.url} alt={g.alt || 'Ramo'} className="w-full h-28 object-cover rounded-xl" loading="lazy" />

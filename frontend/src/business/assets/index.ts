@@ -30,6 +30,45 @@ export function thematicAssets(category?: string | null): BusinessAsset[] {
   return (group && BUSINESS_ASSETS[group]) || BUSINESS_ASSETS.pro;
 }
 export function firstBusinessImage(business: any): BusinessAsset | undefined {
+  // `cover === ''` significa que el usuario la QUITO a proposito: en ese caso
+  // no se cae de vuelta a la foto de ejemplo, se muestra sin imagen. Antes,
+  // quitar la portada hacia reaparecer la foto de Unsplash.
+  if (business?.cover === '') return undefined;
   if (!business?.cover) return undefined;
   return { src: business.cover, alt: `Imagen principal de ${business?.name || 'el negocio'}` };
+}
+
+/**
+ * Foto de ejemplo del rubro, o `undefined` si el negocio ya tiene la suya.
+ * Sirve para NO pisar una imagen que el usuario ya eligió.
+ */
+export function exampleAssetFor(business: any, category?: string | null): BusinessAsset | undefined {
+  if (firstBusinessImage(business)) return undefined;
+  return thematicAssets(category)[0];
+}
+
+/**
+ * Imagen de portada de la pagina.
+ *
+ * `cover === ''` significa que el usuario la QUITO: se respeta y no se
+ * rellena con una foto de ejemplo. `cover` ausente significa "todavia no
+ * eligio": ahi si se muestra la foto de ejemplo del rubro, que es justo lo
+ * que el usuario ve antes de subir la suya.
+ *
+ * Antes se resolvia con `business?.cover || assets[0]?.src`, y como `''` es
+ * falsy, quitar la imagen hacia reaparecer la foto de ejemplo: por eso el
+ * usuario no podía quitar las imágenes del diseño.
+ */
+export function heroImage(business: any, category?: string | null): string | undefined {
+  return heroAsset(business, category)?.src;
+}
+
+/** Igual que `heroImage`, pero devuelve el asset completo (src + alt). */
+export function heroAsset(business: any, category?: string | null): BusinessAsset | undefined {
+  const cover = business?.cover;
+  if (typeof cover === 'string' && cover.length > 0) {
+    return { src: cover, alt: `Imagen principal de ${business?.name || 'el negocio'}` };
+  }
+  if (cover === '') return undefined;
+  return thematicAssets(category)[0];
 }

@@ -1,21 +1,21 @@
-import { getIndustryComposition } from '../industryComposition';
-import { thematicAssets } from '../assets';
+﻿import { getIndustryComposition } from '../industryComposition';
+import { heroAsset } from '../assets';
 import { buildWaLink, trackEvent } from '@/services/business';
 import { clp, productImage, waMessage, type TemplateProps } from '../shared/templateUtils';
 import CTABar from '../shared/CTABar';
 import HoursMap from '../shared/HoursMap';
 import Socials from '../shared/Socials';
 
-/** HAIR_01 — Hero grande: portada a pantalla completa con overlay + servicios en tarjetas. */
+/** HAIR_01 â€” Hero grande: portada a pantalla completa con overlay + servicios en tarjetas. */
 export default function Hair01({ business, services, products, gallery }: TemplateProps) {
   const slug = business?.slug;
   const composition = getIndustryComposition(business?.template?.code, business?.category);
-  const hero = business?.cover || thematicAssets(composition.category)[0];
+  const hero = heroAsset(business, composition.category);
   const waHref = buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${composition.cta.toLowerCase()}.`);
   return (
     <div className="space-y-12">
       <section className="relative -mx-4 -mt-6 h-[70vh] min-h-[420px] overflow-hidden bg-neutral-900">
-        <img src={hero?.src} alt={hero?.alt || `Peluquería ${business?.name}`} className="absolute inset-0 w-full h-full object-cover object-[center_35%]" />
+        <img src={hero?.src} alt={hero?.alt || `PeluquerÃ­a ${business?.name}`} className="absolute inset-0 w-full h-full object-cover object-[center_35%]" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
         <div className="relative h-full flex flex-col justify-end max-w-5xl mx-auto px-4 pb-10 text-white">
           <p className="uppercase tracking-[0.3em] text-xs text-white/80">Estilo & Color</p>

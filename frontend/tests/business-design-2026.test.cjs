@@ -136,7 +136,11 @@ test('diseños firma cubren cada rubro y preservan la vista previa', () => {
   const signatureUtils = read('business/signatureUtils.ts');
   assert.ok(signature.includes('signatureCategory'));
   assert.ok(signatureUtils.includes('signaturePrefix'));
-  assert.ok(signature.includes('thematicAssets(category)'));
+  // La portada se resuelve con `heroImage(business, category)`: respeta la
+  // portada que subio el usuario y NO repone la foto de ejemplo cuando la
+  // quito. Antes se resolvia con `business?.cover || thematicAssets(category)[0]`.
+  assert.ok(signature.includes('heroImage(business, category)'));
+  assert.ok(read('business/assets/index.ts').includes('export function heroImage'));
   assert.ok(registry.includes('isSignatureTemplate(code)'));
   assert.ok(seed.includes('SIGNATURE_VARIANTS'));
   assert.ok(seed.includes('SIGNATURE_CATEGORIES'));

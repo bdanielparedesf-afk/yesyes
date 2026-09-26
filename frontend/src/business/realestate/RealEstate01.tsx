@@ -1,5 +1,5 @@
-import { getIndustryComposition } from '../industryComposition';
-import { thematicAssets } from '../assets';
+﻿import { getIndustryComposition } from '../industryComposition';
+import { heroAsset } from '../assets';
 import { buildWaLink } from '@/services/business';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -35,10 +35,10 @@ function Card({ p, onOpen }: { p: any; onOpen: () => void }) {
         <p className="text-sm text-neutral-500 line-clamp-1">{[p.address, p.city].filter(Boolean).join(', ') || p.region}</p>
         <div className="mt-3 flex items-center gap-3 text-xs text-neutral-600 border-t pt-3">
           {p.bedrooms != null && <span className="inline-flex items-center gap-1"><BedDouble size={13} /> {p.bedrooms} dorm</span>}
-          {p.bathrooms != null && <span className="inline-flex items-center gap-1"><Bath size={13} /> {p.bathrooms} baños</span>}
+          {p.bathrooms != null && <span className="inline-flex items-center gap-1"><Bath size={13} /> {p.bathrooms} baÃ±os</span>}
           {p.parking != null && <span className="inline-flex items-center gap-1"><Car size={13} /> {p.parking}</span>}
           {(p.areaTotal || p.areaBuilt) && (
-            <span className="inline-flex items-center gap-1"><Maximize size={13} /> {p.areaTotal || p.areaBuilt} m²</span>
+            <span className="inline-flex items-center gap-1"><Maximize size={13} /> {p.areaTotal || p.areaBuilt} mÂ²</span>
           )}
         </div>
       </div>
@@ -46,11 +46,11 @@ function Card({ p, onOpen }: { p: any; onOpen: () => void }) {
   );
 }
 
-/** REAL_ESTATE_01 — Clásico: hero + sidebar de filtros sticky + grid de propiedades. */
+/** REAL_ESTATE_01 â€” ClÃ¡sico: hero + sidebar de filtros sticky + grid de propiedades. */
 export default function RealEstate01({ business, properties }: TemplateProps) {
   const slug = business?.slug;
   const composition = getIndustryComposition(business?.template?.code, business?.category);
-  const hero = business?.cover || thematicAssets(composition.category)[0];
+  const hero = heroAsset(business, composition.category);
   const waHref = buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${composition.cta.toLowerCase()}.`);
   const navigate = useNavigate();
   const [op, setOp] = useState('');
@@ -71,7 +71,7 @@ export default function RealEstate01({ business, properties }: TemplateProps) {
         <div className="relative mx-auto w-full max-w-5xl text-right">
           <p className="text-xs uppercase tracking-[.35em] text-stone-600">Arquitectura y propiedades</p>
           <h1 className="mt-3 text-4xl font-light tracking-tight text-stone-950 sm:text-6xl">{business?.name}</h1>
-          <p className="mt-4 text-stone-700">{business?.city || 'Chile'} · Venta y arriendo</p>
+          <p className="mt-4 text-stone-700">{business?.city || 'Chile'} Â· Venta y arriendo</p>
           <a href={waHref} target="_blank" rel="noreferrer" className="mt-6 inline-block bg-stone-950 px-7 py-3 text-sm font-bold text-white focus-visible:outline focus-visible:ring-2">{composition.cta}</a>
         </div>
       </section>
@@ -105,7 +105,7 @@ export default function RealEstate01({ business, properties }: TemplateProps) {
           {business?.description && <p className="text-neutral-600 mb-4 whitespace-pre-line">{business.description}</p>}
           {!filtered.length && (
             <p className="bg-white border rounded-2xl p-8 text-center text-neutral-500">
-              No hay propiedades con esos filtros. Ajusta la búsqueda o contáctanos.
+              No hay propiedades con esos filtros. Ajusta la bÃºsqueda o contÃ¡ctanos.
             </p>
           )}
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">

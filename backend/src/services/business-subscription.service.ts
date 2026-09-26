@@ -82,22 +82,21 @@ export function planSeedByCode(code: string): BusinessPlanSeed | undefined {
  * Plan por defecto. Si el seed todavia no corrio se crea de forma idempotente
  * a partir de la definicion central: la pagina de pago nunca queda sin plan y
  * el precio existe en UN solo lugar del codigo.
+ *
+ * Se busca POR CODIGO (`DEFAULT_PLAN_CODE`), no "el primer plan activo": si se
+ *tomara cualquiera, un plan de QA con monto 0 pasaria a ser el plan de pago
+ * y la pagina mostraria $0.
  */
 export async function getOrCreateDefaultPlan() {
-  const existing = await prisma.businessPlan.findFirst({
-    where: { active: true },
-    orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-  });
-  if (existing) return existing;
   const seed = planSeedByCode(DEFAULT_PLAN_CODE) ?? BUSINESS_PLAN_SEEDS[0];
   if (!seed) {
     const err = new Error('No hay planes configurados (BUSINESS_PLAN_SEEDS vacío).');
     (err as any).status = 503;
     throw err;
   }
-  return prisma.businessPlan.upsert({
+  // Primero, el plan del seed (creandolo si falta).
+  const canonical = await prisma.businessPlan.upsert({
     where: { code: seed.code },
-    update: { active: true },
     create: {
       code: seed.code,
       name: seed.name,
@@ -111,12 +110,26 @@ export async function getOrCreateDefaultPlan() {
       active: true,
       order: seed.order,
     },
+    // El monto SIEMPRE vuelve al valor central: si alguien lo dejo en 0 (un
+    // test de QA, por ejemplo), se corrige.
+    update: { active: true, amount: seed.amount, name: seed.name, currency: seed.currency },
   });
+  if (canonical.amount > 0) return canonical;
+  // Red de seguridad: si el seed tambien viniera en 0, se busca otro plan real.
+  const paid = await prisma.businessPlan.findFirst({
+    where: { active: true, amount: { gt: 0 } },
+    orderBy: [{ order: 'asc' }, { amount: 'asc' }],
+  });
+  return paid ?? canonical;
 }
 
 export async function listActivePlans() {
+  // El plan por defecto SIEMPRE se asegura: si la tabla quedo con planes de
+  // prueba (o vacia) el endpoint publico no debe servir un monto de 0 ni
+  // dejar de publicar el precio real.
+  await getOrCreateDefaultPlan();
   const plans = await prisma.businessPlan.findMany({
-    where: { active: true },
+    where: { active: true, amount: { gt: 0 } },
     orderBy: [{ order: 'asc' }, { amount: 'asc' }],
   });
   if (plans.length) return plans;

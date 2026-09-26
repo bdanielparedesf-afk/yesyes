@@ -1,21 +1,21 @@
-import { getIndustryComposition } from '../industryComposition';
-import { thematicAssets } from '../assets';
+﻿import { getIndustryComposition } from '../industryComposition';
+import { heroAsset } from '../assets';
 import { buildWaLink, trackEvent } from '@/services/business';
 import { clp, waMessage, type TemplateProps } from '../shared/templateUtils';
 import CTABar from '../shared/CTABar';
 import Socials from '../shared/Socials';
 
 const DAY_LABELS: Record<string, string> = {
-  lunes: 'Lunes', martes: 'Martes', miercoles: 'Miércoles', jueves: 'Jueves',
-  viernes: 'Viernes', sabado: 'Sábado', domingo: 'Domingo',
-  Lun: 'Lunes', Mar: 'Martes', Mie: 'Miércoles', Jue: 'Jueves', Vie: 'Viernes', Sab: 'Sábado', Dom: 'Domingo',
+  lunes: 'Lunes', martes: 'Martes', miercoles: 'MiÃ©rcoles', jueves: 'Jueves',
+  viernes: 'Viernes', sabado: 'SÃ¡bado', domingo: 'Domingo',
+  Lun: 'Lunes', Mar: 'Martes', Mie: 'MiÃ©rcoles', Jue: 'Jueves', Vie: 'Viernes', Sab: 'SÃ¡bado', Dom: 'Domingo',
 };
 
-/** BARBER_01 — Precios y horarios: tablero oscuro tipo barbershop con lista de precios. */
+/** BARBER_01 â€” Precios y horarios: tablero oscuro tipo barbershop con lista de precios. */
 export default function Barber01({ business, services, gallery }: TemplateProps) {
   const slug = business?.slug;
   const composition = getIndustryComposition(business?.template?.code, business?.category);
-  const hero = business?.cover || thematicAssets(composition.category)[0];
+  const hero = heroAsset(business, composition.category);
   const waHref = buildWaLink(business?.whatsapp, `Hola ${business?.name || ''}, quiero ${composition.cta.toLowerCase()}.`);
   const hours = business?.hours && typeof business.hours === 'object' ? (business.hours as Record<string, unknown>) : null;
   const hoursRows = hours
@@ -26,10 +26,10 @@ export default function Barber01({ business, services, gallery }: TemplateProps)
     <div className="-mx-4 -mt-6 bg-neutral-950 text-white">
       <div className="max-w-5xl mx-auto px-4 py-12 space-y-14">
         <header className="relative -mx-4 -mt-6 min-h-[68vh] overflow-hidden px-4 pb-12 sm:flex sm:items-end">
-          <img src={hero?.src} alt={hero?.alt || `Barbería ${business?.name}`} className="absolute inset-0 h-full w-full object-cover grayscale" />
+          <img src={hero?.src} alt={hero?.alt || `BarberÃ­a ${business?.name}`} className="absolute inset-0 h-full w-full object-cover grayscale" />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/20" />
           <div className="relative mx-auto w-full max-w-5xl border-b border-amber-600/40 pb-10 text-center">
-            <p className="uppercase tracking-[0.5em] text-xs text-amber-500">Barbería</p>
+            <p className="uppercase tracking-[0.5em] text-xs text-amber-500">BarberÃ­a</p>
             <h1 className="mt-3 text-5xl font-black uppercase sm:text-7xl">{business?.name}</h1>
             {business?.city && <p className="mt-3 text-neutral-300">{business.city}</p>}
             <a href={waHref} target="_blank" rel="noreferrer" onClick={() => trackEvent(slug, 'WHATSAPP_CLICK')} className="mt-6 inline-block rounded-sm bg-amber-500 px-8 py-3 font-bold uppercase tracking-wide text-black focus-visible:outline focus-visible:ring-2">{composition.cta}</a>
@@ -91,7 +91,7 @@ export default function Barber01({ business, services, gallery }: TemplateProps)
             </div>
             {business?.mapsUrl && (
               <a href={business.mapsUrl} target="_blank" rel="noreferrer" className="block mt-4 text-sm text-amber-500 underline">
-                Cómo llegar
+                CÃ³mo llegar
               </a>
             )}
           </aside>
