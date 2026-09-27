@@ -14,6 +14,7 @@
 import { prisma } from '../lib/prisma';
 import { publicAvailability, availabilityLabel, type PublicAvailability } from './business-subscription-state';
 import { logBusinessAudit } from './business-audit.service';
+import { cancelSubscription } from './business-subscription.service';
 
 export interface AdminBusinessRow {
   id: string;
@@ -196,65 +197,103 @@ export async function markSubscriptionActive(input: {
 }
 
 /**
- * ELIMINA una página que NUNCA estuvo publicada.
+ * ELIMINA una página, con o sin barreras.
  *
- * POR QUÉ EXISTE UN BORRADO DISTINTO AL DE BAJA: la baja (arriba) pausa y
- * conserva todo, y es la respuesta correcta para una página que estuvo en
- * línea. Pero la base se llena de páginas que nunca se publicaron — un
- * cliente que entró, armó media página y se fue — y para ésas "pausar" no
- * limpia nada: sigue ocupando una fila que el admin tiene que revisar para
- * siempre. Ésas se borran de verdad.
+ * HAY DOS OPERACIONES DISTINTAS y por eso un solo parámetro las separa:
  *
- * LAS SALVAGUARDAS, y por qué cada una:
- *  - `publishedAt` debe ser null. Si alguna vez estuvo en línea, la respuesta
- *    es dar de baja, no borrar: esa página tiene visitas, enlaces y leads, y
- *    borrarla rompe enlaces que ya salieron de la plataforma.
- *  - No puede tener suscripción. Una suscripción significa que alguien pasó
- *    por el cobro; borrar dejaría al dueño pagando por una página que no
- *    existe.
- *  - No puede tener leads, pedidos ni pagos: dinero real de una persona real
- *    que no se puede recuperar.
- *  - El borrado es en cascada (`onDelete: Cascade` en el esquema): al no
- *    existir páginas publicadas ni economía asociada, no queda huérfano.
+ *  - SIN `force` (por defecto): solo borra páginas que NUNCA se publicaron, sin
+ *    suscripción y sin actividad. Es la operación segura y la que usa un solo
+ *    clic. Una página que estuvo en línea tiene visitas, enlaces compartidos y
+ *    leads: para esa, la respuesta es dar de baja, no borrar.
+ *
+ *  - CON `force`: borra cualquier página. Es la limpieza de los negocios de
+ *    prueba, que es un trabajo distinto: ahí no hay nadie esperando nada, y
+ *    dejar filas que el admin tiene que revisar a mano no escala. Se audita con
+ *    el motivo para poder revisar después qué se eliminó a la fuerza.
+ *
+ * LO QUE EL BARRENO DE FUERZA NO SE SALTA: si hay un preapproval VIVO de
+ * Mercado Pago, se cancela en el proveedor ANTES de borrar la fila local.
+ * Borrar la suscripción sin cancelar el cobro dejaría al dueño pagando un plan
+ * recurrente por una página que ya no existe, y eso es dinero real saliendo de
+ * una tarjeta real. Es el único punto donde el borrado toca el exterior, y por
+ * eso va primero y nunca se omite.
  */
-export async function deleteUnpublishedBusiness(input: { businessId: string; adminId: string }): Promise<{ deleted: boolean; name: string }> {
+export async function deleteUnpublishedBusiness(input: {
+  businessId: string;
+  adminId: string;
+  force?: boolean;
+  reason?: string;
+}): Promise<{ deleted: boolean; name: string; cancelledInProvider: boolean; forced: boolean }> {
   const business = await prisma.business.findUnique({
     where: { id: input.businessId },
     include: {
-      subscription: { select: { id: true, status: true } },
+      subscription: { select: { id: true, status: true, providerSubscriptionId: true } },
       _count: { select: { leads: true, orders: true, payments: true } },
     },
   });
   if (!business) throw Object.assign(new Error('Negocio no encontrado'), { status: 404 });
 
-  // Se responde 409 y no con un borrado parcial: el admin tiene que saber
-  // POR QUÉ no se borró, no ver que "no pasó nada".
-  if (business.publishedAt || business.status === 'PUBLISHED') {
-    throw Object.assign(
-      new Error('Esta página estuvo publicada. Solo se eliminan páginas que nunca se publicaron; usa "Dar de baja" para conservarla.'),
-      { status: 409 },
-    );
+  const force = Boolean(input.force);
+  if (!force) {
+    // Se responde 409 y no con un borrado parcial: el admin tiene que saber
+    // POR QUÉ no se borró, no ver que "no pasó nada".
+    if (business.publishedAt || business.status === 'PUBLISHED') {
+      throw Object.assign(
+        new Error('Esta página estuvo publicada. Solo se eliminan páginas que nunca se publicaron; usa "Dar de baja" para conservarla, o "Eliminar de todos modos" si es una página de prueba.'),
+        { status: 409 },
+      );
+    }
+    if (business.subscription) {
+      throw Object.assign(
+        new Error('Este negocio tiene una suscripción asociada. Si es una página de prueba, puedes eliminarla de todos modos.'),
+        { status: 409 },
+      );
+    }
+    const { leads, orders, payments } = business._count;
+    if (leads || orders || payments) {
+      throw Object.assign(
+        new Error('Este negocio tiene actividad (pedidos, pagos o contactos). Si es una página de prueba, puedes eliminarla de todos modos.'),
+        { status: 409 },
+      );
+    }
   }
-  if (business.subscription) {
-    throw Object.assign(
-      new Error('Este negocio tiene una suscripción asociada. Déjalo de baja en vez de eliminarlo, para no cobrarle al dueño por una página que no existe.'),
-      { status: 409 },
-    );
-  }
-  const { leads, orders, payments } = business._count;
-  if (leads || orders || payments) {
-    throw Object.assign(
-      new Error('Este negocio tiene actividad (pedidos, pagos o contactos). Solo se puede dar de baja, no eliminar.'),
-      { status: 409 },
-    );
+
+  // Primero el proveedor: es la única acción que no se puede deshacer borrando
+  // la fila local, y deja al dueño cobrando por algo que ya no existe.
+  let cancelledInProvider = false;
+  if (business.subscription?.providerSubscriptionId) {
+    try {
+      // Se reusa `cancelSubscription`, que ya habla con el proveedor y aplica
+      // el estado local. Duplicar la llamada al preapproval aquí sería una
+      // segunda implementación de la misma cosa, y las dos terminarían
+      // divergiendo.
+      await cancelSubscription(business.id);
+      cancelledInProvider = true;
+    } catch {
+      // Si el proveedor no responde, NO se borra la página: se avisaría al
+      // dueño que se dio de baja cuando en realidad le seguirían cobrando.
+      throw Object.assign(
+        new Error('No se pudo cancelar el cobro en Mercado Pago, así que no se eliminó la página. Inténtalo de nuevo en unos minutos: no quieres que a este cliente se le siga cobrando.'),
+        { status: 502 },
+      );
+    }
   }
 
   await prisma.business.delete({ where: { id: business.id } });
-  await logBusinessAudit('BUSINESS_DELETED_UNPUBLISHED', {
+  await logBusinessAudit(force ? 'BUSINESS_DELETED_FORCED' : 'BUSINESS_DELETED_UNPUBLISHED', {
     businessId: business.id,
     userId: input.adminId,
-    metadata: { nombre: business.name, categoria: business.category },
+    metadata: {
+      nombre: business.name,
+      categoria: business.category,
+      forzado: force,
+      motivo: input.reason || (force ? 'Limpieza de páginas de prueba' : 'Página nunca publicada'),
+      canceladoEnMercadoPago: cancelledInProvider,
+      leads: business._count.leads,
+      orders: business._count.orders,
+      payments: business._count.payments,
+    },
   });
-  return { deleted: true, name: business.name };
+  return { deleted: true, name: business.name, cancelledInProvider, forced: force };
 }
 

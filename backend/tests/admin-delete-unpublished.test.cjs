@@ -28,7 +28,7 @@ const ADMIN_ROUTES = read('src/routes/admin.routes.ts');
  * consultas y los `if` de seguridad) sin tocar la base: el borrado en cascada
  * no se puede probar de verdad contra la base de desarrollo.
  */
-function cargarServicio(fakePrisma, fakeAudit) {
+function cargarServicio(fakePrisma, fakeAudit, fakeCancel) {
   // Solo se quitan los `import`: las referencias a prisma/auditoría se
   // resuelven desde el contexto. Los `export` se dejan para que
   // `transpileModule` genere los `exports` y la función quede alcanzable.
@@ -47,6 +47,7 @@ function cargarServicio(fakePrisma, fakeAudit) {
     publicAvailability: () => ({ live: false, reason: 'OK', graceDaysLeft: 0, graceUntil: null }),
     availabilityLabel: () => '',
     logBusinessAudit: fakeAudit,
+    cancelSubscription: fakeCancel,
   });
   new vm.Script(compiled, { filename: 'admin-business-pages.service.ts' }).runInContext(context);
   return module.exports;
@@ -64,14 +65,15 @@ const pagina = (over = {}) => ({
 });
 
 function entorno(paginaPrueba) {
-  const llamadas = { borrados: [], auditoria: [] };
+  const llamadas = { borrados: [], auditoria: [], canceladas: 0 };
   const fakePrisma = {
     business: {
       findUnique: async () => paginaPrueba,
       delete: async ({ where }) => { llamadas.borrados.push(where.id); return paginaPrueba; },
     },
   };
-  const servicio = cargarServicio(fakePrisma, async (accion, datos) => { llamadas.auditoria.push(accion); });
+  const cancelSubscription = async () => { llamadas.canceladas += 1; };
+  const servicio = cargarServicio(fakePrisma, async (accion) => { llamadas.auditoria.push(accion); }, cancelSubscription);
   return { servicio, llamadas };
 }
 
@@ -124,6 +126,64 @@ test('no encuentra la página devuelve 404 y no borra nada', async () => {
 
 test('la ruta de borrado está registrada y es DELETE, no PUT', () => {
   assert.match(ADMIN_ROUTES, /router\.delete\('\/business-pages\/:id'/);
+  assert.match(ADMIN_ROUTES, /force: \(req\.body as any\)\?\.force === true/);
+});
+
+/**
+ * BORRADO FORZADO (limpieza de páginas de prueba).
+ *
+ * El admin pidió poder borrar cualquier página. Se puede, pero el forzado tiene
+ * una regla que NO es negociable: si hay un cobro vivo de Mercado Pago, se
+ * cancela en el proveedor antes de borrar la fila local. Sin eso, el dueño
+ * seguiría pagando un plan recurrente por una página que ya no existe.
+ */
+test('con force borra una página con suscripción, canceling antes el cobro', async () => {
+  const { servicio, llamadas } = entorno(pagina({
+    status: 'PUBLISHED', publishedAt: new Date('2026-01-01'),
+    subscription: { id: 's-1', status: 'ACTIVE', providerSubscriptionId: 'mp-123' },
+  }));
+  const r = await servicio.deleteUnpublishedBusiness({ businessId: 'b-1', adminId: 'a-1', force: true });
+  assert.equal(r.deleted, true);
+  assert.equal(r.forced, true);
+  // El cobro se cancela ANTES de borrar, no después.
+  assert.equal(llamadas.canceladas, 1);
+  assert.deepEqual(llamadas.borrados, ['b-1']);
+  assert.deepEqual(llamadas.auditoria, ['BUSINESS_DELETED_FORCED']);
+});
+
+test('si el cobro no se puede cancelar, NO se borra la página', async () => {
+  // El peor resultado posible: le dices al dueño que ya no existe y le siguen
+  // cobrando. Se prefiere fallar y que el admin reintente.
+  const llamadas = { borrados: [] };
+  const fakePrisma = {
+    business: {
+      findUnique: async () => pagina({ subscription: { id: 's-1', status: 'ACTIVE', providerSubscriptionId: 'mp-123' } }),
+      delete: async ({ where }) => { llamadas.borrados.push(where.id); },
+    },
+  };
+  const cancelSubscription = async () => { throw new Error('Mercado Pago no responde'); };
+  const servicio = cargarServicio(fakePrisma, async () => {}, cancelSubscription);
+  await assert.rejects(
+    () => servicio.deleteUnpublishedBusiness({ businessId: 'b-1', adminId: 'a-1', force: true }),
+    (error) => error.status === 502 && /Mercado Pago/i.test(error.message),
+  );
+  assert.deepEqual(llamadas.borrados, [], 'la página NO puede quedar borrada con el cobro vivo');
+});
+
+test('sin preapproval no hay nada que cancelar en el proveedor', async () => {
+  const { servicio, llamadas } = entorno(pagina({ status: 'PUBLISHED', publishedAt: new Date('2026-01-01') }));
+  await servicio.deleteUnpublishedBusiness({ businessId: 'b-1', adminId: 'a-1', force: true });
+  assert.equal(llamadas.canceladas, 0);
+  assert.deepEqual(llamadas.borrados, ['b-1']);
+});
+
+test('el borrado forzado queda en una acción de auditoría propia', async () => {
+  // Se audita aparte del borrado normal: es lo que permite revisar después
+  // qué se eliminó saltándose la protección.
+  const { servicio, llamadas } = entorno(pagina({ status: 'PUBLISHED', publishedAt: new Date('2026-01-01') }));
+  await servicio.deleteUnpublishedBusiness({ businessId: 'b-1', adminId: 'a-1', force: true });
+  assert.deepEqual(llamadas.auditoria, ['BUSINESS_DELETED_FORCED']);
+  assert.match(ADMIN_SERVICE, /BUSINESS_DELETED_FORCED/);
 });
 
 test('el servicio se exporta desde las rutas del admin', () => {

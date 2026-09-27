@@ -1007,6 +1007,52 @@ model Business {
   @@map("businesses")
 }
 
+/// BIBLIOTECA DE EJEMPLOS REUTILIZABLES (solo admin).
+///
+/// Guarda una copia del CONTENIDO de una página para poder usarla de base en
+/// páginas nuevas del mismo tipo. Es una tabla aparte y no un campo en
+/// `businesses` por dos razones concretas:
+///
+///  1. Es contenido del admin, no del cliente: el dueño de la página original
+///     no tiene por qué enterarse ni conservarlo.
+///  2. El ejemplo sobrevive al borrado de la página de origen. Si fuera un
+///     business más, limpiar los negocios de prueba se llevaría por delante
+///     los mejores ejemplos.
+///
+/// `snapshot` y `manifest` son COPIAS: si después se edita la página original,
+/// el ejemplo guardado no cambia. Reutilizar un ejemplo no puede modificar
+/// nada que ya esté en manos de otro cliente.
+model BusinessPageLibrary {
+  id                 String   @id @default(uuid())
+  /// Cómo se llama el ejemplo en la biblioteca del admin.
+  name               String
+  description        String?  @db.Text
+  /// "Foto", "Platos", "Citas"… de qué trata el ejemplo.
+  label              String?
+  /// Categoría para la que sirve. NULL = sirve para cualquier categoría.
+  category           String?
+  /// Solo trazabilidad. SIN relación a propósito: borrar la página de origen
+  /// NO debe borrar el ejemplo.
+  sourceBusinessId   String?
+  sourceBusinessName String?
+  /// Copia del contenido: servicios, productos, galería, textos, contacto.
+  snapshot           Json
+  /// Instancia del sitio copiada, para reutilizar también el diseño.
+  templateId         String?
+  manifest           Json?
+  /// Cuántas veces se reutilizó: el dato que dice si un ejemplo sirve.
+  timesUsed          Int      @default(0)
+  /// Apartado de la lista sin borrarlo.
+  archived           Boolean  @default(false)
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([archived, createdAt])
+  @@index([category])
+  @@map("business_page_library")
+}
+
 model BusinessMercadoPago {
   id                    String           @id @default(uuid())
   businessId            String           @unique

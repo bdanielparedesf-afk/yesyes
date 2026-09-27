@@ -34,7 +34,8 @@ const AdminImport = lazy(() => import('@/pages/AdminImport'));
 const AdminBulk = lazy(() => import('@/pages/AdminBulk'));
 const AdminAliExpress = lazy(() => import('@/pages/AdminAliExpress'));
 const AdminBusinesses = lazy(() => import('@/pages/AdminBusinesses'));
-const AdminBusinessPages = lazy(() => import('@/pages/AdminBusinessPages'));
+  const AdminPageLibrary = lazy(() => import('@/pages/AdminPageLibrary'));
+  const AdminBusinessPages = lazy(() => import('@/pages/AdminBusinessPages'));
 const AdminBusinessEditor = lazy(() => import('@/pages/AdminBusinessEditor'));
 const MiNegocio = lazy(() => import('@/pages/MiNegocio'));
 const BusinessDashboard = lazy(() => import('@/pages/BusinessDashboard'));
@@ -105,6 +106,7 @@ function App() {
       <Route path="/admin/negocios" element={<AdminLayout><AdminBusinesses /></AdminLayout>} />
       {/* Antes que `/:id/editor`: si no, "paginas" se tomaria por un id. */}
       <Route path="/admin/negocios/paginas" element={<AdminLayout><AdminBusinessPages /></AdminLayout>} />
+  <Route path="/admin/negocios/biblioteca" element={<AdminLayout><AdminPageLibrary /></AdminLayout>} />
       <Route path="/admin/negocios/:id/editor" element={<AdminLayout><AdminBusinessEditor /></AdminLayout>} />
       <Route path="/mi-negocio/:slug" element={<MiNegocio />} />
       {BusinessFixturePage && <Route path="/__qa/business/:category" element={<BusinessFixturePage />} />}

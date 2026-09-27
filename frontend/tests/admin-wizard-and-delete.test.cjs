@@ -61,11 +61,13 @@ test('los pasos del asistente no dependen de índices fijos', () => {
 /**
  * ELIMINAR SOLO LO QUE NUNCA SE PUBLICÓ.
  */
-test('el botón Eliminar aparece solo en páginas nunca publicadas', () => {
-  assert.match(ADMIN, /const sePuedeEliminar = \(business: any\) => !business\.publishedAt/);
-  assert.match(ADMIN, /sePuedeEliminar\(business\) \? <button/);
-  // El icono va antes del texto en el mismo botón.
-  assert.match(ADMIN, /<Trash2 className="h-3\.5 w-3\.5" \/>Eliminar/);
+test('el botón Eliminar pide confirmación en cualquier página', () => {
+  // El botón ya no se esconde: la barrera es el backend preguntando, no la UI
+  // ocultando el control. Un admin que limpia 50 páginas de prueba no debería
+  // tener que filtrar para encontrar el botón.
+  assert.match(ADMIN, /data-testid="delete-business"/);
+  assert.match(ADMIN, /data-testid="confirm-delete-business"/);
+  assert.match(ADMIN, /¿Eliminar/);
 });
 
 test('eliminar pide confirmación y nombra la página', () => {
@@ -78,5 +80,120 @@ test('eliminar pide confirmación y nombra la página', () => {
 
 test('el botón de eliminar va al endpoint de borrado, no al de estado', () => {
   // Confundir los dos dejaría la página pausada creyéndola eliminada.
-  assert.match(ADMIN, /api\.delete\(`\/admin\/business-pages\/\$\{objetivo\.id\}`\)/);
+  assert.match(ADMIN, /api\.delete\(`\/admin\/business-pages\/\$\{objetivo\.id\}`/);
 });
+
+/**
+ * ELIMINAR CUALQUIER PÁGINA (limpieza de prueba), en dos pasos.
+ */
+test('el botón Eliminar aparece en cualquier página, no solo en las no publicadas', () => {
+  // La barrera real es el backend y pide confirmación, no esconder el botón:
+  // un admin que limpia 50 páginas de prueba no debería tener que filtrar.
+  assert.doesNotMatch(ADMIN, /sePuedeEliminar/);
+  assert.match(ADMIN, /data-testid="delete-business"/);
+});
+
+test('el primer intento no fuerza: si el backend lo rechaza, se pide confirmación', () => {
+  assert.match(ADMIN, /data: \{ force: forceDelete \}/);
+  // El 409 no es un error: es la pregunta "¿igual borras?".
+  assert.match(ADMIN, /status === 409/);
+  assert.match(ADMIN, /setForceDelete\(true\)/);
+  assert.match(ADMIN, /eliminar de todos modos/);
+});
+
+/**
+ * BIBLIOTECA DE EJEMPLARES REUTILIZABLES.
+ *
+ * Lo que se fija acá es la garantía que hace que la biblioteca sirva: un
+ * ejemplo es una COPIA, sobrevive al borrado de la página de la que salió, y
+ * reutilizarlo crea una página nueva sin tocar ninguna existente.
+ */
+const SERVICE = fs.readFileSync(path.resolve(__dirname, '../../backend/src/services/business-page-library.service.ts'), 'utf8');
+const ROUTES = fs.readFileSync(path.resolve(__dirname, '../../backend/src/routes/admin.routes.ts'), 'utf8');
+const SCHEMA = fs.readFileSync(path.resolve(__dirname, '../../backend/prisma/schema.prisma'), 'utf8');
+const LIBRARY_PAGE = fs.readFileSync(path.resolve(__dirname, '../src/pages/AdminPageLibrary.tsx'), 'utf8');
+const MIGRATION = fs.readFileSync(path.resolve(__dirname, '../../backend/prisma/migrations/20260927120000_business_page_library/migration.sql'), 'utf8');
+
+test('la biblioteca es una tabla propia, no un campo en businesses', () => {
+  // Si fuera un business más, la limpieza de páginas de prueba se llevaría
+  // por delante los mejores ejemplos.
+  assert.match(SCHEMA, /model BusinessPageLibrary/);
+  assert.match(SCHEMA, /@@map\("business_page_library"\)/);
+});
+
+test('el ejemplo NO tiene relación con la página de origen: sobrevive al borrado', () => {
+  // `sourceBusinessId` es un id suelto, sin @relation ni cascade. Si alguna vez
+  // se le pone relación, la limpieza de negocios borra los ejemplos.
+  const inicio = SCHEMA.indexOf('model BusinessPageLibrary');
+  // Se corta en la llave de cierre del modelo, no con un ancho fijo: si el
+  // modelo crece, un slice por caracteres se mete en el siguiente y el test
+  // miente sobre lo que está afirmando.
+  const modelo = SCHEMA.slice(inicio, SCHEMA.indexOf('\n}', inicio));
+  assert.match(modelo, /sourceBusinessId\s+String\?/);
+  assert.doesNotMatch(modelo, /sourceBusiness\s+Business/);
+  assert.doesNotMatch(modelo, /onDelete: Cascade/);
+});
+
+test('el contenido guardado es un snapshot, no una referencia', () => {
+  assert.match(SERVICE, /snapshot:\s*snapshot as any/);
+  // Si guardara ids, el ejemplo arrastraría datos del dueño original.
+  const snapshot = SERVICE.slice(SERVICE.indexOf('const snapshot = {'), SERVICE.indexOf('const row = await prisma.businessPageLibrary.create'));
+  assert.doesNotMatch(snapshot, /\b(id|businessId):\s*s\./);
+});
+
+test('reutilizar crea una página NUEVA en borrador y no toca la original', () => {
+  assert.match(SERVICE, /status:\s*'DRAFT'/);
+  assert.match(SERVICE, /uniqueBusinessSlugFor\(nombre\)/);
+  // La página de la que salió el ejemplo solo se lee, nunca se actualiza.
+  assert.doesNotMatch(SERVICE, /businessPageLibrary\.update\(\{ where: \{ id: business\.id/);
+});
+
+test('reutilizar copia el contenido a la página nueva', () => {
+  for (const modelo of ['businessService', 'businessCatalogItem', 'businessGalleryImage', 'businessTestimonial', 'businessFaq', 'businessPromotion', 'businessTeamMember']) {
+    assert.match(SERVICE, new RegExp(`prisma\\.${modelo}\\.create`), `falta copiar ${modelo}`);
+  }
+});
+
+test('apartar un ejemplo es distinto de borrarlo', () => {
+  // Apartar es para dejar de usarlo sin perderlo; borrar es definitivo.
+  assert.match(SERVICE, /export async function setLibraryArchived/);
+  assert.match(SERVICE, /export async function deleteLibraryEntry/);
+});
+
+test('un ejemplo apartado no se puede reutilizar', () => {
+  assert.match(SERVICE, /if \(entry\.archived\)[\s\S]*?status: 409/);
+});
+
+test('se cuenta cuántas veces se reutilizó cada ejemplo', () => {
+  // Es el dato que dice si un ejemplo sirve de base o solo ocupa espacio.
+  assert.match(SERVICE, /timesUsed: \{ increment: 1 \}/);
+  assert.match(SCHEMA, /timesUsed\s+Int\s+@default\(0\)/);
+});
+
+test('la biblioteca es solo de admin: las rutas cuelgan del router con requireAdmin', () => {
+  assert.match(ROUTES, /router\.use\(authenticate, requireAdmin\)/);
+  assert.match(ROUTES, /router\.get\('\/page-library'/);
+  assert.match(ROUTES, /router\.post\('\/page-library\/:\w+\/reuse'/);
+  // Un cliente no tiene ruta para esto en ningún lado.
+  assert.doesNotMatch(fs.readFileSync(path.resolve(__dirname, '../../backend/src/routes/business.routes.ts'), 'utf8'), /page-library/);
+});
+
+test('la migración es aditiva e idempotente', () => {
+  assert.match(MIGRATION, /CREATE TABLE IF NOT EXISTS/);
+  // No debe tocar lo que ya existe.
+  assert.doesNotMatch(MIGRATION, /DROP\s+(TABLE|COLUMN)/i);
+  assert.doesNotMatch(MIGRATION, /DELETE\s+FROM/i);
+});
+
+test('el admin puede guardar una página como ejemplo y reutilizarla', () => {
+  assert.match(LIBRARY_PAGE, /Usar este ejemplo/);
+  assert.match(LIBRARY_PAGE, /data-testid="library-reuse"/);
+  // Reutilizar pide nombre y cliente: sin dueño la página quedaría huérfana.
+  assert.match(LIBRARY_PAGE, /disabled=\{!newName\.trim\(\) \|\| !newOwner/);
+});
+
+test('borrar un ejemplo pide confirmación', () => {
+  assert.match(LIBRARY_PAGE, /data-testid="library-delete-dialog"/);
+  assert.match(LIBRARY_PAGE, /¿Eliminar el ejemplo/);
+});
+

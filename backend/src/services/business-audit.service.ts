@@ -30,6 +30,18 @@ export const BUSINESS_AUDIT_ACTIONS = [
   // de este enum que elimina filas, y por eso lleva nombre propio: tiene que
   // ser localizable en la auditoría sin ambigüedad con BUSINESS_ARCHIVED.
   'BUSINESS_DELETED_UNPUBLISHED',
+  // Borrado forzado (limpieza de páginas de prueba). Es una acción aparte
+  // precisamente porque se salta las barreras: lleva nombre propio para poder
+  // revisar después qué se eliminó saltándose la protección.
+  'BUSINESS_DELETED_FORCED',
+  // Biblioteca de ejemplos reutilizables (admin). Guardar, reutilizar, apartar y
+  // borrar un ejemplo. `BUSINESS_REUSED_FROM_LIBRARY` es el que dice qué
+  // ejemplo se usó para qué página nueva: sin eso no se puede evaluar si un
+  // ejemplo sirve.
+  'BUSINESS_SAVED_TO_LIBRARY',
+  'BUSINESS_REUSED_FROM_LIBRARY',
+  'BUSINESS_LIBRARY_ARCHIVED',
+  'BUSINESS_LIBRARY_DELETED',
 ] as const;
 
 export type BusinessAuditAction = (typeof BUSINESS_AUDIT_ACTIONS)[number];

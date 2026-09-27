@@ -29,6 +29,13 @@ import {
   markSubscriptionActive,
   deleteUnpublishedBusiness,
 } from '../services/admin-business-pages.service';
+import {
+  listLibrary,
+  saveToLibrary,
+  reuseFromLibrary,
+  setLibraryArchived,
+  deleteLibraryEntry,
+} from '../services/business-page-library.service';
 
 
 const router = Router();
@@ -175,16 +182,89 @@ router.put('/business-pages/:id/restore', async (req: AuthRequest, res) => {
   }
 });
 
+/** Biblioteca de ejemplos reutilizables (solo admin). */
+router.get('/page-library', async (req, res) => {
+  try {
+    const entries = await listLibrary({
+      includeArchived: String(req.query.includeArchived || '') === '1',
+      search: String(req.query.search || ''),
+    });
+    res.json({ entries });
+  } catch (error: any) {
+    res.status(500).json({ message: 'No se pudo cargar la biblioteca', error: error.message });
+  }
+});
+
+/** Guarda una página como ejemplo. La página NO se modifica. */
+router.post('/page-library', async (req: AuthRequest, res) => {
+  const body = (req.body || {}) as any;
+  if (!body.businessId) { res.status(400).json({ message: 'Indica la página que quieres guardar como ejemplo.' }); return; }
+  try {
+    const entry = await saveToLibrary({
+      businessId: String(body.businessId),
+      name: body.name ? String(body.name) : undefined,
+      description: body.description ? String(body.description) : undefined,
+      label: body.label ? String(body.label) : undefined,
+      adminId: req.user!.id,
+    });
+    res.status(201).json({ entry });
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo guardar el ejemplo' });
+  }
+});
+
+/** Crea una página nueva a partir de un ejemplo. No toca la página original. */
+router.post('/page-library/:id/reuse', async (req: AuthRequest, res) => {
+  const body = (req.body || {}) as any;
+  if (!body.name || !body.ownerId) { res.status(400).json({ message: 'Indica el nombre de la página nueva y el cliente.' }); return; }
+  try {
+    const result = await reuseFromLibrary({
+      libraryId: String(req.params.id),
+      name: String(body.name),
+      ownerId: String(body.ownerId),
+      category: body.category ? String(body.category) : undefined,
+      adminId: req.user!.id,
+    });
+    res.status(201).json(result);
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo reutilizar el ejemplo' });
+  }
+});
+
+/** Aparta o reactiva un ejemplo sin borrarlo. */
+router.put('/page-library/:id', async (req: AuthRequest, res) => {
+  const archived = (req.body as any)?.archived;
+  if (typeof archived !== 'boolean') { res.status(400).json({ message: 'Indica si el ejemplo queda apartado (archived).' }); return; }
+  try {
+    const entry = await setLibraryArchived(String(req.params.id), archived, req.user!.id);
+    res.json({ entry });
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo actualizar el ejemplo' });
+  }
+});
+
+/** Borra un ejemplo de la biblioteca. */
+router.delete('/page-library/:id', async (req: AuthRequest, res) => {
+  try {
+    const result = await deleteLibraryEntry(String(req.params.id), req.user!.id);
+    res.json(result);
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo eliminar el ejemplo' });
+  }
+});
+
 /**
- * ELIMINA de verdad una página que nunca se publicó. Es la única operación de
- * este servicio que borra filas: por eso vive aparte de la baja y exige que la
- * página nunca haya estado en línea, sin suscripción y sin actividad.
+ * ELIMINA una página. Por defecto solo borra lo que nunca se publicó; con
+ * `force` borra cualquiera (limpieza de páginas de prueba). Si hay un cobro
+ * vivo de Mercado Pago, se cancela en el proveedor antes de borrar la fila.
  */
 router.delete('/business-pages/:id', async (req: AuthRequest, res) => {
   try {
     const result = await deleteUnpublishedBusiness({
       businessId: String(req.params.id),
       adminId: req.user!.id,
+      force: (req.body as any)?.force === true,
+      reason: (req.body as any)?.reason,
     });
     res.json(result);
   } catch (error: any) {

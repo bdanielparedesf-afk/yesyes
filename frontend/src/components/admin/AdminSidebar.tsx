@@ -8,6 +8,7 @@ import {
   LogOut,
   Shield,
   Globe,
+  BookMarked,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -20,6 +21,7 @@ const LINKS = [
   { href: '/admin/aliexpress', label: 'AliExpress', icon: ShoppingBag },
   { href: '/admin/negocios', label: 'Negocios', icon: LayoutDashboard },
   { href: '/admin/negocios/paginas', label: 'Páginas en línea', icon: Globe },
+  { href: '/admin/negocios/biblioteca', label: 'Biblioteca', icon: BookMarked },
   { href: '/admin/bulk', label: 'Importar Excel', icon: Upload },
 ] as const;
 
