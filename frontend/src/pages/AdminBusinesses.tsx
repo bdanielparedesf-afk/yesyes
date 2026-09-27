@@ -27,8 +27,6 @@ export default function AdminBusinesses() {
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<any | null>(null);
-  /** Segunda etapa: el admin confirmó que borra aunque haya barreras. */
-  const [forceDelete, setForceDelete] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
 
   const load = async () => {
@@ -64,13 +62,19 @@ export default function AdminBusinesses() {
     } finally { setActionId(''); }
   };
   /** El admin puede borrar cualquier página; la UI no pone barreras. */
+  /**
+   * ELIMINAR la página. Va con `force` desde el PRIMER intento: el admin pidió
+   * poder borrar sin que el sistema le vuelva a preguntar si está seguro. La
+   * única protección que queda no es una duda, es dinero: si hay un cobro vivo
+   * en Mercado Pago, el backend lo cancela antes de borrar y avisa si no pudo.
+   */
   const eliminar = async () => {
     if (!confirmDelete) return;
     const objetivo = confirmDelete;
     setActionId(objetivo.id); setMessage(null);
     try {
-      const { data } = await api.delete(`/admin/business-pages/${objetivo.id}`, { data: { force: forceDelete } });
-      setConfirmDelete(null); setForceDelete(false);
+      const { data } = await api.delete(`/admin/business-pages/${objetivo.id}`, { data: { force: true } });
+      setConfirmDelete(null);
       await load();
       setMessage({
         type: 'ok',
@@ -79,15 +83,7 @@ export default function AdminBusinesses() {
           : `Se eliminó “${objetivo.name}” y todo su contenido.`,
       });
     } catch (error: any) {
-      if (error?.response?.status === 409) {
-        // Primera vez que se rechaza no es un error, es una pregunta: se pide
-        // confirmación antes de saltarse la protección, para que un clic mal
-        // puesto no borre una página que tiene clientes o cobros.
-        setForceDelete(true);
-        setMessage({ type: 'error', text: error?.response?.data?.message || 'Esta página tiene algo que la protege.' });
-      } else {
-        setMessage({ type: 'error', text: error?.response?.data?.message || 'No se pudo eliminar la página.' });
-      }
+      setMessage({ type: 'error', text: error?.response?.data?.message || 'No se pudo eliminar la página.' });
     } finally { setActionId(''); }
   };
 
@@ -112,7 +108,7 @@ export default function AdminBusinesses() {
 
       {loading ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Cargando negocios" aria-busy="true">{[0, 1, 2].map((item) => <div key={item} className="h-56 animate-pulse rounded-2xl border border-neutral-200 bg-white" />)}</div> : !filtered.length ? <div className="rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center"><Building2 className="mx-auto h-10 w-10 text-neutral-300" aria-hidden /><h2 className="mt-3 font-bold text-neutral-900">{list.length ? 'No encontramos negocios' : 'Todavía no hay negocios'}</h2><p className="mt-1 text-sm text-neutral-500">{list.length ? 'Prueba con otra búsqueda o cambia los filtros.' : 'Crea el primer proyecto para comenzar.'}</p></div> : (
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Negocios">
-          {filtered.map((business) => { const info = statusInfo(business.status); return <article key={business.id} className="flex min-h-56 flex-col rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-100"><Building2 className="h-5 w-5 text-primary-800" /></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${info.className}`}>{info.label}</span></div><h2 className="mt-4 line-clamp-1 font-bold text-neutral-950">{business.name}</h2><p className="mt-1 text-sm text-neutral-500">{categoryName(business.category)}</p><p className="mt-2 truncate text-xs text-neutral-400">{business.owner?.name || business.owner?.email || 'Sin propietario asignado'}{business.template?.name ? ` · ${business.template.name}` : ''}</p><div className="mt-auto flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-4 text-xs"><Link to={`/admin/negocios/${business.id}/editor`} className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 font-semibold text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"><Pencil className="h-3.5 w-3.5" />Editar</Link><a href={`/mi-negocio/${business.slug}?preview=true`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 font-semibold text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"><Eye className="h-3.5 w-3.5" />Vista previa</a>{business.status === 'PUBLISHED' ? <button type="button" disabled={actionId === business.id} onClick={() => updateStatus(business, 'PAUSED')} className="rounded-lg px-2.5 py-1.5 font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Pausar</button> : business.status !== 'ARCHIVED' ? <button type="button" disabled={actionId === business.id} onClick={() => updateStatus(business, 'PUBLISHED')} className="rounded-lg px-2.5 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">Publicar</button> : null}<button type="button" disabled={actionId === business.id} onClick={() => guardarEjemplo(business)} data-testid="save-as-example" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold text-primary-700 hover:bg-primary-50 disabled:opacity-50"><BookMarked className="h-3.5 w-3.5" />Guardar como ejemplo</button><button type="button" disabled={actionId === business.id} onClick={() => { setForceDelete(false); setConfirmDelete(business); }} data-testid="delete-business" className="ml-auto inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />Eliminar</button></div></article>; })}
+          {filtered.map((business) => { const info = statusInfo(business.status); return <article key={business.id} className="flex min-h-56 flex-col rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-100"><Building2 className="h-5 w-5 text-primary-800" /></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${info.className}`}>{info.label}</span></div><h2 className="mt-4 line-clamp-1 font-bold text-neutral-950">{business.name}</h2><p className="mt-1 text-sm text-neutral-500">{categoryName(business.category)}</p><p className="mt-2 truncate text-xs text-neutral-400">{business.owner?.name || business.owner?.email || 'Sin propietario asignado'}{business.template?.name ? ` · ${business.template.name}` : ''}</p><div className="mt-auto flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-4 text-xs"><Link to={`/admin/negocios/${business.id}/editor`} className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 font-semibold text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"><Pencil className="h-3.5 w-3.5" />Editar</Link><a href={`/mi-negocio/${business.slug}?preview=true`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 font-semibold text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"><Eye className="h-3.5 w-3.5" />Vista previa</a>{business.status === 'PUBLISHED' ? <button type="button" disabled={actionId === business.id} onClick={() => updateStatus(business, 'PAUSED')} className="rounded-lg px-2.5 py-1.5 font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Pausar</button> : business.status !== 'ARCHIVED' ? <button type="button" disabled={actionId === business.id} onClick={() => updateStatus(business, 'PUBLISHED')} className="rounded-lg px-2.5 py-1.5 font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">Publicar</button> : null}<button type="button" disabled={actionId === business.id} onClick={() => guardarEjemplo(business)} data-testid="save-as-example" className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold text-primary-700 hover:bg-primary-50 disabled:opacity-50"><BookMarked className="h-3.5 w-3.5" />Guardar como ejemplo</button><button type="button" disabled={actionId === business.id} onClick={() => setConfirmDelete(business)} data-testid="delete-business" className="ml-auto inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />Eliminar</button></div></article>; })}
         </section>
       )}
 
@@ -127,15 +123,14 @@ export default function AdminBusinesses() {
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <h2 id="confirm-delete-title" className="text-lg font-black text-neutral-950">¿Eliminar “{confirmDelete.name}”?</h2>
             <p className="mt-2 text-sm leading-relaxed text-neutral-600">
-              {forceDelete
-                ? <>Vas a eliminarla aunque tenga <strong>suscripción, contactos o pagos</strong>. Se borra todo: servicios, productos, fotos y textos, sin forma de recuperarlos. Si tenía un cobro activo en Mercado Pago, se cancela también.</>
-                : <>Se borran sus servicios, productos, fotos y textos, sin forma de recuperarlos. Si tuviera clientes o cobros, te lo vamos a avisar antes de eliminarla.</>}
+              Se borra todo: servicios, productos, fotos y textos, sin forma de recuperarlos.
+              Si tuviera un cobro activo en Mercado Pago, también se cancela.
             </p>
             <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => { setConfirmDelete(null); setForceDelete(false); }} className="rounded-xl border border-neutral-300 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">Cancelar</button>
-              <button type="button" onClick={eliminar} disabled={actionId === confirmDelete.id} data-testid="confirm-delete-button" className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60 ${forceDelete ? 'bg-rose-700 hover:bg-rose-800' : 'bg-neutral-950 hover:bg-neutral-800'}`}>
+              <button type="button" onClick={() => setConfirmDelete(null)} className="rounded-xl border border-neutral-300 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">Cancelar</button>
+              <button type="button" onClick={eliminar} disabled={actionId === confirmDelete.id} data-testid="confirm-delete-button" className="inline-flex items-center gap-2 rounded-xl bg-rose-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-rose-800 disabled:opacity-60">
                 {actionId === confirmDelete.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                {forceDelete ? 'Sí, eliminar de todos modos' : 'Sí, eliminar'}
+                Sí, eliminar
               </button>
             </div>
           </div>

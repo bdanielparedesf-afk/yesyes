@@ -93,12 +93,23 @@ test('el botón Eliminar aparece en cualquier página, no solo en las no publica
   assert.match(ADMIN, /data-testid="delete-business"/);
 });
 
-test('el primer intento no fuerza: si el backend lo rechaza, se pide confirmación', () => {
-  assert.match(ADMIN, /data: \{ force: forceDelete \}/);
-  // El 409 no es un error: es la pregunta "¿igual borras?".
-  assert.match(ADMIN, /status === 409/);
-  assert.match(ADMIN, /setForceDelete\(true\)/);
-  assert.match(ADMIN, /eliminar de todos modos/);
+test('el primer intento ya fuerza: el admin borra sin que el sistema le pregunte', () => {
+  // Se pidió explícitamente poder borrar "sin cuestionamiento". La única
+  // protección que queda no es una duda: es la cancelación del cobro en
+  // Mercado Pago, que hace el backend y no se puede saltar.
+  assert.match(ADMIN, /data: \{ force: true \}/);
+  assert.doesNotMatch(ADMIN, /forceDelete/);
+  assert.doesNotMatch(ADMIN, /status === 409/);
+  assert.doesNotMatch(ADMIN, /eliminar de todos modos/);
+});
+
+test('también se puede eliminar desde el panel de Páginas en línea', () => {
+  // El botón estaba solo en la lista de Negocios, y el panel de páginas es
+  // donde el admin realmente va a limpiar: por eso no podía borrar nada.
+  const PAGES = fs.readFileSync(path.resolve(__dirname, '../src/pages/AdminBusinessPages.tsx'), 'utf8');
+  assert.match(PAGES, /data-testid="delete-page"/);
+  assert.match(PAGES, /data: \{ force: true \}/);
+  assert.match(PAGES, /onEliminar=\{eliminar\}/);
 });
 
 /**

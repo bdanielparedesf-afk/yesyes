@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  CheckCircle2, CreditCard, Loader2, Pencil, RotateCcw, Search, ShieldOff,
+  CheckCircle2, CreditCard, Loader2, Pencil, RotateCcw, Search, ShieldOff, Trash2,
 } from 'lucide-react';
 import api from '@/lib/axios';
 
@@ -84,6 +84,31 @@ export default function AdminBusinessPages() {
    * una pÃƒÂ¡gina que ya estÃƒÂ¡ en manos de un cliente, y un clic apurado por dar de
    * baja algo que estaba bien serÃƒÂ­a un costo real de confianza.
    */
+  /**
+   * ELIMINAR la página. Va con `force` desde el primer intento: el admin
+   * pidió poder borrar sin que el sistema le pregunte si está seguro. La única
+   * protección que queda no es una duda, es dinero: si hay un cobro vivo en
+   * Mercado Pago, el backend lo cancela antes de borrar, y avisa si no pudo.
+   */
+  const eliminar = async (row: PageRow) => {
+    const mensaje = [
+      'Eliminar la página de "' + row.name + '"?',
+      '',
+      'Se borra todo: servicios, productos, fotos y textos.',
+      'Si tiene un cobro activo en Mercado Pago, se cancela también.'
+    ].join('\n');
+    if (!window.confirm(mensaje)) return;
+    setBusy(row.id); setError(''); setNotice('');
+    try {
+      const { data } = await api.delete('/admin/business-pages/' + row.id, { data: { force: true } });
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      setNotice(data?.cancelledInProvider
+        ? 'Se eliminó "' + row.name + '" y se canceló su cobro en Mercado Pago.'
+        : 'Se eliminó "' + row.name + '".');
+    } catch (e: any) {
+      setError(e?.response?.data?.message || 'No se pudo eliminar la página.');
+    } finally { setBusy(''); }
+  };
   const accion = async (row: PageRow, verb: 'take-down' | 'restore' | 'subscription', extra: any = {}) => {
     if (verb === 'subscription') {
       if (!window.confirm(`Ã‚Â¿Marcar el plan de "${row.name}" como ${extra.status}? Queda auditado como ajuste manual.`)) return;
@@ -152,7 +177,7 @@ export default function AdminBusinessPages() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => <PageRow key={r.id} row={r} busy={busy === r.id} onAccion={accion} />)}
+                {rows.map((r) => <PageRow key={r.id} row={r} busy={busy === r.id} onAccion={accion} onEliminar={eliminar} />)}
               </tbody>
             </table>
           </div>
@@ -162,7 +187,7 @@ export default function AdminBusinessPages() {
 }
 
 /** Fila de la tabla. Va aparte para que el componente principal no crezca. */
-function PageRow({ row, busy, onAccion }: { row: PageRow; busy: boolean; onAccion: any }) {
+function PageRow({ row, busy, onAccion, onEliminar }: { row: PageRow; busy: boolean; onAccion: any; onEliminar: any }) {
   return (
     <tr className="border-b last:border-0 hover:bg-neutral-50">
       <td className="px-4 py-3">
@@ -205,6 +230,9 @@ function PageRow({ row, busy, onAccion }: { row: PageRow; busy: boolean; onAccio
           )}
           <Link to={`/admin/negocios/${row.id}/editor`} title="Abrir editor"
             className="rounded-lg p-2 text-neutral-600 hover:bg-neutral-100"><Pencil className="h-4 w-4" /></Link>
+          <button type="button" title="Eliminar página" data-testid="delete-page"
+            disabled={busy} onClick={() => onEliminar(row)}
+            className="rounded-lg p-2 text-rose-700 hover:bg-rose-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
         </div>
       </td>
     </tr>
