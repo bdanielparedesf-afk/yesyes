@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import api from '@/lib/axios';
 import { myBusinesses, getBusiness, deleteBusiness } from '@/services/business';
 import DashboardNav, { type DashboardSection } from '@/business/dashboard/DashboardNav';
+import PageStatusBanner from '@/business/builder/PageStatusBanner';
 import ConfigSection from '@/business/dashboard/ConfigSection';
 import ServicesSection from '@/business/dashboard/ServicesSection';
 import ProductsSection from '@/business/dashboard/ProductsSection';
@@ -174,6 +175,9 @@ export default function BusinessDashboard({ section = 'inicio' }: { section?: Da
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-5">
+      {/* AVISO DE COBRO: va arriba de todo, antes del título, porque es lo que
+          el dueño tiene que ver primero si su página no está en línea. */}
+      {selectedId && <PageStatusBanner businessId={selectedId} />}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Mis páginas</h1>
         {detail && (

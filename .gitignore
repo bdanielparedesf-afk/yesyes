@@ -1,4 +1,4 @@
-# Keys y secretos (en cualquier directorio)
+﻿# Keys y secretos (en cualquier directorio)
 .env
 .env.*
 *.env
@@ -33,6 +33,9 @@ logs/cert-chrome/
 # qa/cert-negocio.json guarda la SESION REAL de una cuenta creada por la UI
 # (token JWT en claro). NUNCA debe versionarse.
 qa/cert-negocio.json
+# Inventario de suscripciones QA con datos de duenos (correos): copia de seguridad, nunca se versiona.
+qa/backup-suscripciones-qa.json
+qa/cert-negocio-vencido.json
 qa/cert-captures/
 
 # Capturas de pantalla y artefactos temporales de certificación

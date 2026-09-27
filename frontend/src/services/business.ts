@@ -55,6 +55,32 @@ export async function getPublicBusinessPlan() {
 
 /** Taxonomía pública de rubros (grupos + categorías canónicas, sin duplicados). */
 /**
+ * Estado de vida de la página, tal como lo ve el dueño.
+ * `live: false` significa que la página NO está en línea: el banner explica por
+ * qué y ofrece regularizar. `reason` viene del backend y es la misma decisión
+ * que aplica la ruta pública.
+ */
+export interface BusinessPageStatus {
+  live: boolean;
+  reason: 'OK' | 'GRACE_ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'NO_SUBSCRIPTION' | 'NOT_PUBLISHABLE';
+  label: string;
+  graceDaysLeft: number;
+  graceUntil: string | null;
+  businessStatus: string;
+  subscriptionStatus: string | null;
+  periodEnd: string | null;
+  nextPaymentAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  amount: number | null;
+  currency: string | null;
+}
+
+export async function getBusinessPageStatus(businessId: string): Promise<BusinessPageStatus> {
+  const { data } = await api.get(`/businesses/${businessId}/page-status`);
+  return data as BusinessPageStatus;
+}
+
+/**
  * Inicia el cobro de la suscripcion y devuelve la URL de Mercado Pago.
  *
  * El backend es quien crea la preferencia (`POST /business/subscription/checkout`),

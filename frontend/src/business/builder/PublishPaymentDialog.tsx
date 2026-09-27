@@ -23,11 +23,18 @@ import { getPublicBusinessPlan, startBusinessCheckout } from '@/services/busines
 
 const precio = (amount: number) => `$${new Intl.NumberFormat('es-CL').format(amount)}`;
 
-export default function PublishPaymentDialog({ businessId, onClose, onPaid }: {
+export default function PublishPaymentDialog({ businessId, onClose, onPaid, motivo = 'publicar' }: {
   businessId: string;
   onClose: () => void;
   /** Se dispara cuando el dueño vuelve del pago y ya puede publicar. */
   onPaid?: () => void;
+  /**
+   * `publicar` = nunca se publicó. `regularizar` = la página ya estaba en
+   * línea y se cayó por el cobro. El precio es el mismo, pero el encabezado
+   * NO puede decir "tu página está lista" a alguien que ya la tenía publicada
+   * hace un mes: le haría creer que su trabajo se perdió.
+   */
+  motivo?: 'publicar' | 'regularizar';
 }) {
   const [plan, setPlan] = useState<{ name: string; amount: number; features: string[]; frequency: number; frequencyType: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,15 +72,20 @@ export default function PublishPaymentDialog({ businessId, onClose, onPaid }: {
   };
 
   const mensual = plan?.frequencyType === 'MONTH';
+  const regularizando = motivo === 'regularizar';
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-stone-950/50 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="pay-title" data-testid="publish-payment-dialog">
       <div className="max-h-[92vh] w-full max-w-lg overflow-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="pay-title" className="text-xl font-bold text-stone-900">Tu página está lista</h2>
+            <h2 id="pay-title" className="text-xl font-bold text-stone-900">
+              {regularizando ? 'Volver a publicar tu página' : 'Tu página está lista'}
+            </h2>
             <p className="mt-1 text-sm text-stone-600">
-              Solo falta activarla. Tus cambios ya están guardados: no vas a perder nada.
+              {regularizando
+                ? 'Todo sigue guardado tal como lo dejaste. Al regularizar, tu página vuelve a estar en línea.'
+                : 'Solo falta activarla. Tus cambios ya están guardados: no vas a perder nada.'}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar" className="rounded-xl border px-3 py-1.5 text-sm">Cerrar</button>

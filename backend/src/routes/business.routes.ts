@@ -15,6 +15,7 @@ import {
   businessBillingOverview,
 } from '../services/business-publish.service';
 import { createPreviewToken } from '../services/business-preview.service';
+import { availabilityLabel, publicAvailability } from '../services/business-subscription-state';
 import { toSubscriptionDTO } from '../services/business-subscription.service';
 import { isCapabilityCode, normalizeSections, resolveCapabilities, CAPABILITY_CATALOG } from '../utils/business-capabilities';
 import { templateDisplayName, templateFamilyCodes, templateStyleOf } from '../utils/business-taxonomy';
@@ -139,6 +140,50 @@ router.post('/:id/preview', requireBusinessOwner, async (req: AuthRequest, res) 
   const preview = await createPreviewToken({ businessId: String(req.params.id), createdBy: req.user!.id });
   const business = await prisma.business.findUnique({ where: { id: String(req.params.id) }, select: { slug: true } });
   res.json({ ...preview, url: business ? `/mi-negocio/${business.slug}?preview=${encodeURIComponent(preview.token)}` : undefined });
+});
+
+/**
+ * ESTADO DE VIDA DE LA PÁGINA, para el dueño.
+ *
+ * Sin esto el dueño entra a su panel con la página dada de baja y ve todo
+ * "normal": no tiene forma de saber por qué su web no aparece. El panel de
+ * admin sí lo sabía; al dueño le faltaba la misma verdad.
+ *
+ * Usa la MISMA `publicAvailability` que la ruta pública, para que lo que le
+ * decimos coincida con lo que realmente pasa. Si divergieran, el dueño
+ * regularizaría un pago que no arregla nada.
+ */
+router.get('/:id/page-status', requireBusinessOwner, async (req: AuthRequest, res) => {
+  const businessId = String(req.params.id);
+  const business = await prisma.business.findFirst({
+    where: ownerWhere(req, businessId),
+    select: {
+      id: true, slug: true, status: true,
+      subscription: {
+        select: { status: true, graceUntil: true, currentPeriodEnd: true, nextPaymentAt: true, cancelAtPeriodEnd: true, amount: true, currency: true },
+      },
+    },
+  });
+  if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
+
+  const availability = publicAvailability({ businessStatus: business.status, subscription: business.subscription });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    live: availability.live,
+    reason: availability.reason,
+    label: availabilityLabel(availability),
+    graceDaysLeft: availability.graceDaysLeft,
+    graceUntil: availability.graceUntil ? availability.graceUntil.toISOString() : null,
+    businessStatus: business.status,
+    subscriptionStatus: business.subscription?.status || null,
+    periodEnd: business.subscription?.currentPeriodEnd
+      ? new Date(business.subscription.currentPeriodEnd).toISOString() : null,
+    nextPaymentAt: business.subscription?.nextPaymentAt
+      ? new Date(business.subscription.nextPaymentAt).toISOString() : null,
+    cancelAtPeriodEnd: Boolean(business.subscription?.cancelAtPeriodEnd),
+    amount: business.subscription?.amount ?? null,
+    currency: business.subscription?.currency ?? null,
+  });
 });
 
 router.get('/:id/capabilities', requireBusinessOwner, async (req: AuthRequest, res) => {

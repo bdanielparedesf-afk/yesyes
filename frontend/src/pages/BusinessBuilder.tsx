@@ -22,6 +22,7 @@ import BuilderTopBar from '@/business/builder/BuilderTopBar';
 import { BuilderSidebar } from '@/business/builder/BuilderSidebar';
 import BuilderInspector from '@/business/builder/BuilderInspector';
 import PublishPaymentDialog from '@/business/builder/PublishPaymentDialog';
+import PageStatusBanner from '@/business/builder/PageStatusBanner';
 import { useBuilderState, createManifestAutosave, isUsableManifest, moveSection, removeSection, duplicateSection, setSectionHidden, undoRedoIntent, type ManifestAutosave } from '@/business/builder/useBuilderState';
 import { manifestSidebarSections, capabilityOfManifestSection, activeVariantBySection, canUndo, canRedo, type BuilderManifest, type BuilderManifestSection } from '@/business/builder/types';
 import { DesignGallery } from '@/business/builder/DesignGalleryPanel';
@@ -382,7 +383,7 @@ export default function BusinessBuilder() {
     onVariant: onChangeVariant,
     changingVariant,
   };
-  return <main data-testid="business-builder" className="min-h-screen bg-stone-100 text-stone-900"><BuilderTopBar business={state.business} saveState={state.saveState} device={state.device} sections={sidebarSections} canUndo={canUndo(state)} canRedo={canRedo(state)} onDevice={(device: any) => dispatch({ type: 'DEVICE', device })} onUndo={() => dispatch({ type: 'UNDO' })} onRedo={() => dispatch({ type: 'REDO' })} onSave={save} onPublish={publish} onPause={pause} onDesigns={() => setShowDesigns(true)} />
+  return <main data-testid="business-builder" className="min-h-screen bg-stone-100 text-stone-900">{/* Aviso de cobro arriba del todo: si la página está caída, el dueño tiene que enterarse ANTES de seguir editando, no descubrirlo al buscar el link. */}{id && <PageStatusBanner businessId={id} />}<BuilderTopBar business={state.business} saveState={state.saveState} device={state.device} sections={sidebarSections} canUndo={canUndo(state)} canRedo={canRedo(state)} onDevice={(device: any) => dispatch({ type: 'DEVICE', device })} onUndo={() => dispatch({ type: 'UNDO' })} onRedo={() => dispatch({ type: 'REDO' })} onSave={save} onPublish={publish} onPause={pause} onDesigns={() => setShowDesigns(true)} />
     <div className="grid min-h-[calc(100vh-80px)] lg:grid-cols-[270px_minmax(0,1fr)_320px]">
       <div data-testid="builder-sidebar-desktop" className="hidden lg:block"><BuilderSidebar {...sidebarProps} /></div>
       <section data-testid="builder-preview" className="min-w-0 p-3 pb-24 sm:p-6 sm:pb-24"><div className="mx-auto mb-4 flex items-center justify-between rounded-2xl bg-white p-3 shadow-sm"><p className="text-sm font-semibold">Tu p�gina, en tiempo real</p><span className="text-xs text-stone-500">{state.device}</span></div><div className={`mx-auto overflow-hidden rounded-2xl bg-white shadow-xl transition-all ${state.device === 'mobile' ? 'max-w-[390px]' : state.device === 'tablet' ? 'max-w-[768px]' : 'max-w-full'}`}><Suspense fallback={<div className="min-h-96 animate-pulse bg-stone-100" />}><BusinessPageRenderer business={previewBusiness} {...content} preview /></Suspense></div></section>
