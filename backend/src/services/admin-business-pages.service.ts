@@ -194,3 +194,67 @@ export async function markSubscriptionActive(input: {
   const business = await loadRow(input.businessId);
   return toAdminRow({ ...business, subscription: { ...business.subscription, ...updated } });
 }
+
+/**
+ * ELIMINA una página que NUNCA estuvo publicada.
+ *
+ * POR QUÉ EXISTE UN BORRADO DISTINTO AL DE BAJA: la baja (arriba) pausa y
+ * conserva todo, y es la respuesta correcta para una página que estuvo en
+ * línea. Pero la base se llena de páginas que nunca se publicaron — un
+ * cliente que entró, armó media página y se fue — y para ésas "pausar" no
+ * limpia nada: sigue ocupando una fila que el admin tiene que revisar para
+ * siempre. Ésas se borran de verdad.
+ *
+ * LAS SALVAGUARDAS, y por qué cada una:
+ *  - `publishedAt` debe ser null. Si alguna vez estuvo en línea, la respuesta
+ *    es dar de baja, no borrar: esa página tiene visitas, enlaces y leads, y
+ *    borrarla rompe enlaces que ya salieron de la plataforma.
+ *  - No puede tener suscripción. Una suscripción significa que alguien pasó
+ *    por el cobro; borrar dejaría al dueño pagando por una página que no
+ *    existe.
+ *  - No puede tener leads, pedidos ni pagos: dinero real de una persona real
+ *    que no se puede recuperar.
+ *  - El borrado es en cascada (`onDelete: Cascade` en el esquema): al no
+ *    existir páginas publicadas ni economía asociada, no queda huérfano.
+ */
+export async function deleteUnpublishedBusiness(input: { businessId: string; adminId: string }): Promise<{ deleted: boolean; name: string }> {
+  const business = await prisma.business.findUnique({
+    where: { id: input.businessId },
+    include: {
+      subscription: { select: { id: true, status: true } },
+      _count: { select: { leads: true, orders: true, payments: true } },
+    },
+  });
+  if (!business) throw Object.assign(new Error('Negocio no encontrado'), { status: 404 });
+
+  // Se responde 409 y no con un borrado parcial: el admin tiene que saber
+  // POR QUÉ no se borró, no ver que "no pasó nada".
+  if (business.publishedAt || business.status === 'PUBLISHED') {
+    throw Object.assign(
+      new Error('Esta página estuvo publicada. Solo se eliminan páginas que nunca se publicaron; usa "Dar de baja" para conservarla.'),
+      { status: 409 },
+    );
+  }
+  if (business.subscription) {
+    throw Object.assign(
+      new Error('Este negocio tiene una suscripción asociada. Déjalo de baja en vez de eliminarlo, para no cobrarle al dueño por una página que no existe.'),
+      { status: 409 },
+    );
+  }
+  const { leads, orders, payments } = business._count;
+  if (leads || orders || payments) {
+    throw Object.assign(
+      new Error('Este negocio tiene actividad (pedidos, pagos o contactos). Solo se puede dar de baja, no eliminar.'),
+      { status: 409 },
+    );
+  }
+
+  await prisma.business.delete({ where: { id: business.id } });
+  await logBusinessAudit('BUSINESS_DELETED_UNPUBLISHED', {
+    businessId: business.id,
+    userId: input.adminId,
+    metadata: { nombre: business.name, categoria: business.category },
+  });
+  return { deleted: true, name: business.name };
+}
+

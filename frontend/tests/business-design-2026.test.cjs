@@ -23,7 +23,9 @@ test('selección de rubro vive en un único asistente, no duplicado en el panel'
   assert.ok(wizard.includes('DesignGallery'));
   assert.ok(wizard.includes('DesignFullPreview'));
   assert.ok(wizard.includes("getPublicTemplates"));
-  assert.match(wizard, /const steps = \['Tipo de negocio', 'Diseño', 'Vista previa', 'Información básica', 'Revisión'\]/);
+  // La lista base se llama STEPS_BASE porque el modo admin le antepone el paso
+  // de propietario; el recorrido del cliente sigue siendo exactamente este.
+  assert.match(wizard, /const STEPS_BASE = \['Tipo de negocio', 'Diseño', 'Vista previa', 'Información básica', 'Revisión'\]/);
   // El panel solo lleva al asistente: no repite selector de rubro ni formulario de alta.
   assert.doesNotMatch(dashboard, /handleCreate/);
   assert.doesNotMatch(dashboard, /business-create-name/);
@@ -33,12 +35,14 @@ test('selección de rubro vive en un único asistente, no duplicado en el panel'
 
 test('el flujo muestra diseños y vista previa antes de pedir los datos', () => {
   const wizard = read('pages/BusinessWizard.tsx');
-  const designsAt = wizard.indexOf('{step === 1 && (');
-  const previewAt = wizard.indexOf('{step === 2 && (');
-  const dataAt = wizard.indexOf('{step === 3 && (');
+  // Los pasos se comparan contra constantes, no contra números fijos: así el
+  // modo admin puede anteponer el de propietario sin romper este orden.
+  const designsAt = wizard.indexOf('{step === DESIGN && (');
+  const previewAt = wizard.indexOf('{step === PREVIEW && (');
+  const dataAt = wizard.indexOf('{step === INFO && (');
   assert.ok(designsAt > -1 && previewAt > designsAt && dataAt > previewAt, 'el orden es rubro -> diseños -> vista previa -> datos');
   // Los datos del negocio solo bloquean el avance en su propio paso.
-  assert.match(wizard, /const canContinue = step === 0 \? Boolean\(category\) : step === 1 \? Boolean\(designId\) : step === 3 \? form\.name\.trim\(\)\.length > 1 : true;/);
+  assert.match(wizard, /: step === INFO \? form\.name\.trim\(\)\.length > 1/);
   // La creación ocurre en el último paso, con el botón de resumen.
   assert.ok(wizard.includes('Crear página') && wizard.includes('void submit()'));
 });

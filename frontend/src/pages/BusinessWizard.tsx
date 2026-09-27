@@ -1,27 +1,75 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, Check, Loader2, UserRound } from 'lucide-react';
 import { createBusiness, getPublicTemplates } from '@/services/business';
+import api from '@/lib/axios';
 import { BUSINESS_CATEGORY_CODES, groupedCategories } from '@/business/taxonomy';
 import { categoryLabel, ctaLabel } from '@/business/businessLabels';
 import { DesignFullPreview, DesignGallery, toDesignOptions, type DesignOption } from '@/business/templates/DesignGallery';
 
 /**
- * YESYES BUSINESS — Asistente de creación (flujo ÚNICO de onboarding).
+ * ASISTENTE DE CREACIÓN DE PÁGINAS.
  *
- * Orden deliberado: primero el rubro, después los diseños y la vista previa, y
- * solo al final los datos del negocio. Antes se pedía toda la información antes de
- * mostrar un solo diseño; ahora se avanza rápido y el resto se completa desde el
- * editor y el panel.
+ * ES EL MISMO FLUJO PARA TODOS, DEL ADMIN Y DE LA HOME. Antes el admin tenía
+ * su propio formulario de 3 pasos, distinto del que ve el cliente: se elegía
+ * un diseño sin verlo y sin vista previa, y no preguntaba por la descripción
+ * ni el WhatsApp. Eso obligaba al admin a reconstruir la página a mano después
+ * de crearla, y el cliente se quedaba con algo distinto de lo que había
+ * probado. Un solo asistente elimina esa diferencia por construcción.
+ *
+ * QUÉ APORTA EL MODO ADMIN (`?admin=1`): elegir a quién pertenece la página.
+ * El cliente siempre es el que está conectado, pero el admin necesita crear en
+ * nombre de un cliente o como proyecto propio, y esa opción no tiene sentido
+ * (ni sentido legal) para un usuario normal.
  */
 type Form = { name: string; description: string; phone: string; whatsapp: string; email: string; address: string; city: string; socials: string; cta: string };
 const initial: Form = { name: '', description: '', phone: '', whatsapp: '', email: '', address: '', city: '', socials: '', cta: '' };
-const steps = ['Tipo de negocio', 'Diseño', 'Vista previa', 'Información básica', 'Revisión'];
+const STEPS_BASE = ['Tipo de negocio', 'Diseño', 'Vista previa', 'Información básica', 'Revisión'];
+/**
+ * El paso de propietario solo existe en modo admin, y va PRIMERO: define para
+ * quién se crea la página, y decidirlo al final obligaría a rehacer el trabajo.
+ * Centralizar los índices evita el off-by-one clásico, que rompe el asistente
+ * en uno de los dos caminos y deja al otro navegando pasos equivocados.
+ */
+function buildSteps(modoAdmin: boolean) {
+  return modoAdmin ? ['Propietario', ...STEPS_BASE] : STEPS_BASE;
+}
+const stepIndex = (modoAdmin: boolean, base: number) => (modoAdmin ? base + 1 : base);
+const STEP_CATEGORY = 0;
+const STEP_DESIGN = 1;
+const STEP_PREVIEW = 2;
+const STEP_INFO = 3;
+const STEP_REVIEW = 4;
 
 export default function BusinessWizard() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  /**
+   * Modo admin: el asistente se abre con `?admin=1` desde el panel y agrega el
+   * paso de propietario. Va al principio porque define para quién se está
+   * creando, y cambiarlo al final sería tirar el trabajo hecho.
+   */
+  const modoAdmin = params.get('admin') === '1';
+  const steps = buildSteps(modoAdmin);
+  const CAT = stepIndex(modoAdmin, STEP_CATEGORY);
+  const DESIGN = stepIndex(modoAdmin, STEP_DESIGN);
+  const PREVIEW = stepIndex(modoAdmin, STEP_PREVIEW);
+  const INFO = stepIndex(modoAdmin, STEP_INFO);
+  const REVIEW = stepIndex(modoAdmin, STEP_REVIEW);
+  // Ambos caminos arrancan en el índice 0: el de propietario (admin) o el
+  // de rubro (cliente).
   const [step, setStep] = useState(0);
+
+  // Solo el admin necesita la lista de clientes. Se pide una vez al montar el
+  // asistente en modo admin, no en cada paso.
+  useEffect(() => {
+    if (!modoAdmin) return;
+    let active = true;
+    api.get('/admin/businesses/candidates')
+      .then((response) => { if (active) setCandidates(response.data?.users || []); })
+      .catch(() => { if (active) setCandidates([]); });
+    return () => { active = false; };
+  }, [modoAdmin]);
   const [form, setForm] = useState<Form>(initial);
   const [category, setCategory] = useState<string>(String(params.get('categoria') || '').toUpperCase() || BUSINESS_CATEGORY_CODES[0]);
   const [designs, setDesigns] = useState<DesignOption[]>([]);
@@ -35,6 +83,9 @@ export default function BusinessWizard() {
    * las palabras y las fotos que no le sirvan. Si lo desmarca, queda vacía.
    */
   const [withExample, setWithExample] = useState(true);
+  const [candidates, setCandidates] = useState<{ id: string; name?: string | null; lastName?: string | null; email: string }[]>([]);
+  const [ownerMode, setOwnerMode] = useState<'cliente' | 'propio'>('propio');
+  const [ownerId, setOwnerId] = useState('');
   const set = (key: keyof Form, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
   // Los diseños se piden al elegir el rubro: es lo primero que el usuario ve.
@@ -56,17 +107,27 @@ export default function BusinessWizard() {
   }, [category]);
 
   const selectedDesign = useMemo(() => designs.find((design) => design.id === designId) || null, [designId, designs]);
-  const canContinue = step === 0 ? Boolean(category) : step === 1 ? Boolean(designId) : step === 3 ? form.name.trim().length > 1 : true;
+  // En modo admin el primer paso exige dueño O "propio" explícito: crear sin
+  // decidir a quién pertenece dejaría páginas huérfanas que después nadie sabe
+  // a quién devolverle el acceso.
+  const canContinue = step === 0
+    ? (modoAdmin ? (ownerMode === 'propio' || Boolean(ownerId)) : Boolean(category))
+    : step === DESIGN ? Boolean(designId)
+    : step === INFO ? form.name.trim().length > 1
+    : true;
   const next = () => { setError(''); if (canContinue) setStep((value) => Math.min(steps.length - 1, value + 1)); };
 
   const submit = async () => {
     if (!form.name.trim() || !designId) { setError('Completa el nombre del negocio y elige un diseño.'); return; }
+    if (modoAdmin && ownerMode === 'cliente' && !ownerId) { setError('Selecciona el cliente al que pertenece la página.'); return; }
     setSaving(true);
     setError('');
     try {
-      const business = await createBusiness({
+      const payload = {
         name: form.name.trim(),
         category,
+        // `designId` es el id de la plantilla (DesignOption.id lo es): el
+        // diseño elegido ES la plantilla que se guarda.
         templateId: designId,
         description: form.description.trim() || null,
         phone: form.phone.trim() || null,
@@ -77,7 +138,13 @@ export default function BusinessWizard() {
         socials: form.socials ? Object.fromEntries(form.socials.split(',').map((value) => value.trim().split(/\s+/).slice(0, 2))) : null,
         cta: form.cta.trim() || ctaLabel(category),
         withExampleContent: withExample,
-      });
+      };
+      // El admin con cliente asignado va por /admin/businesses: es lo único
+      // que le permite crear la página para OTRA cuenta. En el resto de los
+      // casos se usa el alta del dueño, que es la que valida la propiedad.
+      const business = modoAdmin && ownerMode === 'cliente' && ownerId
+        ? (await api.post('/admin/businesses', { ...payload, ownerId })).data.business
+        : await createBusiness(payload);
       navigate(`/negocio/editor?id=${business.id}`);
     } catch (cause: any) {
       setError(cause?.response?.data?.message || 'No se pudo crear la página.');
@@ -105,7 +172,32 @@ export default function BusinessWizard() {
         <section className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm sm:p-8">
           <h2 className="text-2xl font-bold">{steps[step]}</h2>
 
-          {step === 0 && (
+          {step === 0 && modoAdmin && (
+            <div className="mt-6 space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {([['propio', 'Proyecto propio', 'La página queda a nombre del administrador.', Building2], ['cliente', 'Para un cliente', 'Se asigna a una cuenta de cliente, que podrá editarla.', UserRound]] as const).map(([value, title, text, Icon]) => (
+                  <label key={value} className={`cursor-pointer rounded-2xl border p-4 transition ${ownerMode === value ? 'border-stone-900 bg-stone-50 ring-2 ring-stone-200' : 'border-stone-200 hover:border-stone-300'}`}>
+                    <span className="flex items-start gap-3">
+                      <input type="radio" name="ownerMode" value={value} checked={ownerMode === value} onChange={() => { setOwnerMode(value); setOwnerId(''); }} className="mt-1 accent-stone-900" />
+                      <Icon className="h-5 w-5 text-stone-700" />
+                      <span><span className="block font-bold text-stone-900">{title}</span><span className="mt-1 block text-xs leading-relaxed text-stone-500">{text}</span></span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {ownerMode === 'cliente' && (
+                <label className="block text-sm font-semibold text-stone-700">
+                  Cliente
+                  <select required value={ownerId} onChange={(event) => setOwnerId(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-stone-300 bg-white px-3 font-normal focus:border-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900/10">
+                    <option value="">Selecciona un cliente</option>
+                    {candidates.map((user) => <option key={user.id} value={user.id}>{[user.name, user.lastName].filter(Boolean).join(' ')} · {user.email}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
+
+          {step === CAT && (
             <div className="mt-6 space-y-7" data-testid="wizard-categories">
               <p className="text-stone-500">Elige el rubro que mejor describe tu negocio. Verás solo los diseños de ese rubro.</p>
               {groupedCategories().map(({ group, categories }) => (
@@ -127,7 +219,7 @@ export default function BusinessWizard() {
             </div>
           )}
 
-          {step === 1 && (
+          {step === DESIGN && (
             <div className="mt-6">
               <p className="mb-4 text-stone-500">Estos son los diseños para <b>{categoryLabel(category)}</b>. Cada vista previa es tu página real: con imágenes, botones y secciones.</p>
               {loading ? <p className="text-stone-500"><Loader2 className="mr-2 inline animate-spin" />Cargando diseños…</p> : (
@@ -136,7 +228,7 @@ export default function BusinessWizard() {
             </div>
           )}
 
-          {step === 2 && (
+          {step === PREVIEW && (
             <div className="mt-6">
               {/* La vista previa ocupa la pantalla: es la página real, scrolleable y responsive. */}
               {selectedDesign
@@ -145,7 +237,7 @@ export default function BusinessWizard() {
             </div>
           )}
 
-          {step === 3 && (
+          {step === INFO && (
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <Field label="Nombre del negocio" value={form.name} onChange={(v) => set('name', v)} placeholder="Ej. Barbería Daniel" autoFocus />
               <Field label="Descripción" value={form.description} onChange={(v) => set('description', v)} placeholder="Qué ofreces en una línea" textarea />
@@ -182,7 +274,7 @@ export default function BusinessWizard() {
             </div>
           )}
 
-          {step === 4 && (
+          {step === REVIEW && (
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl bg-stone-950 p-6 text-white">
                 <p className="text-sm text-stone-400">{categoryLabel(category)}</p>

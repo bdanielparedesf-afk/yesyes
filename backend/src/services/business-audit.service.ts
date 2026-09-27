@@ -26,6 +26,10 @@ export const BUSINESS_AUDIT_ACTIONS = [
   'BUSINESS_PAYMENT_CONFIRMED',
   'BUSINESS_PAYMENT_FAILED',
   'BUSINESS_PAYMENT_MANUAL_ACTIVATION',
+  // Borrado real de una página que nunca estuvo publicada. Es la única acción
+  // de este enum que elimina filas, y por eso lleva nombre propio: tiene que
+  // ser localizable en la auditoría sin ambigüedad con BUSINESS_ARCHIVED.
+  'BUSINESS_DELETED_UNPUBLISHED',
 ] as const;
 
 export type BusinessAuditAction = (typeof BUSINESS_AUDIT_ACTIONS)[number];

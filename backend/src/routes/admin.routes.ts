@@ -27,6 +27,7 @@ import {
   takeDownBusinessPage,
   restoreBusinessPage,
   markSubscriptionActive,
+  deleteUnpublishedBusiness,
 } from '../services/admin-business-pages.service';
 
 
@@ -171,6 +172,23 @@ router.put('/business-pages/:id/restore', async (req: AuthRequest, res) => {
     res.json({ row });
   } catch (error: any) {
     res.status(error?.status || 500).json({ message: error?.message || 'No se pudo restablecer' });
+  }
+});
+
+/**
+ * ELIMINA de verdad una página que nunca se publicó. Es la única operación de
+ * este servicio que borra filas: por eso vive aparte de la baja y exige que la
+ * página nunca haya estado en línea, sin suscripción y sin actividad.
+ */
+router.delete('/business-pages/:id', async (req: AuthRequest, res) => {
+  try {
+    const result = await deleteUnpublishedBusiness({
+      businessId: String(req.params.id),
+      adminId: req.user!.id,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo eliminar la página' });
   }
 });
 

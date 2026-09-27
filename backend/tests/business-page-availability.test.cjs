@@ -126,7 +126,17 @@ test('dar de baja NO borra contenido: pausa, nunca elimina', () => {
   // La reassurance para el dueÃƒÆ’Ã‚Â±o: si no regulariza y vuelve, recupera todo.
   assert.match(ADMIN_SERVICE, /data: \{ status: 'PAUSED' \}/);
   assert.doesNotMatch(ADMIN_SERVICE, /businessMedia\.deleteMany|businessService\.deleteMany|businessGalleryImage\.deleteMany/);
-  assert.doesNotMatch(ADMIN_SERVICE, /prisma\.business\.delete/);
+  // El unico `business.delete` del archivo es el borrado explícito de paginas
+  // NUNCA se publicaron, que es una operación aparte. Si ese borrado se cuela en
+  // cualquier otra función (la baja, el restablecimiento), este test falla.
+  const iDelete = ADMIN_SERVICE.indexOf("prisma.business.delete");
+  if (iDelete > -1) {
+    const iInicio = ADMIN_SERVICE.lastIndexOf("export async function", iDelete);
+    const nombre = ADMIN_SERVICE.slice(iInicio, ADMIN_SERVICE.indexOf("(", iInicio))
+      .replace("export async function", "").trim();
+    assert.equal(nombre, "deleteUnpublishedBusiness",
+      "el borrado solo puede vivir en la función de páginas nunca publicadas");
+  }
 });
 
 test('restablecer vuelve a publicar sin cobrar de nuevo', () => {
