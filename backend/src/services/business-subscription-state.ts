@@ -11,6 +11,110 @@ import type { SubscriptionStatus } from '@prisma/client';
 
 export const GRACE_DAYS_DEFAULT = 5;
 
+/**
+ * ¿ESTÁ VIVA LA PÁGINA DE ESTE NEGOCIO?
+ *
+ * Es la UNICA fuente de verdad de esa pregunta. La usan por igual la ruta
+ * pública (para decidir si sirve o no) y el panel de admin (para explicar por
+ * qué), así que no pueden discrepar.
+ *
+ * POLÍTICA (la acordada):
+ *  - Con plan al día o dentro de la gracia: la página vive.
+ *  - Vencida la gracia: se da de BAJA de inmediato. No hay aviso intermedio:
+ *    el dueño ya tuvo 5 días de gracia para regularizar, y una franja de
+ *    "regulariza tu pago" en el sitio de un restaurante se lee como que la
+ *    plataforma anda mal.
+ *
+ * IMPORTANTE: dar de baja NUNCA borra contenido. El negocio, sus servicios,
+ * fotos y reseñas siguen intactos para poder reactivarlo en un clic. Por eso
+ * se responde con "viva: sí/no" y no se toca la fila.
+ */
+
+export interface PublicAvailability {
+  live: boolean;
+  reason: 'NO_SUBSCRIPTION' | 'NOT_PUBLISHABLE' | 'GRACE_ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'OK';
+  /** Días que quedan de gracia; 0 cuando ya venció. */
+  graceDaysLeft: number;
+  graceUntil: Date | null;
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Estados en los que la página sigue en línea. */
+const LIVE_STATUSES: SubscriptionStatus[] = ['ACTIVE', 'PENDING', 'PAST_DUE'];
+
+/** ¿La suscripción está en un estado que impide, por sí solo, publicar? */
+function isPublishable(status: SubscriptionStatus | null | undefined): boolean {
+  return PUBLISHABLE_SUB_STATUSES.includes(String(status) as SubscriptionStatus);
+}
+
+/**
+ * Gracia vencida = 0 días. Si `graceUntil` es null y el estado es PAST_DUE, se
+ * trata como vencida: no regalar un plazo infinito por un dato ausente.
+ */
+function graceDaysLeft(subscription: SubscriptionLike, now: Date): number {
+  if (String(subscription.status) !== 'PAST_DUE') return 0;
+  const until = asDate(subscription.graceUntil);
+  if (!until) return 0;
+  const left = Math.ceil((until.getTime() - now.getTime()) / DAY);
+  return left > 0 ? left : 0;
+}
+
+/**
+ * Decide si la página pública debe servirse.
+ *
+ * `isAdmin` NO salta el chequeo: el admin tampoco puede ver en vivo una página
+ * sin plan (debe usar el preview con token). Lo que sí puede es forzar la
+ * baja o la reactivación desde el panel, que son acciones explícitas.
+ */
+export function publicAvailability(input: {
+  businessStatus?: string | null;
+  subscription?: SubscriptionLike | null;
+  now?: Date;
+}): PublicAvailability {
+  const now = input.now ?? new Date();
+
+  if (input.businessStatus !== 'PUBLISHED') {
+    return { live: false, reason: 'NOT_PUBLISHABLE', graceDaysLeft: 0, graceUntil: null };
+  }
+  // Un negocio sin fila de suscripción nunca se cobró: no puede estar en línea.
+  // Esto es lo que cerró la fuga descrita en el diagnóstico.
+  if (!input.subscription) {
+    return { live: false, reason: 'NO_SUBSCRIPTION', graceDaysLeft: 0, graceUntil: null };
+  }
+  const status = String(input.subscription.status) as SubscriptionStatus;
+  if (status === 'CANCELLED') {
+    return { live: false, reason: 'CANCELLED', graceDaysLeft: 0, graceUntil: null };
+  }
+  if (!LIVE_STATUSES.includes(status)) {
+    return { live: false, reason: 'EXPIRED', graceDaysLeft: 0, graceUntil: null };
+  }
+  if (status === 'PAST_DUE') {
+    const left = graceDaysLeft(input.subscription, now);
+    const until = asDate(input.subscription.graceUntil);
+    if (left <= 0) {
+      return { live: false, reason: 'EXPIRED', graceDaysLeft: 0, graceUntil: null };
+    }
+    return { live: true, reason: 'GRACE_ACTIVE', graceDaysLeft: left, graceUntil: until };
+  }
+  return { live: true, reason: 'OK', graceDaysLeft: 0, graceUntil: asDate(input.subscription.graceUntil) };
+}
+
+/** Texto corto para el panel de admin. */
+export function availabilityLabel(availability: PublicAvailability): string {
+  switch (availability.reason) {
+    case 'OK': return 'En línea';
+    case 'GRACE_ACTIVE': return `En línea · ${availability.graceDaysLeft} día(s) de gracia`;
+    case 'EXPIRED': return 'Dada de baja · pago vencido';
+    case 'CANCELLED': return 'Dada de baja · suscripción cancelada';
+    case 'NO_SUBSCRIPTION': return 'Dada de baja · sin plan';
+    default: return 'No publicada';
+  }
+}
+
+export { isPublishable };
+
+
 /** Estados en los que la pagina publica puede estar publicada. */
 export const PUBLISHABLE_SUB_STATUSES: SubscriptionStatus[] = ['ACTIVE', 'GRACE_PERIOD', 'PAST_DUE'];
 

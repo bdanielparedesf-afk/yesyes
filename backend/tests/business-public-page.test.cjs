@@ -53,6 +53,17 @@ test.before(async () => {
   });
   businessId = business.id;
 
+  // Plan al día. La página pública exige suscripción viva: este test la creaba
+  // PUBLISHED sin plan y antes respondía 200. Con la política de baja, una
+  // página sin plan da 404, que es el comportamiento correcto.
+  const plan = await prisma.businessPlan.findFirst({ where: { active: true } })
+    || await prisma.businessPlan.create({
+      data: { code: 'TEST_PLAN', name: 'Plan de prueba', amount: 11990, currency: 'CLP', frequency: 1, frequencyType: 'MONTH', active: true },
+    });
+  await prisma.businessSubscription.create({
+    data: { businessId, planId: plan.id, provider: 'MERCADOPAGO', status: 'ACTIVE', amount: 11990, currency: 'CLP', frequency: 1, frequencyType: 'MONTH' },
+  });
+
   // Un servicio y un producto: los dos recursos deben viajar en la página.
   await prisma.businessService.create({ data: { businessId, name: 'Consulta general', price: 15000, active: true } });
   await prisma.businessCatalogItem.create({ data: { businessId, slug: 'alimento-premium', name: 'Alimento premium', price: 20000, active: true } });

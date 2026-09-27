@@ -1,13 +1,13 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from '@/layouts/Layout';
-// Solo Home va eager: es la primera pantalla (LCP). Todo lo demás es lazy
-// para que el JS inicial sea mínimo y el primer paint llegue rápido.
+// Solo Home va eager: es la primera pantalla (LCP). Todo lo demÃƒÂ¡s es lazy
+// para que el JS inicial sea mÃƒÂ­nimo y el primer paint llegue rÃƒÂ¡pido.
 // React Router solo descarga el chunk de la ruta visitada.
 import Home from '@/pages/Home';
 import AdminLayout from '@/components/admin/AdminLayout';
-// Code splitting: páginas pesadas o de uso admin se cargan bajo demanda para
-// reducir el JS inicial de la tienda pública. Home/Catálogo/Producto/Carrito
+// Code splitting: pÃƒÂ¡ginas pesadas o de uso admin se cargan bajo demanda para
+// reducir el JS inicial de la tienda pÃƒÂºblica. Home/CatÃƒÂ¡logo/Producto/Carrito
 // permanecen en el bundle inicial (LCP sin cadenas de lazy).
 const Products = lazy(() => import('@/pages/Products'));
 const ProductDetail = lazy(() => import('@/pages/ProductDetail'));
@@ -34,6 +34,7 @@ const AdminImport = lazy(() => import('@/pages/AdminImport'));
 const AdminBulk = lazy(() => import('@/pages/AdminBulk'));
 const AdminAliExpress = lazy(() => import('@/pages/AdminAliExpress'));
 const AdminBusinesses = lazy(() => import('@/pages/AdminBusinesses'));
+const AdminBusinessPages = lazy(() => import('@/pages/AdminBusinessPages'));
 const AdminBusinessEditor = lazy(() => import('@/pages/AdminBusinessEditor'));
 const MiNegocio = lazy(() => import('@/pages/MiNegocio'));
 const BusinessDashboard = lazy(() => import('@/pages/BusinessDashboard'));
@@ -51,11 +52,11 @@ function App() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-neutral-50">
-        <div className="animate-pulse text-neutral-500">Cargando…</div>
+        <div className="animate-pulse text-neutral-500">CargandoÃ¢â‚¬Â¦</div>
       </div>
     }>
     <Routes>
-      {/* Tienda pública con Header/Footer */}
+      {/* Tienda pÃƒÂºblica con Header/Footer */}
       <Route path="/" element={<Layout />}>
         <Route index element={<Home />} />
         <Route path="productos" element={<Products />} />
@@ -97,11 +98,13 @@ function App() {
       <Route path="/admin/users" element={<AdminLayout><AdminUsers /></AdminLayout>} />
       <Route path="/admin/import-cj" element={<AdminLayout><AdminImport /></AdminLayout>} />
       <Route path="/admin/bulk" element={<AdminLayout><AdminBulk /></AdminLayout>} />
-      {/* Compatibilidad: rutas antiguas de importación */}
+      {/* Compatibilidad: rutas antiguas de importaciÃƒÂ³n */}
       <Route path="/admin/import" element={<Navigate to="/admin/import-cj" replace />} />
       <Route path="/admin/bulk-import" element={<Navigate to="/admin/bulk" replace />} />
       <Route path="/admin/aliexpress" element={<AdminLayout><AdminAliExpress /></AdminLayout>} />
       <Route path="/admin/negocios" element={<AdminLayout><AdminBusinesses /></AdminLayout>} />
+      {/* Antes que `/:id/editor`: si no, "paginas" se tomaria por un id. */}
+      <Route path="/admin/negocios/paginas" element={<AdminLayout><AdminBusinessPages /></AdminLayout>} />
       <Route path="/admin/negocios/:id/editor" element={<AdminLayout><AdminBusinessEditor /></AdminLayout>} />
       <Route path="/mi-negocio/:slug" element={<MiNegocio />} />
       {BusinessFixturePage && <Route path="/__qa/business/:category" element={<BusinessFixturePage />} />}

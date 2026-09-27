@@ -6,6 +6,7 @@ import { checkSpam } from '../utils/business-antispam';
 import { validatePreviewToken } from '../services/business-preview.service';
 import { mediaPublicDTO } from '../services/business-media.service';
 import { publishedManifestOf as publishedManifest } from '../services/business-site-version.service';
+import { publicAvailability } from '../services/business-subscription-state';
 import { listActivePlans } from '../services/business-subscription.service';
 import { groupedCategories, templateFamilyCodes, templateDisplayName, templateStyleOf, canonicalCategoryCode, dedupeDesigns, normalizeTemplateCode } from '../utils/business-taxonomy';
 import { CAPABILITY_CATALOG } from '../utils/business-capabilities';
@@ -119,9 +120,35 @@ function withPublicMedia<T>(business: T): T {
   return { ...business, media: rows.map((row) => mediaPublicDTO(row as any)) } as T;
 }
 
+/**
+ * ¿Está la página en línea? ÚNICO criterio, compartido con el panel de admin.
+ *
+ * ANTES este filtro solo miraba `status: PUBLISHED`, así que una página seguía
+ * sirviendo para siempre aunque la suscripción estuviera vencida o no existiera
+ * (se verificó: 3 negocios publicados, 2 sin plan, todos respondiendo 200).
+ * Ahora la suscripción es parte de la condición.
+ */
+const LIVE_WHERE = {
+  status: 'PUBLISHED' as any,
+  subscription: { is: { status: { in: ['ACTIVE', 'PENDING', 'PAST_DUE'] } } },
+} as any;
+
 async function publishedBySlug(slug: string) {
-  const found = await prisma.business.findFirst({ where: { slug: String(slug), status: 'PUBLISHED' as any }, select: PUBLIC_SELECT });
-  return withPublicMedia(found);
+  const found: any = await prisma.business.findFirst({
+    where: { slug: String(slug), ...LIVE_WHERE } as any,
+    select: { ...PUBLIC_SELECT, subscription: { select: { status: true, graceUntil: true } } } as any,
+  });
+  if (!found) return null;
+  // `LIVE_WHERE` deja pasar PAST_DUE a proposito: la gracia se decide aqui con
+  // la fecha, no en SQL. Vencida la gracia se devuelve null y todas las rutas
+  // que usan esta funcion responden su 404 de siempre.
+  //
+  // El contenido NO se borra: un pago al dia la deja en linea otra vez sin tocar
+  // nada, que es lo que permite reactivar sin volver a cargar todo.
+  const availability = publicAvailability({ businessStatus: found.status, subscription: found.subscription || null });
+  if (!availability.live) return null;
+  const { subscription, ...publicBusiness } = withPublicMedia(found as any) as any;
+  return { ...publicBusiness, availability: { live: true, graceDaysLeft: availability.graceDaysLeft } };
 }
 async function previewPayload(businessId: string) {
   const b = await prisma.business.findUnique({
@@ -179,9 +206,13 @@ router.get('/:slug/page', async (req, res) => {
   const slug = String(req.params.slug);
   const now = new Date();
   const business = await prisma.business.findFirst({
-    where: { slug, status: 'PUBLISHED' as any },
+    // Mismo criterio que `publishedBySlug`: sin suscripcion viva, 404. Esta
+    // ruta traia su propio `status: PUBLISHED` y habria servido la pagina de
+    // un negocio dado de baja.
+    where: { slug, ...LIVE_WHERE } as any,
     select: {
       ...PUBLIC_SELECT,
+      subscription: { select: { status: true, graceUntil: true } },
       services: { where: { active: true }, orderBy: { order: 'asc' } },
       catalogItems: {
         where: { active: true },
@@ -197,7 +228,14 @@ router.get('/:slug/page', async (req, res) => {
     },
   });
   if (!business) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
-  const { catalogItems, teamMembers, siteInstance, media: mediaRows, ...data } = business;
+  // `subscription` se incluye solo para decidir si vive: NUNCA sale en la
+  // respuesta, o se filtrarian datos de pago (estado, fechas, gracia) al publico.
+  const { catalogItems, teamMembers, siteInstance, media: mediaRows, subscription, ...data } = business as any;
+  // `LIVE_WHERE` deja pasar PAST_DUE, asi que la gracia se decide AQUI tambien.
+  // Sin este chequeo, la ruta `/page` seguia sirviendo la pagina con la gracia
+  // vencida (verificado: 200 con 9.805 bytes mientras `/` daba 404).
+  const availability = publicAvailability({ businessStatus: (business as any).status, subscription: subscription || null });
+  if (!availability.live) { res.status(404).json({ message: 'Negocio no encontrado' }); return; }
   // La página pública renderiza la ÚLTIMA REVISIÓN PUBLICADA. El borrador del
   // editor nunca se filtra aquí: probar un diseño no cambia el sitio en vivo.
   // La instancia se resuelve por su ID real, no por convención de nombres.
@@ -205,7 +243,7 @@ router.get('/:slug/page', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     ...data,
-    media: mediaRows.map((row) => mediaPublicDTO(row as any)),
+    media: mediaRows.map((row: any) => mediaPublicDTO(row)),
     siteInstance: published ? { manifest: published, manifestVersion: siteInstance?.manifestVersion || 1 } : null,
     products: catalogItems,
     team: teamMembers,

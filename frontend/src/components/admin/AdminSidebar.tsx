@@ -7,6 +7,7 @@ import {
   Upload,
   LogOut,
   Shield,
+  Globe,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 
@@ -18,6 +19,7 @@ const LINKS = [
   { href: '/admin/import-cj', label: 'Importar CJ', icon: Upload },
   { href: '/admin/aliexpress', label: 'AliExpress', icon: ShoppingBag },
   { href: '/admin/negocios', label: 'Negocios', icon: LayoutDashboard },
+  { href: '/admin/negocios/paginas', label: 'Páginas en línea', icon: Globe },
   { href: '/admin/bulk', label: 'Importar Excel', icon: Upload },
 ] as const;
 

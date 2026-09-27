@@ -22,6 +22,12 @@ import {
   publishBusiness,
 } from '../services/business-publish.service';
 import { uniqueBusinessSlugFor } from '../services/business.service';
+import {
+  listAdminBusinesses,
+  takeDownBusinessPage,
+  restoreBusinessPage,
+  markSubscriptionActive,
+} from '../services/admin-business-pages.service';
 
 
 const router = Router();
@@ -119,6 +125,74 @@ router.put('/orders/:id/status', updateOrderStatus);
 router.get('/users', getUsers);
 router.put('/users/:id/role', updateUserRole);
 router.put('/users/:id/active', toggleUserActive);
+
+/**
+ * GESTIÓN DE PÁGINAS PUBLICADAS.
+ *
+ * Lista con el estado REAL de cada página (viva / en gracia / dada de baja) y
+ * las acciones de soporte. El filtro es por estado de vida, no solo por status
+ * del negocio: una página "PUBLISHED" sin plan está dada de baja aunque el
+ * negocio diga lo contrario.
+ */
+router.get('/business-pages', async (req, res) => {
+  try {
+    const result = await listAdminBusinesses({
+      filter: String(req.query.filter || 'TODOS'),
+      search: String(req.query.search || ''),
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: 'No se pudo cargar el estado de las páginas', error: error.message });
+  }
+});
+
+/** Da de baja la página. NO borra contenido: solo la saca de línea. */
+router.put('/business-pages/:id/take-down', async (req: AuthRequest, res) => {
+  try {
+    const row = await takeDownBusinessPage({
+      businessId: String(req.params.id),
+      adminId: req.user!.id,
+      reason: (req.body as any)?.reason,
+    });
+    res.json({ row });
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo dar de baja' });
+  }
+});
+
+/** Restablece la página sin volver a cobrar ni revalidar el checklist. */
+router.put('/business-pages/:id/restore', async (req: AuthRequest, res) => {
+  try {
+    const row = await restoreBusinessPage({
+      businessId: String(req.params.id),
+      adminId: req.user!.id,
+      reason: (req.body as any)?.reason,
+    });
+    res.json({ row });
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo restablecer' });
+  }
+});
+
+/** Ajuste manual del plan (soporte). Queda auditado. */
+router.put('/business-pages/:id/subscription', async (req: AuthRequest, res) => {
+  const status = String((req.body as any)?.status || '').toUpperCase();
+  if (!['ACTIVE', 'PAST_DUE', 'EXPIRED'].includes(status)) {
+    res.status(400).json({ message: 'Estado de suscripción inválido' });
+    return;
+  }
+  try {
+    const row = await markSubscriptionActive({
+      businessId: String(req.params.id),
+      adminId: req.user!.id,
+      status: status as 'ACTIVE' | 'PAST_DUE' | 'EXPIRED',
+      graceDays: (req.body as any)?.graceDays,
+    });
+    res.json({ row });
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo actualizar la suscripción' });
+  }
+});
 
 router.get('/businesses', async (req, res) => {
   try {

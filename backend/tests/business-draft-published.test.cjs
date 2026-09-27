@@ -93,6 +93,18 @@ test.before(async () => {
       whatsapp: '+56912345678',
     },
   });
+  // Plan al día. La página pública EXIGE suscripción viva: se agregó esta fila
+  // porque el test publicaba el negocio a mano y antes la página respondía 200
+  // sin plan. Con la política de baja, una página sin plan da 404, así que un
+  // cliente de verdad que publica siempre tiene el plan paid.
+  const plan = await prisma.businessPlan.findFirst({ where: { active: true } })
+    || await prisma.businessPlan.create({
+      data: { code: 'TEST_PLAN', name: 'Plan de prueba', amount: 11990, currency: 'CLP', frequency: 1, frequencyType: 'MONTH', active: true },
+    });
+  await prisma.businessSubscription.create({
+    data: { businessId: business.id, planId: plan.id, provider: 'MERCADOPAGO', status: 'ACTIVE', amount: 11990, currency: 'CLP', frequency: 1, frequencyType: 'MONTH' },
+  });
+
   instance = await prisma.businessSiteInstance.create({
     data: {
       businessId: business.id,
