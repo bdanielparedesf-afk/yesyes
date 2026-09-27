@@ -113,6 +113,60 @@ test('también se puede eliminar desde el panel de Páginas en línea', () => {
 });
 
 /**
+ * SELECCIÓN Y BORRADO EN LOTE.
+ */
+test('cada página tiene su propio checkbox', () => {
+  assert.match(ADMIN, /data-testid="select-business"/);
+  assert.match(ADMIN, /onChange=\{\(\) => alternarUna\(business\.id\)\}/);
+});
+
+test('hay un "seleccionar todo" y refleja cuando están todas marcadas', () => {
+  assert.match(ADMIN, /data-testid="select-all"/);
+  assert.match(ADMIN, /el\.indeterminate = algunaSeleccionada && !todasSeleccionadas/);
+});
+
+test('"seleccionar todo" actúa sobre lo que se ve, no sobre todo el catálogo', () => {
+  // Si el admin filtra por "Borrador" y marca todo, espera borrar los
+  // borradores. Llevarse también las publicadas sería otro borrado.
+  assert.match(ADMIN, /const visibles = filtered\.map\(\(business\) => business\.id\)/);
+  assert.match(ADMIN, /visibles\.forEach\(\(id\) => next\.add\(id\)\)/);
+});
+
+test('la barra del lote dice cuántas hay y ofrece quitarlas sin borrar', () => {
+  assert.match(ADMIN, /data-testid="bulk-count"/);
+  assert.match(ADMIN, /data-testid="bulk-clear"/);
+  assert.match(ADMIN, /data-testid="bulk-bar"/);
+});
+
+test('el lote pide confirmación y avisa del máximo antes de enviarlo', () => {
+  assert.match(ADMIN, /data-testid="bulk-confirm-dialog"/);
+  assert.match(ADMIN, /ids\.length > MAX_LOTE/);
+});
+
+test('el lote va al endpoint de borrado masivo con force', () => {
+  assert.match(ADMIN, /api\.post\('\/admin\/business-pages\/bulk-delete', \{ ids, force: true \}\)/);
+});
+
+test('un lote parcial se informa, no se esconde como error genérico', () => {
+  // Si 40 de 49 se borran, el admin tiene que saber cuáles quedaron y por
+  // qué; "no se pudo eliminar" no le sirve de nada.
+  assert.match(ADMIN, /fallidas\.length/);
+  assert.match(ADMIN, /f\.name\} \(\$\{f\.reason\}/);
+});
+
+test('el backend procesa el lote página por página y devuelve el detalle', () => {
+  const SERVICE = fs.readFileSync(path.resolve(__dirname, '../../backend/src/services/admin-business-pages.service.ts'), 'utf8');
+  const R = fs.readFileSync(path.resolve(__dirname, '../../backend/src/routes/admin.routes.ts'), 'utf8');
+  assert.match(SERVICE, /export async function deleteManyBusinesses/);
+  assert.match(SERVICE, /for \(const id of ids\)/);
+  assert.match(SERVICE, /failed\.push\(\{ id, name: nombre, reason:/);
+  // El límite de tamaño no es un adorno: el lote llama al proveedor por página.
+  assert.match(SERVICE, /ids\.length > 49/);
+  // La ruta del lote va antes que la de un id, o Express lee "bulk" como id.
+  assert.ok(R.indexOf("business-pages/bulk-delete") < R.indexOf("router.delete('/business-pages/:id'"));
+});
+
+/**
  * BIBLIOTECA DE EJEMPLARES REUTILIZABLES.
  *
  * Lo que se fija acá es la garantía que hace que la biblioteca sirva: un

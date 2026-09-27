@@ -297,3 +297,64 @@ export async function deleteUnpublishedBusiness(input: {
   return { deleted: true, name: business.name, cancelledInProvider, forced: force };
 }
 
+
+/**
+ * ELIMINA VARIAS PÁGINAS DE UNA VEZ (limpieza de prueba).
+ *
+ * POR QUÉ NO ES UN `for` CON UN DELETE: la operación individual puede fallar
+ * por una razón que no depende de las demás — el cobro de Mercado Pago que no
+ * se pudo cancelar. Si el lote fuera una transacción, un solo fallo dejaría sin
+ * borrar las 49 páginas de las 50, y el admin no sabría por qué. Así que cada
+ * página se resuelve por separado y se devuelve qué se borró y qué no, con el
+ * motivo de cada rechazo.
+ *
+ * LÍMITE DE TAMAÑO: no es un adorno. El endpoint reenvía al proveedor una vez
+ * por cada página con cobro vivo, y un lote sin tope sería una forma de colgar
+ * la API con una sola petición. Cuarenta y nueve es el lote real que se quiere
+ * hacer; de sobra.
+ */
+export async function deleteManyBusinesses(input: {
+  businessIds: string[];
+  adminId: string;
+  force?: boolean;
+  reason?: string;
+}): Promise<{
+  deleted: string[];
+  failed: { id: string; name: string; reason: string }[];
+  cancelledInProvider: string[];
+}> {
+  const ids = Array.from(new Set(input.businessIds.map((id) => String(id)).filter(Boolean)));
+  if (!ids.length) throw Object.assign(new Error('No se seleccionó ninguna página.'), { status: 400 });
+  if (ids.length > 49) {
+    throw Object.assign(new Error(`Solo se pueden eliminar 49 páginas por vez (seleccionaste ${ids.length}).`), { status: 400 });
+  }
+
+  const deleted: string[] = [];
+  const failed: { id: string; name: string; reason: string }[] = [];
+  const cancelledInProvider: string[] = [];
+
+  for (const id of ids) {
+    try {
+      const result = await deleteUnpublishedBusiness({
+        businessId: id,
+        adminId: input.adminId,
+        force: input.force,
+        reason: input.reason,
+      });
+      deleted.push(id);
+      if (result.cancelledInProvider) cancelledInProvider.push(id);
+    } catch (error: any) {
+      // Se sigue con las demás: una página que no se puede borrar no puede
+      // impedir que se limpien las otras. El motivo se le devuelve al admin
+      // para que sepa cuál quedó y por qué.
+      const nombre = await prisma.business
+        .findUnique({ where: { id }, select: { name: true } })
+        .then((row) => row?.name || id)
+        .catch(() => id);
+      failed.push({ id, name: nombre, reason: error?.message || 'No se pudo eliminar' });
+    }
+  }
+
+  return { deleted, failed, cancelledInProvider };
+}
+

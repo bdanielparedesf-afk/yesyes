@@ -28,6 +28,7 @@ import {
   restoreBusinessPage,
   markSubscriptionActive,
   deleteUnpublishedBusiness,
+  deleteManyBusinesses,
 } from '../services/admin-business-pages.service';
 import {
   listLibrary,
@@ -250,6 +251,31 @@ router.delete('/page-library/:id', async (req: AuthRequest, res) => {
     res.json(result);
   } catch (error: any) {
     res.status(error?.status || 500).json({ message: error?.message || 'No se pudo eliminar el ejemplo' });
+  }
+});
+
+/**
+ * ELIMINA VARIAS PÁGINAS de una vez. Va ANTES que `/:id` a propósito: si se
+ * declarara después, Express leería "bulk" como un id y nunca llegaría acá.
+ * Devuelve el detalle de cada una, porque un lote parcial es un resultado
+ * normal y el admin tiene que saber qué quedó.
+ */
+router.post('/business-pages/bulk-delete', async (req: AuthRequest, res) => {
+  const ids = (req.body as any)?.ids;
+  if (!Array.isArray(ids) || !ids.length) {
+    res.status(400).json({ message: 'Selecciona al menos una página para eliminar.' });
+    return;
+  }
+  try {
+    const result = await deleteManyBusinesses({
+      businessIds: ids.map(String),
+      adminId: req.user!.id,
+      force: (req.body as any)?.force === true,
+      reason: (req.body as any)?.reason,
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ message: error?.message || 'No se pudo eliminar el lote' });
   }
 });
 
